@@ -19,7 +19,7 @@ all: $(TARGET)
 # --- Regras de Compilação para o Editor 'a2' ---
 
 # Arquivos fonte para o a2
-A2_SOURCES = a2.c command_execution.c defs.c direct_navigation.c fileio.c lsp_client.c others.c screen_ui.c window_managment.c timer.c cache.c themes.c vterm.c
+A2_SOURCES = a2.c command_execution.c defs.c direct_navigation.c fileio.c lsp_client.c others.c screen_ui.c window_managment.c timer.c cache.c
 # Adiciona o prefixo do diretório para os fontes e objetos
 A2_SRCS = $(addprefix $(A2_DIR)/, $(A2_SOURCES))
 A2_OBJS = $(A2_SRCS:.c=.o)
