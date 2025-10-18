@@ -17,7 +17,7 @@ Then, install the dependencys and run Make with
 Documentation is in - [**Documentation**](./index.md)
 # New Release!
 A lot of things were added! So, any doubt's of keyboard shortcuts? :ksc show all of them.
-Now you can run if not any, most of the termial apps and a terminal by it self insede a2!
+Now you can run if not any, most of the termial apps and a terminal by it self inside a2!
 
 # Multiplatform?
 a2 is not windows compatible without any modifications i think.
