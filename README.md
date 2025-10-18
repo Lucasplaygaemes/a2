@@ -6,7 +6,7 @@ A2 is an text editor vim alike and emacs alike, this isn't a project where i wan
 ## Installation!
 Clone the Repository with
 ```bash
-git clone https://github.com/Lucasplaygaemes/JNTD
+git clone https://github.com/Lucasplaygaemes/a2
 ```
 Then, install the dependencys and run Make with
 ```bash
