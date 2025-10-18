@@ -43,4 +43,8 @@ clean:
 compile_commands:
 	@echo "Para gerar compile_commands.json para o editor a2, execute: bear -- make"
 
+#copy the new executable to bin
+copy:
+	sudo cp a2 /usr/local/bin/a2
+    
 .PHONY: all clean compile_commands
