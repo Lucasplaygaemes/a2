@@ -20,7 +20,7 @@ A lot of things were added! So, any doubt's of keyboard shortcuts? :ksc show all
 Now you can run if not any, most of the termial apps and a terminal by it self inside a2!
 
 # Multiplatform?
-a2 is not windows compatible without any modifications i think.
+a2 is not windows compatible without any modifications i think. I don't plan to make it. Not for now at least
 
 # Contribuiting
 I would be really gratefull if you want to improve the code, it's always open to commits. and if you want you can contact me via my email. My email is lucasmoura27271@gmail.com, we can chat by email.
