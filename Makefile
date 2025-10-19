@@ -19,7 +19,7 @@ all: $(TARGET)
 # --- Regras de Compilação para o Editor 'a2' ---
 
 # Arquivos fonte para o a2
-A2_SOURCES = a2.c command_execution.c defs.c direct_navigation.c fileio.c lsp_client.c others.c screen_ui.c window_managment.c timer.c cache.c
+A2_SOURCES = a2.c command_execution.c defs.c direct_navigation.c fileio.c lsp_client.c others.c screen_ui.c window_managment.c timer.c cache.c explorer.c
 # Adiciona o prefixo do diretório para os fontes e objetos
 A2_SRCS = $(addprefix $(A2_DIR)/, $(A2_SOURCES))
 A2_OBJS = $(A2_SRCS:.c=.o)
@@ -43,8 +43,14 @@ clean:
 compile_commands:
 	@echo "Para gerar compile_commands.json para o editor a2, execute: bear -- make"
 
-#copy the new executable to bin
-copy:
-	sudo cp a2 /usr/local/bin/a2
+# Alvo para instalar o executável no sistema
+install: all
+	@echo "Instalando a2 em /usr/local/bin..."
+	-sudo rm -f /usr/local/bin/$(TARGET)
+	sudo cp $(TARGET) /usr/local/bin/$(TARGET)
+	@echo "Instalação concluída."
     
-.PHONY: all clean compile_commands
+# Alvo para forçar a limpeza, compilação e instalação em um único comando
+rebuild: clean install
+
+.PHONY: all clean compile_commands install rebuild
