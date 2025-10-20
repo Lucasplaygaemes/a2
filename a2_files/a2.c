@@ -7,6 +7,7 @@
 #include "others.h"
 #include "lsp_client.h"
 #include "timer.h"
+#include "explorer.h"
 #include <locale.h>
 #include <libgen.h> // For dirname()
 #include <limits.h> // For PATH_MAX
@@ -162,6 +163,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 char* p = strchr(symbols, next_ch);
                 if (p) mover_janela_para_posicao(p - symbols);
             }
+            else if (next_ch == 't' || next_ch == 'T') display_command_palette(state);
             else if (next_ch == 'r' || next_ch == 'R') rotacionar_janelas();
             else if (next_ch == '	') {   
                 if (state->mode == VISUAL) {
@@ -303,8 +305,8 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             case 'U':
                                 state->current_col = strlen(state->lines[state->current_line]);
                                 editor_handle_enter(state);
-                                break;
                                 state->mode = INSERT;
+                                break;
                             case 'G':
                                 state->current_line = state->num_lines - 1;
                                 state->current_col = 0;
@@ -693,8 +695,6 @@ int main(int argc, char *argv[]) {
             continue;
         }
         
-        redesenhar_todas_as_janelas();
-        
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(STDIN_FILENO, &readfds);
@@ -705,9 +705,9 @@ int main(int argc, char *argv[]) {
             GerenciadorJanelas *ws = gerenciador_workspaces.workspaces[i];
             for (int j = 0; j < ws->num_janelas; j++) {
                 JanelaEditor *jw = ws->janelas[j];
-                if (jw->tipo == TIPOJANELA_TERMINAL && jw->pty_fd != -1) {
-                    FD_SET(jw->pty_fd, &readfds);
-                    if (jw->pty_fd > max_fd) max_fd = jw->pty_fd;
+                if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.pty_fd != -1) {
+                    FD_SET(jw->term.pty_fd, &readfds);
+                    if (jw->term.pty_fd > max_fd) max_fd = jw->term.pty_fd;
                 } else if (jw->tipo == TIPOJANELA_EDITOR && jw->estado && jw->estado->lsp_client && jw->estado->lsp_client->stdout_fd != -1) {
                     FD_SET(jw->estado->lsp_client->stdout_fd, &readfds);
                     if (jw->estado->lsp_client->stdout_fd > max_fd) max_fd = jw->estado->lsp_client->stdout_fd;
@@ -735,18 +735,33 @@ int main(int argc, char *argv[]) {
                 if (wget_wch(stdscr, &ch) != ERR) {
                      process_editor_input(active_jw->estado, ch, &should_exit);
                 }
-            } else if (active_jw->tipo == TIPOJANELA_TERMINAL && active_jw->pty_fd != -1) {
+            } else if (active_jw->tipo == TIPOJANELA_EXPLORER) {
+                wint_t ch;
+                if (wget_wch(stdscr, &ch) != ERR) {
+                    explorer_process_input(active_jw, ch, &should_exit);
+                }
+            } else if (active_jw->tipo == TIPOJANELA_TERMINAL && active_jw->term.pty_fd != -1) {
                 char input_buf[256];
                 ssize_t len = read(STDIN_FILENO, input_buf, sizeof(input_buf));
                 if (len > 0) {
                     bool atalho_consumido = false;
-                    if (len == 2 && input_buf[0] == 27) { // Check for Alt + key
+                    // Checa pelos atalhos de navegação de janela
+                    if (len == 1 && input_buf[0] == KEY_CTRL_RIGHT_BRACKET) {
+                        proxima_janela();
+                        atalho_consumido = true;
+                    } else if (len == 1 && input_buf[0] == KEY_CTRL_LEFT_BRACKET) {
+                        janela_anterior();
+                        atalho_consumido = true;
+                    } 
+                    // Checa por atalhos com Alt
+                    else if (len == 2 && input_buf[0] == 27) { // Check for Alt + key
                         if (handle_global_shortcut(input_buf[1], &should_exit)) {
                             atalho_consumido = true;
                         }
                     }
+
                     if (!atalho_consumido) {
-                        write(active_jw->pty_fd, input_buf, len);
+                        write(active_jw->term.pty_fd, input_buf, len);
                     }
                 }
             }
@@ -758,18 +773,18 @@ int main(int argc, char *argv[]) {
             for (int j = 0; j < ws->num_janelas; j++) {
                 JanelaEditor *jw = ws->janelas[j];
                 // Process terminal output
-                if (jw->tipo == TIPOJANELA_TERMINAL && jw->pty_fd != -1 && FD_ISSET(jw->pty_fd, &readfds)) {
+                if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.pty_fd != -1 && FD_ISSET(jw->term.pty_fd, &readfds)) {
                     char buffer[4096];
-                    ssize_t bytes_lidos = read(jw->pty_fd, buffer, sizeof(buffer) - 1);
+                    ssize_t bytes_lidos = read(jw->term.pty_fd, buffer, sizeof(buffer) - 1);
                     if (bytes_lidos > 0) {
                         buffer[bytes_lidos] = '\0';
-                        vterm_render(jw->vterm, buffer, bytes_lidos);
+                        vterm_render(jw->term.vterm, buffer, bytes_lidos);
                     } else {
                         // Terminal process finished, convert to a "dead" editor window
-                        close(jw->pty_fd);
-                        jw->pty_fd = -1;
-                        waitpid(jw->pid, NULL, 0);
-                        jw->pid = -1;
+                        close(jw->term.pty_fd);
+                        jw->term.pty_fd = -1;
+                        waitpid(jw->term.pid, NULL, 0);
+                        jw->term.pid = -1;
                         jw->tipo = TIPOJANELA_EDITOR; 
                         jw->estado = calloc(1, sizeof(EditorState));
                         if (jw->estado) {
@@ -819,6 +834,8 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
+
+        redesenhar_todas_as_janelas();
     }
     
     for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {

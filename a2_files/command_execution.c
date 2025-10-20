@@ -59,7 +59,8 @@ void process_command(EditorState *state, bool *should_exit) {
             lsp_did_save(state);
             }
     } else if (strcmp(command, "help") == 0) {
-        display_help_screen();
+        char *const cmd[] = {"man", "a2", NULL};
+        criar_janela_terminal_generica(cmd);
     } else if (strcmp(command, "ksc") == 0) {
         display_shortcuts_screen();
     } else if (strcmp(command, "gcc") == 0) {
@@ -115,10 +116,11 @@ void process_command(EditorState *state, bool *should_exit) {
             } else if (strcmp(command, "loadmacros") == 0) {
                 load_macros(state);
                 snprintf(state->status_msg, sizeof(state->status_msg), "Macros loaded.");
-            } else if (strcmp(command, "listmacros") == 0) {
-                display_macros_list(state);
-            } else if (strcmp(command, "term") == 0) {
-                executar_comando_em_novo_workspace(args);
+                } else if (strcmp(command, "listmacros") == 0) {
+                    display_macros_list(state);
+                } else if (strcmp(command, "explorer") == 0) {
+                    criar_janela_explorer();
+                } else if (strcmp(command, "term") == 0) {                executar_comando_em_novo_workspace(args);
         
       // LSP Commands
     } else if (strncmp(command, "lsp-restart", 11) == 0) {
@@ -184,6 +186,28 @@ void process_command(EditorState *state, bool *should_exit) {
             mover_janela_para_workspace(target_ws - 1); // Subtract 1 for 0-based index
         } else {
             snprintf(state->status_msg, sizeof(state->status_msg), "Usage: :mtw <workspace_number>");
+        }
+    } else if (strcmp(command, "..") == 0) {
+        if (strlen(state->previous_filename) > 0 && strcmp(state->previous_filename, "[No Name]") != 0) {
+            char current_file_before_jump[256];
+            strcpy(current_file_before_jump, state->filename);
+
+            load_file(state, state->previous_filename);
+
+            // Atualiza o previous_filename para permitir alternar de volta
+            strcpy(state->previous_filename, current_file_before_jump);
+        } else {
+            snprintf(state->status_msg, sizeof(state->status_msg), "No previous file to switch to.");
+        }
+    } else if (command[0] == 's' && command[1] == '/') {
+        char *find = strtok(state->command_buffer + 2, "/");
+        char *replace = strtok(NULL, "/");
+        char *flags = strtok(NULL, "/");
+        
+        if (find) { // `replace` pode ser vazio
+            editor_do_replace(state, find, replace ? replace : "", flags);
+        } else {
+            snprintf(state->status_msg, sizeof(state->status_msg), "Usage: :s/find/replace/[flags]");
         }
     } else {
         snprintf(state->status_msg, sizeof(state->status_msg), "Unknown command: %s", command);

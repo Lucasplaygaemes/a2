@@ -1,7 +1,11 @@
 #ifndef DEFS_H
 #define DEFS_H
 
-#define _XOPEN_SOURCE 700
+#define _XOPEN_SOURCE 700 // Habilita funcionalidades POSIX, incluindo para wcwidth
+#include <locale.h>       // Essencial para funcionalidades de caracteres largos
+#include <stddef.h>       // Define tipos como wchar_t
+#include <wchar.h>        // Define funções como wcwidth
+
 #define NCURSES_WIDECHAR 1
 #include <limits.h> // For PATH_MAX
 
@@ -62,7 +66,8 @@ typedef struct {
 
 typedef enum {
     TIPOJANELA_EDITOR,
-    TIPOJANELA_TERMINAL
+    TIPOJANELA_TERMINAL,
+    TIPOJANELA_EXPLORER
 } TipoJanela;
 
 
@@ -228,6 +233,7 @@ typedef struct EditorState {
     int num_lines, current_line, current_col, ideal_col, top_line, left_col, command_pos;
     EditorMode mode;
     char filename[256], status_msg[STATUS_MSG_LEN], command_buffer[100];
+    char previous_filename[256];
     char *command_history[MAX_COMMAND_HISTORY];
     int history_count, history_pos;
     CompletionMode completion_mode;
@@ -276,6 +282,18 @@ typedef struct EditorState {
 } EditorState;
 #endif
 
+#ifndef EXPLORERSTATE_DEFINED
+#define EXPLORERSTATE_DEFINED
+typedef struct {
+    char current_path[PATH_MAX];
+    char **entries;
+    bool *is_dir;
+    int num_entries;
+    int selection;
+    int scroll_top;
+} ExplorerState;
+#endif
+
 #ifndef JANELA_EDITOR_DEFINED
 #define JANELA_EDITOR_DEFINED
 typedef struct JanelaEditor {
@@ -283,11 +301,15 @@ typedef struct JanelaEditor {
     int y, x, altura, largura;
     TipoJanela tipo;
 
-    EditorState *estado; // Used only by TIPOJANELA_EDITOR
+    EditorState *estado; // Usado por TIPOJANELA_EDITOR
+    ExplorerState *explorer_state; // Usado por TIPOJANELA_EXPLORER
 
-    int pty_fd;          // Used only by TIPOJANELA_TERMINAL
-    pid_t pid;           // Used only by TIPOJANELA_TERMINAL
-    vterm_t *vterm;      // The only field from libvterm that we need!
+    // Agrupa campos do terminal
+    struct {
+        int pty_fd;      
+        pid_t pid;       
+        vterm_t *vterm;  
+    } term;
 } JanelaEditor;
 #endif
 

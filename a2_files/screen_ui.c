@@ -6,6 +6,7 @@
 #include "cache.h"
 #include <ctype.h>
 #include <unistd.h>
+#include <wctype.h>
 
 extern const int ansi_to_ncurses_map[16];
 
@@ -961,84 +962,29 @@ void display_shortcuts_screen() {
 
     fprintf(temp_file, "--- Keyboard Shortcuts ---\n\n");
 
-    fprintf(temp_file, "General:\n");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+F", "Search");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+D", "Find next occurrence");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+A", "Find previous occurrence");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+G", "Open directory navigator");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+B", "Open recent files");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+Z", "Undo");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+Y", "Redo");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+H", "Start gf2");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+G", "Change directory");
+    fprintf(temp_file, "Comandos Principais:\n");
+    fprintf(temp_file, "    %-20s %s\n", ":help", "Mostra a tela de ajuda de comandos.");
+    fprintf(temp_file, "    %-20s %s\n", ":ksc", "Mostra esta tela de atalhos.");
+    fprintf(temp_file, "    %-20s %s\n", ":explorer", "Abre o explorador de arquivos.");
+    fprintf(temp_file, "    %-20s %s\n", ":s/find/repl/", "Substitui a próxima ocorrência.");
+    fprintf(temp_file, "    %-20s %s\n", ":s/find/repl/N", "Substitui as próximas N ocorrências.");
+    fprintf(temp_file, "    %-20s %s\n", ":s/find/repl/lN", "Substitui tudo na linha N.");
     fprintf(temp_file, "\n");
 
-    fprintf(temp_file, "Pasting (All Modes):\n");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+V", "Paste from local register");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+V", "Paste from global register");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+P", "Paste from system clipboard");
+    fprintf(temp_file, "Navegação Global:\n");
+    fprintf(temp_file, "    %-20s %s\n", "Alt+t", "Abre a Paleta de Comandos.");
+    fprintf(temp_file, "    %-20s %s\n", "Ctrl+]", "Próxima janela (split).");
+    fprintf(temp_file, "    %-20s %s\n", "Ctrl+[", "Janela anterior (split).");
+    fprintf(temp_file, "    %-20s %s\n", "Alt+N / Alt+M", "Próximo/Anterior workspace.");
     fprintf(temp_file, "\n");
 
-    fprintf(temp_file, "Window Management:\n");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+W", "Create new workspace");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+Enter", "Split window");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+X", "Close active window/split");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+]", "Next window");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+[", "Previous window");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+N / Alt+M", "Cycle to next/previous workspace");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+.", "Cycle layout");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+R", "Rotate windows");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+[1-9]", "Move window to workspace [1-9]");
-    fprintf(temp_file, "    %-20s %s\n", "Shift+Alt+Number", "Move window to position");
+    fprintf(temp_file, "Explorador de Arquivos (quando ativo):\n");
+    fprintf(temp_file, "    %-20s %s\n", "Setas / j, k", "Navega na lista.");
+    fprintf(temp_file, "    %-20s %s\n", "Enter", "Abre arquivo ou entra em diretório.");
+    fprintf(temp_file, "    %-20s %s\n", "q", "Fecha o explorador.");
     fprintf(temp_file, "\n");
 
-    fprintf(temp_file, "Normal Mode (Navigation):\n");
-    fprintf(temp_file, "    %-20s %s\n", "k / Up Arrow", "Move up");
-    fprintf(temp_file, "    %-20s %s\n", "l / Down Arrow", "Move down");
-    fprintf(temp_file, "    %-20s %s\n", "h / Left Arrow", "Move left");
-    fprintf(temp_file, "    %-20s %s\n", "ç / Right Arrow", "Move right");
-    fprintf(temp_file, "    %-20s %s\n", "g", "Go to first line of file");
-    fprintf(temp_file, "    %-20s %s\n", "G", "Go to last line of file");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+f / Alt+w", "Move to next word");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+b / Alt+q", "Move to previous word");
-    fprintf(temp_file, "    %-20s %s\n", "Page Up", "Page up");
-    fprintf(temp_file, "    %-20s %s\n", "Page Down", "Page down");
-    fprintf(temp_file, "    %-20s %s\n", "Home", "Start of line");
-    fprintf(temp_file, "    %-20s %s\n", "End", "End of line");
-    fprintf(temp_file, "\n");
-
-    fprintf(temp_file, "Normal Mode (Actions):\n");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+c", "Toggle comment on line/selection");
-    fprintf(temp_file, "    %-20s %s\n", "i", "Enter insert mode");
-    fprintf(temp_file, "    %-20s %s\n", "v", "Enter visual mode");
-    fprintf(temp_file, "    %-20s %s\n", ":", "Enter command mode");
-    fprintf(temp_file, "    %-20s %s\n", "q", "Start/stop macro recording");
-    fprintf(temp_file, "    %-20s %s\n", "@", "Playback macro");
-    fprintf(temp_file, "    %-20s %s\n", "p", "Paste from local register");
-    fprintf(temp_file, "    %-20s %s\n", "P", "Paste from global register");
-    fprintf(temp_file, "    %-20s %s\n", "m", "Paste from move register (after a visual cut)");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+Del / Ctrl+K", "Delete line");
-    fprintf(temp_file, "    %-20s %s\n", "u", "Open line above and enter insert mode");
-    fprintf(temp_file, "    %-20s %s\n", "U", "Open line below and enter insert mode");
-    fprintf(temp_file, "\n");
-
-    fprintf(temp_file, "Insert Mode:\n");
-    fprintf(temp_file, "    %-20s %s\n", "Esc", "Return to normal mode");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+P / Tab", "Trigger autocompletion");
-    fprintf(temp_file, "\n");
-
-    fprintf(temp_file, "Visual Mode (Copying):\n");
-    fprintf(temp_file, "    %-20s %s\n", "s", "Start/end selection");
-    fprintf(temp_file, "    %-20s %s\n", "y", "Copy (yank) selection to local register");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+Y", "Copy selection to global register");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+Y", "Copy selection to system clipboard");
-    fprintf(temp_file, "    %-20s %s\n", "m", "Cut the selection to the move register");
-    fprintf(temp_file, "\n");
-
-    fprintf(temp_file, "Terminal/GDB:\n");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+D", "Open GDB in a new workspace");
-    fprintf(temp_file, "    %-20s %s\n", ":term <cmd>", "Run command in a new split");
-    
+    fprintf(temp_file, "Outros atalhos... (consulte a documentação para mais detalhes)\n");
     
     fclose(temp_file);
 

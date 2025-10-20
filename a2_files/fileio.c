@@ -117,6 +117,11 @@ void load_file_core(EditorState *state, const char *filename) {
 }
    
 void load_file(EditorState *state, const char *filename) {
+    // Salva o nome do arquivo anterior antes de carregar um novo
+    if (strcmp(state->filename, filename) != 0) {
+        strncpy(state->previous_filename, state->filename, sizeof(state->previous_filename) - 1);
+    }
+
     add_to_file_history(state, filename);
 
     // Add the file's directory to the directory history
