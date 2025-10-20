@@ -1,3 +1,6 @@
+#include <stddef.h>
+#include <wchar.h>
+#include <stdlib.h> // Para setenv()
 #include "window_managment.h"
 #include "defs.h"
 #include "fileio.h"
@@ -5,6 +8,7 @@
 #include "screen_ui.h"
 #include "lsp_client.h"
 #include "direct_navigation.h"
+#include "explorer.h"
 #include <unistd.h>
 #include <sys/stat.h>
 #include <dirent.h>
@@ -17,10 +21,7 @@
 #include <errno.h>
 #include <termios.h>
 #include <sys/ioctl.h>
-#include <vterm.h>
 
-
-#include <sys/select.h> // For select() and fd_set
 
 #define ACTIVE_WS (gerenciador_workspaces.workspaces[gerenciador_workspaces.workspace_ativo_idx])
 
@@ -28,7 +29,7 @@ void desenhar_janela_terminal(JanelaEditor *jw);
 void criar_novo_workspace_vazio();
 
 void atualizar_tamanho_pty(JanelaEditor *jw) {
-    if (jw->tipo != TIPOJANELA_TERMINAL || jw->pty_fd == -1) return;
+    if (jw->tipo != TIPOJANELA_TERMINAL || jw->term.pty_fd == -1) return;
 
     int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
     struct winsize ws;
@@ -37,10 +38,8 @@ void atualizar_tamanho_pty(JanelaEditor *jw) {
     ws.ws_xpixel = 0;
     ws.ws_ypixel = 0;
     
-    ioctl(jw->pty_fd, TIOCSWINSZ, &ws);
+    ioctl(jw->term.pty_fd, TIOCSWINSZ, &ws);
 }
-
-
 
 void criar_janela_terminal_generica(char *const argv[]) {
     if (!argv || !argv[0]) return;
@@ -63,26 +62,30 @@ void criar_janela_terminal_generica(char *const argv[]) {
         ws->num_janelas--; free(jw); return;
     }
     if (pid == 0) {
+        // Informa ao processo filho que ele está rodando em um terminal xterm
+        setenv("TERM", "xterm-256color", 1);
         execvp(argv[0], argv);
         exit(127);
     }
     
-    // Recalculate the layout BEFORE creating the vterm to get the correct size
     recalcular_layout_janelas();
     
     jw->tipo = TIPOJANELA_TERMINAL;
-    jw->pid = pid;
-    jw->pty_fd = master_fd;
+    jw->term.pid = pid;
+    jw->term.pty_fd = master_fd;
     fcntl(master_fd, F_SETFL, O_NONBLOCK);
 
-    // CHANGE: vterm creation logic adapted for the new API
     int rows, cols;
     getmaxyx(jw->win, rows, cols);
     int border_offset = ws->num_janelas > 1 ? 1 : 0;
 
-    jw->vterm = vterm_create(cols - 2 * border_offset, rows - 2 * border_offset, VTERM_FLAG_XTERM_256);
-    vterm_wnd_set(jw->vterm, jw->win); // Associates the ncurses WINDOW
-    vterm_set_userptr(jw->vterm, jw);  // Associates our data with the instance
+    jw->term.vterm = vterm_create(rows - 2 * border_offset, cols - 2 * border_offset, VTERM_FLAG_XTERM_256);
+    vterm_wnd_set(jw->term.vterm, jw->win);
+    vterm_set_userptr(jw->term.vterm, jw);
+
+    // Notifica o PTY e o vterm do tamanho final da janela. ESTA É A CORREÇÃO.
+    vterm_resize(jw->term.vterm, cols - 2 * border_offset, rows - 2 * border_offset);
+    atualizar_tamanho_pty(jw);
 }
 
 
@@ -132,10 +135,12 @@ void free_janela_editor(JanelaEditor* jw) {
 
     if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
         free_editor_state(jw->estado);
+    } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
+        free_explorer_state(jw->explorer_state);
     } else if (jw->tipo == TIPOJANELA_TERMINAL) {
-        if (jw->pid > 0) { kill(jw->pid, SIGKILL); waitpid(jw->pid, NULL, 0); }
-        if (jw->pty_fd != -1) close(jw->pty_fd);
-        if (jw->vterm) vterm_destroy(jw->vterm); // Use vterm_destroy
+        if (jw->term.pid > 0) { kill(jw->term.pid, SIGKILL); waitpid(jw->term.pid, NULL, 0); }
+        if (jw->term.pty_fd != -1) close(jw->term.pty_fd);
+        if (jw->term.vterm) vterm_destroy(jw->term.vterm);
     }
 
     if (jw->win) delwin(jw->win);
@@ -217,6 +222,26 @@ void mover_janela_para_workspace(int target_idx) {
 
     recalcular_layout_janelas();
     redesenhar_todas_as_janelas();
+}
+
+void criar_janela_explorer() {
+    GerenciadorJanelas *ws = ACTIVE_WS;
+    ws->num_janelas++;
+    ws->janelas = realloc(ws->janelas, sizeof(JanelaEditor*) * ws->num_janelas);
+
+    JanelaEditor *nova_janela = calloc(1, sizeof(JanelaEditor));
+    nova_janela->tipo = TIPOJANELA_EXPLORER;
+    nova_janela->explorer_state = calloc(1, sizeof(ExplorerState));
+    
+    if (getcwd(nova_janela->explorer_state->current_path, PATH_MAX) == NULL) {
+        strcpy(nova_janela->explorer_state->current_path, ".");
+    }
+
+    ws->janelas[ws->num_janelas - 1] = nova_janela;
+    ws->janela_ativa_idx = ws->num_janelas - 1;
+
+    explorer_reload_entries(nova_janela->explorer_state);
+    recalcular_layout_janelas();
 }
 
 void criar_nova_janela(const char *filename) {
@@ -433,13 +458,13 @@ void recalcular_layout_janelas() {
         scrollok(jw->win, FALSE);
         
         // If it's a terminal, we need to resize it
-        if (jw->tipo == TIPOJANELA_TERMINAL && jw->vterm) {
+        if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.vterm) {
             int border_offset = ws->num_janelas > 1 ? 1 : 0;
             int content_h = jw->altura - (2 * border_offset);
             int content_w = jw->largura - (2 * border_offset);
             
             // FIX: Use vterm_resize, which is the correct function from this library
-            vterm_resize(jw->vterm, content_w > 0 ? content_w : 1, content_h > 0 ? content_h : 1);
+            vterm_resize(jw->term.vterm, content_w > 0 ? content_w : 1, content_h > 0 ? content_h : 1);
             atualizar_tamanho_pty(jw); // This function remains important
         }
     }
@@ -553,9 +578,12 @@ void redesenhar_todas_as_janelas() {
             // Prepare the window content to be drawn
             if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
                 editor_redraw(jw->win, jw->estado);
-            } else if (jw->tipo == TIPOJANELA_TERMINAL && jw->vterm) {
+            } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
+                explorer_redraw(jw);
+            } else if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.vterm) {
+                werase(jw->win); // Limpa a janela antes de desenhar para evitar artefatos
                 // Tell libvterm to redraw its content in the associated WINDOW.
-                vterm_wnd_update(jw->vterm, -1, 0, VTERM_WND_RENDER_ALL);
+                vterm_wnd_update(jw->term.vterm, -1, 0, VTERM_WND_RENDER_ALL);
             }
             // Add the window to the redraw "queue"
             wnoutrefresh(jw->win);
@@ -596,7 +624,9 @@ void posicionar_cursor_ativo() {
     if (active_jw->tipo == TIPOJANELA_TERMINAL) {
         // libvterm has already positioned the cursor during vterm_render or vterm_wnd_update.
         // We just ensure it is visible if the process is active.
-        curs_set(active_jw->pid != -1 ? 1 : 0);
+        curs_set(active_jw->term.pid != -1 ? 1 : 0);
+    } else if (active_jw->tipo == TIPOJANELA_EXPLORER) {
+        curs_set(0); // O explorer não precisa de cursor
     } 
     // If the window is an editor, we handle the cursor manually.
     else if (active_jw->tipo == TIPOJANELA_EDITOR) {
@@ -1051,4 +1081,102 @@ void gf2_starter() {
     criar_janela_terminal_generica(cmd);
 }
 
+void display_command_palette(EditorState *state) {
+    WINDOW *palette_win;
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
 
+    int win_h = min(15, rows - 4);
+    int win_w = cols / 2;
+    if (win_w < 50) win_w = 50;
+    int win_y = (rows - win_h) / 2;
+    int win_x = (cols - win_w) / 2;
+
+    palette_win = newwin(win_h, win_w, win_y, win_x);
+    keypad(palette_win, TRUE);
+    wbkgd(palette_win, COLOR_PAIR(9));
+
+    int current_selection = 0;
+    int top_of_list = 0;
+    char search_term[100] = {0};
+    int search_pos = 0;
+
+    const char **filtered_commands = malloc(sizeof(char*) * num_editor_commands);
+    int num_filtered = 0;
+
+    while (1) {
+        num_filtered = 0;
+        if (search_term[0] != '\0') {
+            for (int i = 0; i < num_editor_commands; i++) {
+                if (strstr(editor_commands[i], search_term)) {
+                    filtered_commands[num_filtered++] = editor_commands[i];
+                }
+            }
+        } else {
+            for (int i = 0; i < num_editor_commands; i++) {
+                filtered_commands[num_filtered++] = editor_commands[i];
+            }
+        }
+
+        if (current_selection >= num_filtered) {
+            current_selection = num_filtered > 0 ? num_filtered - 1 : 0;
+        }
+        if (top_of_list > current_selection) top_of_list = current_selection;
+        if (win_h > 3 && top_of_list < current_selection - (win_h - 3)) {
+            top_of_list = current_selection - (win_h - 3);
+        }
+
+        werase(palette_win);
+        box(palette_win, 0, 0);
+        mvwprintw(palette_win, 0, (win_w - 16) / 2, " Command Palette ");
+
+        for (int i = 0; i < win_h - 2; i++) {
+            int item_idx = top_of_list + i;
+            if (item_idx >= num_filtered) break;
+            if (item_idx == current_selection) wattron(palette_win, A_REVERSE);
+            mvwprintw(palette_win, i + 1, 2, "%.*s", win_w - 3, filtered_commands[item_idx]);
+            if (item_idx == current_selection) wattroff(palette_win, A_REVERSE);
+        }
+        mvwprintw(palette_win, win_h - 1, 1, "/%s", search_term);
+        wmove(palette_win, win_h - 1, search_pos + 2);
+        wrefresh(palette_win);
+
+        int ch = wgetch(palette_win);
+        switch(ch) {
+            case KEY_UP: if (current_selection > 0) current_selection--; break;
+            case KEY_DOWN: if (current_selection < num_filtered - 1) current_selection++; break;
+            case KEY_ENTER: case '\n':
+                if (num_filtered > 0) {
+                    const char* selected_cmd = filtered_commands[current_selection];
+                    strncpy(state->command_buffer, selected_cmd, sizeof(state->command_buffer) - 1);
+                    if (strlen(selected_cmd) < sizeof(state->command_buffer) - 2) {
+                        strcat(state->command_buffer, " ");
+                    }
+                    state->command_pos = strlen(state->command_buffer);
+                    state->mode = COMMAND;
+                }
+                goto end_palette;
+            case 27: case 'q': goto end_palette;
+            case KEY_BACKSPACE: case 127:
+                if (search_pos > 0) search_term[--search_pos] = '\0';
+                current_selection = 0;
+                top_of_list = 0;
+                break;
+            default:
+                if (isprint(ch) && search_pos < sizeof(search_term) - 1) {
+                    search_term[search_pos++] = ch;
+                    search_term[search_pos] = '\0';
+                    current_selection = 0;
+                    top_of_list = 0;
+                }
+                break;
+        }
+    }
+
+end_palette:
+    free(filtered_commands);
+    delwin(palette_win);
+    touchwin(stdscr);
+    redesenhar_todas_as_janelas();
+}
+        

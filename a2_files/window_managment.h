@@ -25,8 +25,12 @@ void mover_janela_para_workspace(int target_idx);
 void fechar_workspace_ativo(bool *should_exit);
 void prompt_and_create_gdb_workspace();
 void executar_comando_em_novo_workspace(const char *comando_str);
+void criar_janela_terminal_generica(char *const argv[]);
+
 
 void gf2_starter();
+void display_command_palette(EditorState *state);
+void criar_janela_explorer();
 
 
 
