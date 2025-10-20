@@ -2,6 +2,7 @@
 #include "defs.h"
 #include "others.h"
 #include "cache.h"
+#include "fileio.h" // Para load_file()
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -654,28 +655,29 @@ void process_lsp_definition(EditorState *state) {
         snprintf(state->status_msg, STATUS_MSG_LEN, "LSP not available");
         return;
     }
+
+    LspMessage *msg = lsp_create_message();
+    msg->id = strdup("2"); // ID para a resposta de "definição"
+    msg->method = strdup("textDocument/definition");
+
+    json_t *params = json_object();
+    json_t *textDocument = json_object();
+    json_object_set_new(textDocument, "uri", json_string(state->lsp_document->uri));
+    json_object_set_new(params, "textDocument", textDocument);
+
+    json_t *position = json_object();
+    json_object_set_new(position, "line", json_integer(state->current_line));
+    json_object_set_new(position, "character", json_integer(state->current_col));
+    json_object_set_new(params, "position", position);
     
-    // Simplified implementation - in practice, it would send a request to the LSP server
-    snprintf(state->status_msg, STATUS_MSG_LEN, "Go to definition - not fully implemented");
-    
-    // Get the word under the cursor
-    char current_word[100];
-    get_word_at_cursor(state, current_word, sizeof(current_word));
-    
-    // Search for the definition in the file itself (simplified implementation)
-    for (int i = 0; i < state->num_lines; i++) {
-        if (strstr(state->lines[i], current_word) && 
-            (strstr(state->lines[i], "int ") || strstr(state->lines[i], "void ") || 
-             strstr(state->lines[i], "char ") || strstr(state->lines[i], "float "))) {
-            state->current_line = i;
-            state->current_col = 0;
-            snprintf(state->status_msg, STATUS_MSG_LEN, "Definition of %s found on line %d", 
-                    current_word, i + 1);
-            return;
-        }
-    }
-    
-    snprintf(state->status_msg, STATUS_MSG_LEN, "Definition of %s not found", current_word);
+    msg->params = params;
+
+    char *json_str = lsp_serialize_message(msg);
+    lsp_send_message(state, json_str);
+
+    free(json_str);
+    lsp_free_message(msg);
+    snprintf(state->status_msg, STATUS_MSG_LEN, "Sent 'go to definition' request...");
 }
 
 void process_lsp_references(EditorState *state) {
@@ -1374,6 +1376,12 @@ void lsp_process_received_data(EditorState *state, const char *buffer, size_t bu
             } else if (msg->id && strcmp(msg->id, "1") == 0 && msg->result) {
                 lsp_log("Initialize response received\n");
                 lsp_did_open(state);
+            } else if (msg->id && strcmp(msg->id, "3") == 0 && msg->result) { // Resposta do autocompletar
+                lsp_log("Completion response received\n");
+                lsp_parse_completion(state, json_message);
+            } else if (msg->id && strcmp(msg->id, "2") == 0 && msg->result) { // Resposta do "ir para definição"
+                lsp_log("Definition response received\n");
+                lsp_handle_definition_response(state, msg->result);
             }
             lsp_free_message(msg);
         }
@@ -1460,4 +1468,70 @@ void lsp_draw_diagnostics(WINDOW *win, EditorState *state) {
             }
         }
     }
+}
+
+void lsp_send_completion_request(EditorState *state) {
+    if (!lsp_is_available(state)) return;
+
+    LspMessage *msg = lsp_create_message();
+    msg->id = strdup("3"); // ID para respostas de autocompletar
+    msg->method = strdup("textDocument/completion");
+
+    json_t *params = json_object();
+    
+    json_t *textDocument = json_object();
+    json_object_set_new(textDocument, "uri", json_string(state->lsp_document->uri));
+    json_object_set_new(params, "textDocument", textDocument);
+
+    json_t *position = json_object();
+    json_object_set_new(position, "line", json_integer(state->current_line));
+    json_object_set_new(position, "character", json_integer(state->current_col));
+    json_object_set_new(params, "position", position);
+    
+    msg->params = params;
+
+    char *json_str = lsp_serialize_message(msg);
+    lsp_send_message(state, json_str);
+
+    free(json_str);
+    lsp_free_message(msg);
+}
+
+void lsp_handle_definition_response(EditorState *state, json_t *result) {
+    if (!json_is_array(result) || json_array_size(result) == 0) {
+        snprintf(state->status_msg, STATUS_MSG_LEN, "Definition not found.");
+        return;
+    }
+
+    json_t *location = json_array_get(result, 0);
+    const char *uri = json_string_value(json_object_get(location, "uri"));
+    json_t *range = json_object_get(location, "range");
+    json_t *start = json_object_get(range, "start");
+    int line = json_integer_value(json_object_get(start, "line"));
+    int character = json_integer_value(json_object_get(start, "character"));
+
+    char path[PATH_MAX];
+    if (strncmp(uri, "file://", 7) == 0) {
+        strcpy(path, uri + 7);
+    } else {
+        strcpy(path, uri);
+    }
+
+    // Checa se o arquivo já está aberto em alguma janela
+    for (int i = 0; i < ACTIVE_WS->num_janelas; i++) {
+        JanelaEditor *jw = ACTIVE_WS->janelas[i];
+        if (jw->tipo == TIPOJANELA_EDITOR && strcmp(jw->estado->filename, path) == 0) {
+            ACTIVE_WS->janela_ativa_idx = i;
+            jw->estado->current_line = line;
+            jw->estado->current_col = character;
+            snprintf(jw->estado->status_msg, STATUS_MSG_LEN, "Jumped to definition.");
+            return;
+        }
+    }
+
+    // Se não, abre no editor atual
+    load_file(state, path);
+    state->current_line = line;
+    state->current_col = character;
+    snprintf(state->status_msg, STATUS_MSG_LEN, "Jumped to definition.");
 }

@@ -33,5 +33,8 @@ void lsp_process_messages(EditorState *state);
 void lsp_process_received_data(EditorState *state, const char *buffer, size_t buffer_len);
 void lsp_log(const char *format, ...);
 void lsp_draw_diagnostics(WINDOW *win, EditorState *state);
+void lsp_send_completion_request(EditorState *state);
+void lsp_handle_definition_response(EditorState *state, json_t *result);
+
 
 #endif // LSP_CLIENT_H
