@@ -6,7 +6,9 @@
 #include "window_managment.h" // For manager
 #include "command_execution.h"
 #include <ctype.h>
+#include <ctype.h>
 #include <dirent.h>
+#include <wctype.h>
 
 const char *editor_commands[] = {
     "q", "q!", "w", "wq", "help", "gcc", "rc", "rc!", "open", "new", "timer", "diff", "set",
@@ -1037,13 +1039,31 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
         case KEY_REDO: do_redo(state); break;
         case KEY_ENTER: case '\n': editor_handle_enter(state); break;
         case KEY_BACKSPACE: case 127: case 8: editor_handle_backspace(state); break;
-        case '\t':
-            push_undo(state);
-            editor_start_completion(state);
-            if (state->completion_mode != COMPLETION_TEXT) {
+        case '\t': { // Usando chaves para criar um escopo local
+            char *line = state->lines[state->current_line];
+            bool should_indent = true;
+
+            // Se o cursor não estiver no início da linha, checa o caracter anterior
+            if (state->current_col > 0) {
+                if (!isspace(line[state->current_col - 1])) {
+                    should_indent = false;
+                }
+            }
+
+            if (should_indent) {
+                // Comportamento de indentação
+                push_undo(state);
                 for (int i = 0; i < TAB_SIZE; i++) editor_insert_char(state, ' ');
+            } else {
+                // Comportamento de autocompletar
+                if (state->lsp_enabled) {
+                    lsp_send_completion_request(state);
+                } else {
+                    editor_start_completion(state); // Fallback para o método antigo
+                }
             }
             break;
+        }
         case KEY_UP: {
             if (state->word_wrap_enabled) {
                 int r, cols; getmaxyx(win, r, cols); if (cols <= 0) break;
@@ -1381,3 +1401,104 @@ void editor_toggle_comment(EditorState *state) {
         state->visual_selection_mode = VISUAL_MODE_NONE;
     }
 }
+
+// Helper function to replace occurrences in a single line. Static, so it's private to this file.
+static char* replace_in_line_helper(char* line, const char* find, const char* replace, bool replace_all, int start_col, int* replacements_made) {
+    char *pos = strstr(line + start_col, find);
+    if (!pos) return line; // No match, return original line
+
+    char *new_line = NULL;
+    int new_line_len = 0;
+    char *last_pos = line;
+    bool line_changed = false;
+
+    while (pos) {
+        line_changed = true;
+        
+        // Copy part before match
+        new_line = realloc(new_line, new_line_len + (pos - last_pos) + 1);
+        memcpy(new_line + new_line_len, last_pos, pos - last_pos);
+        new_line_len += pos - last_pos;
+
+        // Copy replacement string
+        new_line = realloc(new_line, new_line_len + strlen(replace) + 1);
+        memcpy(new_line + new_line_len, replace, strlen(replace));
+        new_line_len += strlen(replace);
+        new_line[new_line_len] = '\0';
+
+        (*replacements_made)++;
+        last_pos = pos + strlen(find);
+        
+        if (!replace_all) break; // Stop after one if not global on this line
+        pos = strstr(last_pos, find);
+    }
+
+    if (line_changed) {
+        // Copy the rest of the line after the last match
+        new_line = realloc(new_line, new_line_len + strlen(last_pos) + 1);
+        strcat(new_line, last_pos);
+        free(line); // Free the old line
+        return new_line;
+    } else {
+        free(new_line); // Should not happen, but for safety
+        return line;
+    }
+}
+
+void editor_do_replace(EditorState *state, const char *find, const char *replace, const char *flags) {
+    if (strlen(find) == 0) {
+        snprintf(state->status_msg, sizeof(state->status_msg), "Search term cannot be empty.");
+        return;
+    }
+
+    push_undo(state);
+    int replacements = 0;
+
+    // By Line: :s/a/b/l25
+    if (flags && flags[0] == 'l' && isdigit(flags[1])) {
+        int line_num = atoi(flags + 1) - 1;
+        if (line_num >= 0 && line_num < state->num_lines) {
+            state->lines[line_num] = replace_in_line_helper(state->lines[line_num], find, replace, true, 0, &replacements);
+        }
+    } 
+    // By Count: :s/a/b/4
+    else if (flags && isdigit(flags[0])) {
+        int count = atoi(flags);
+        for (int i = state->current_line; i < state->num_lines && count > 0; i++) {
+            int start_col = (i == state->current_line) ? state->current_col : 0;
+            char* line = state->lines[i];
+            
+            char* search_from = line + start_col;
+            char* occurrence = strstr(search_from, find);
+
+            while(occurrence && count > 0) {
+                int occurrence_offset = occurrence - line;
+                state->lines[i] = replace_in_line_helper(line, find, replace, false, occurrence_offset, &replacements);
+                count--;
+                line = state->lines[i]; // line was reallocated
+                
+                search_from = line + occurrence_offset + strlen(replace);
+                occurrence = strstr(search_from, find);
+            }
+        }
+    } 
+    // Single next occurrence
+    else {
+        for (int i = state->current_line; i < state->num_lines; i++) {
+            int start_col = (i == state->current_line) ? state->current_col : 0;
+            if (strstr(state->lines[i] + start_col, find)) {
+                state->lines[i] = replace_in_line_helper(state->lines[i], find, replace, false, start_col, &replacements);
+                break; 
+            }
+        }
+    }
+
+    if (replacements > 0) {
+        state->buffer_modified = true;
+        snprintf(state->status_msg, sizeof(state->status_msg), "%d replacements made.", replacements);
+    } else {
+        snprintf(state->status_msg, sizeof(state->status_msg), "Pattern not found: %s", find);
+    }
+}
+
+

@@ -58,6 +58,15 @@ void handle_insert_mode_key(EditorState *state, wint_t ch);
 void handle_command_mode_key(EditorState *state, wint_t ch, bool *should_exit);
 
 void editor_toggle_comment(EditorState *state);
+void editor_do_replace(EditorState *state, const char *find, const char *replace, const char *flags);
+
+
+
+extern const char *editor_commands[];
+extern const int num_editor_commands;
+
+
+void editor_do_replace(EditorState *state, const char *find, const char *replace, const char *flags);
 
 
 #endif // OTHERS_H
