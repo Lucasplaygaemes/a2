@@ -45,9 +45,19 @@ compile_commands:
 
 # Alvo para instalar o executável no sistema
 install: all
-	@echo "Instalando a2 em /usr/local/bin..."
+	@echo "Instalando executável a2 em /usr/local/bin..."
 	-sudo rm -f /usr/local/bin/$(TARGET)
 	sudo cp $(TARGET) /usr/local/bin/$(TARGET)
+	@echo "Instalando página de manual em /usr/local/share/man/man1/..."
+	sudo mkdir -p /usr/local/share/man/man1
+	sudo cp a2.1 /usr/local/share/man/man1/a2.1
+	sudo cp a2-commands.1 /usr/local/share/man/man1/a2-commands.1
+	sudo cp a2-shortcuts.1 /usr/local/share/man/man1/a2-shortcuts.1
+	sudo gzip -f /usr/local/share/man/man1/a2.1
+	sudo gzip -f /usr/local/share/man/man1/a2-commands.1
+	sudo gzip -f /usr/local/share/man/man1/a2-shortcuts.1
+	@echo "Atualizando banco de dados do man (pode ser necessário)..."
+	-sudo mandb
 	@echo "Instalação concluída."
     
 # Alvo para forçar a limpeza, compilação e instalação em um único comando
