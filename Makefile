@@ -50,9 +50,9 @@ install: all
 	sudo cp $(TARGET) /usr/local/bin/$(TARGET)
 	@echo "Instalando página de manual em /usr/local/share/man/man1/..."
 	sudo mkdir -p /usr/local/share/man/man1
-	sudo cp a2.1 /usr/local/share/man/man1/a2.1
-	sudo cp a2-commands.1 /usr/local/share/man/man1/a2-commands.1
-	sudo cp a2-shortcuts.1 /usr/local/share/man/man1/a2-shortcuts.1
+	sudo cp man/a2.1 /usr/local/share/man/man1/a2.1
+	sudo cp man/a2-commands.1 /usr/local/share/man/man1/a2-commands.1
+	sudo cp man/a2-shortcuts.1 /usr/local/share/man/man1/a2-shortcuts.1
 	sudo gzip -f /usr/local/share/man/man1/a2.1
 	sudo gzip -f /usr/local/share/man/man1/a2-commands.1
 	sudo gzip -f /usr/local/share/man/man1/a2-shortcuts.1
