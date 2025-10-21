@@ -1,0 +1,88 @@
+.TH A2-COMMANDS 1 "October 2025" "a2 Manual"
+
+.SH NAME
+a2-commands \- Detailed list of commands for the a2 editor
+
+.SH DESCRIPTION
+This page provides a detailed list of all commands available in Command Mode (activated by pressing ':' in Normal Mode).
+
+.SH FILE COMMANDS
+.TP
+.B :w [filename]
+Write (save) the current buffer. If a `filename` is provided, saves to that new file.
+.TP
+.B :q
+Quit the current window. Exits `a2` if it's the last window.
+.TP
+.B :q!
+Force quit, discarding any unsaved changes.
+.TP
+.B :wq
+Write the file and then quit.
+.TP
+.B :open <filename>
+Open a file in the current window.
+.TP
+.B :new
+Create a new empty buffer.
+.TP
+.B :rc / :rc!
+Reload or force-reload the current file from disk.
+
+.SH NAVIGATION & EDITING COMMANDS
+.TP
+.B :..
+Switch to the alternate (previously opened) file. Use again to toggle back.
+.TP
+.B :s/find/repl/[flag]
+Search and replace text. The `flag` can be a number (to replace N times), or `l` followed by a line number (e.g., `l25`) to replace only on that line.
+.TP
+.B :diff <file1> <file2>
+Show the difference between two files.
+
+.SH WINDOW & UI COMMANDS
+.TP
+.B :explorer
+Open the file explorer in a new split window.
+.TP
+.B :term [command]
+Runs the specified `command` in a new terminal split.
+.TP
+.B :mtw <ws_num>
+Move the current window to the specified workspace (1-9).
+
+.SH LSP COMMANDS
+.TP
+.B :lsp-definition
+Jump to the definition of the symbol under the cursor.
+.TP
+.B :lsp-status
+Check the status of the LSP server.
+.TP
+.B :lsp-restart
+Restart the LSP server.
+.TP
+.B :lsp-list
+Display all current diagnostics in a list.
+
+.SH OTHER COMMANDS
+.TP
+.B :help
+Show the main `a2(1)` man page.
+.TP
+.B :ksc
+Show the keyboard shortcuts quick reference screen.
+.TP
+.B :set <option>
+Change a setting. Options: `wrap`, `nowrap`, `paste`, `nopaste`.
+.TP
+.B :savemacros / :loadmacros
+Save or load user-defined macros to/from `~/.a2_macros`.
+.TP
+.B :![shell_cmd]
+Execute a shell command and display the output.
+
+.SH SEE ALSO
+.B a2(1)
+, 
+.B a2-shortcuts(1)
