@@ -7,8 +7,9 @@ Welcome to `a2`, a lightweight, fast, and configurable modal text editor inspire
 - **Modal Editing:** Efficiently edit text with Normal, Insert, and Visual modes.
 - **Workspaces & Splits:** Organize your work across multiple workspaces, each with its own layout of split windows.
 - **Command Palette:** A fuzzy-searchable command palette (`Alt+t`) for easy access to all editor commands.
-- **File Explorer:** A built-in file explorer (`:explorer`) to navigate your project's directory structure.
-- **LSP Support:** Language Server Protocol integration for real-time diagnostics, code completion, and go-to-definition.
+- **File Explorer:** A built-in file explorer (`:explorer`) to navigate and manage files with copy, paste, cut, and delete operations. Now with expanded file-type icons!
+- **LSP Support:** Language Server Protocol integration for real-time diagnostics, and project-aware code completion.
+- **Combined Autocompletion:** Pressing `Tab` provides a unified list of suggestions from both the LSP and local words in the buffer.
 - **Macros:** Record and play back sequences of commands to automate repetitive tasks.
 - **Advanced Search & Replace:** A powerful `:s` command to perform targeted text substitutions.
 
@@ -81,6 +82,18 @@ a2 path/to/your/file.c 123
 | `Ctrl+]` / `Ctrl+[` | Navigate to the next/previous window (split). |
 | `Alt+N` / `Alt+M` | Navigate to the next/previous workspace. |
 | `Alt+X` | Close the active window. |
+
+### File Explorer Mode
+
+| Shortcut | Description |
+|---|---|
+| `j`, `k`, Arrow Keys | Navigate up and down. |
+| `Enter` | Open a file or enter a directory. |
+| `c` | Copy the selected file/directory. |
+| `x` | Cut the selected file/directory. |
+| `v` | Paste the copied/cut item into the current directory. |
+| `d` | Delete the selected item (with confirmation). |
+| `q` | Close the explorer window. |
 
 ### Insert Mode
 

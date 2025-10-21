@@ -7,25 +7,62 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <strings.h> // Para strcasecmp
+#include <stdio.h>   // For snprintf in file operations
+#include <libgen.h>  // For basename in status message
+
+// Forward declare for use in explorer
+bool confirm_action(const char *prompt);
+void run_and_display_command(const char* command, const char* title);
+
 
 // Retorna um ícone com base na extensão do arquivo
 const char* get_icon_for_filename(const char *filename) {
     const char *ext = strrchr(filename, '.');
-    if (!ext || ext == filename) return "📄"; // Sem extensão ou arquivo oculto
+    if (!ext || ext == filename) {
+        // Check for special filenames like Makefile
+        if (strcmp(filename, "Makefile") == 0) return "🛠️";
+        return "📄"; // Default for no extension or hidden files
+    }
 
+    // Source Code
     if (strcmp(ext, ".c") == 0) return "🇨";
     if (strcmp(ext, ".h") == 0) return "🇭";
     if (strcmp(ext, ".py") == 0) return "🐍";
-    if (strcmp(ext, ".js") == 0) return "⚡";
+    if (strcmp(ext, ".js") == 0 || strcmp(ext, ".jsx") == 0) return "⚡";
+    if (strcmp(ext, ".ts") == 0 || strcmp(ext, ".tsx") == 0) return "🇹";
+    if (strcmp(ext, ".go") == 0) return "🐹";
+    if (strcmp(ext, ".rs") == 0) return "🦀";
+    if (strcmp(ext, ".java") == 0) return "☕";
+    if (strcmp(ext, ".sh") == 0) return "❯_";
+
+    // Web
     if (strcmp(ext, ".html") == 0) return "🌐";
-    if (strcmp(ext, ".css") == 0) return "🎨";
-    if (strcmp(ext, ".md") == 0) return "📝";
+    if (strcmp(ext, ".css") == 0 || strcmp(ext, ".scss") == 0) return "🎨";
+
+    // Config / Data
     if (strcmp(ext, ".json") == 0) return "{}";
-    if (strcmp(ext, "Makefile") == 0) return "🛠️";
-    if (strcmp(ext, ".sh") == 0) return ">_";
+    if (strcmp(ext, ".xml") == 0) return "<>";
+    if (strcmp(ext, ".yml") == 0 || strcmp(ext, ".yaml") == 0) return "📋";
+    if (strcmp(ext, ".toml") == 0) return "📋";
+    if (strcmp(ext, ".env") == 0) return "🔒";
+
+    // Documents
+    if (strcmp(ext, ".md") == 0) return "📝";
+    if (strcmp(ext, ".txt") == 0) return "📄";
+    if (strcmp(ext, ".pdf") == 0) return "📚";
+
+    // Images
+    if (strcmp(ext, ".png") == 0 || strcmp(ext, ".jpg") == 0 || strcmp(ext, ".jpeg") == 0 || strcmp(ext, ".gif") == 0) return "🖼️";
+    if (strcmp(ext, ".svg") == 0) return "🎨";
+    if (strcmp(ext, ".ico") == 0) return "📍";
+
+    // Archives
+    if (strcmp(ext, ".zip") == 0 || strcmp(ext, ".rar") == 0 || strcmp(ext, ".tar") == 0 || strcmp(ext, ".gz") == 0) return "📦";
+
+    // Source Control
     if (strcmp(ext, ".git") == 0 || strcmp(ext, ".gitignore") == 0) return "🌿";
 
-    return "📄"; // Ícone padrão
+    return "📄"; // Default icon
 }
 
 // Variável global temporária para ser usada pelo qsort
@@ -96,10 +133,9 @@ void explorer_reload_entries(ExplorerState *state) {
         int *indices = malloc(state->num_entries * sizeof(int));
         for(int i=0; i<state->num_entries; i++) indices[i] = i;
 
-        // Usa a variável global temporária para o qsort
         qsort_state_ptr = state;
         qsort(indices, state->num_entries, sizeof(int), compare_entries_qsort);
-        qsort_state_ptr = NULL; // Limpa o ponteiro após o uso
+        qsort_state_ptr = NULL;
 
         char **sorted_entries = malloc(sizeof(char*) * state->num_entries);
         bool *sorted_is_dir = malloc(sizeof(bool) * state->num_entries);
@@ -125,7 +161,7 @@ void explorer_redraw(JanelaEditor *jw) {
     snprintf(display_path, sizeof(display_path), " %s ", state->current_path);
     mvwprintw(jw->win, 0, 2, "%.*s", jw->largura - 4, display_path);
 
-    int viewable_lines = jw->altura - 2;
+    int viewable_lines = jw->altura - 3; // Make space for status line
     for (int i = 0; i < viewable_lines; i++) {
         int entry_idx = state->scroll_top + i;
         if (entry_idx >= state->num_entries) break;
@@ -137,12 +173,58 @@ void explorer_redraw(JanelaEditor *jw) {
         
         if (entry_idx == state->selection) wattroff(jw->win, A_REVERSE);
     }
+
+    // Display clipboard status
+    wattron(jw->win, A_REVERSE);
+    for(int i = 1; i < jw->largura - 1; i++) { mvwaddch(jw->win, jw->altura - 2, i, ' '); }
+    if (state->clipboard_operation != OP_NONE) {
+        char *op_str = (state->clipboard_operation == OP_COPY) ? "COPIED" : "CUT";
+        char *filename = basename(state->source_path);
+        mvwprintw(jw->win, jw->altura - 2, 2, "[%s: %s]", op_str, filename);
+    }
+     wattroff(jw->win, A_REVERSE);
+
     wnoutrefresh(jw->win);
 }
 
 void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
     ExplorerState *state = jw->explorer_state;
     int viewable_lines = jw->altura - 2;
+    char selected_path[PATH_MAX];
+
+    if (state->num_entries > 0 && state->selection < state->num_entries) {
+        snprintf(selected_path, sizeof(selected_path), "%s/%s", state->current_path, state->entries[state->selection]);
+    }
+
+    // Handle Alt key sequences for global shortcuts
+    if (ch == 27) { // ESC
+        nodelay(jw->win, TRUE);
+        int next_ch = wgetch(jw->win);
+        nodelay(jw->win, FALSE);
+
+        if (next_ch != ERR) { // This is an Alt sequence
+            if (next_ch == 'x' || next_ch == 'X') {
+                fechar_janela_ativa(should_exit);
+                return;
+            }
+            if (next_ch == 'n') {
+                ciclar_workspaces(-1);
+                return;
+            }
+            if (next_ch == 'm') {
+                ciclar_workspaces(1);
+                return;
+            }
+             if (next_ch == '.' || next_ch == '>') {
+                ciclar_layout();
+                return;
+            }
+            // If not a recognized global shortcut, ignore for now.
+            return;
+        }
+        // If it was just a plain ESC, fall through to do nothing.
+    }
+
 
     switch(ch) {
         case 'q':
@@ -164,11 +246,46 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
             if (state->selection < state->num_entries - 1) state->selection++;
             if (state->selection >= state->scroll_top + viewable_lines) state->scroll_top = state->selection - viewable_lines + 1;
             break;
+        case 'c': // Copy
+            if (state->num_entries > 0) {
+                snprintf(state->source_path, PATH_MAX, "%s", selected_path);
+                state->clipboard_operation = OP_COPY;
+            }
+            break;
+        case 'x': // Cut
+            if (state->num_entries > 0) {
+                snprintf(state->source_path, PATH_MAX, "%s", selected_path);
+                state->clipboard_operation = OP_CUT;
+            }
+            break;
+        case 'd': // Delete
+            if (state->num_entries > 0) {
+                char prompt[PATH_MAX + 50];
+                snprintf(prompt, sizeof(prompt), "Delete %s?", state->entries[state->selection]);
+                if (confirm_action(prompt)) {
+                    char command[PATH_MAX + 10];
+                    snprintf(command, sizeof(command), "rm -rf \"%s\"", selected_path);
+                    run_and_display_command(command, "Delete Output");
+                    explorer_reload_entries(state);
+                }
+            }
+            break;
+        case 'v': // Paste
+            if (state->clipboard_operation != OP_NONE) {
+                char command[PATH_MAX * 2 + 10];
+                char* op_cmd = (state->clipboard_operation == OP_COPY) ? "cp -r" : "mv";
+                snprintf(command, sizeof(command), "%s \"%s\" \"%s/\"", op_cmd, state->source_path, state->current_path);
+                run_and_display_command(command, "Paste Output");
+                if (state->clipboard_operation == OP_CUT) {
+                    state->clipboard_operation = OP_NONE;
+                    state->source_path[0] = '\0';
+                }
+                explorer_reload_entries(state);
+            }
+            break;
         case KEY_ENTER:
         case '\n':
             if (state->num_entries == 0) break;
-            char selected_path[PATH_MAX];
-            snprintf(selected_path, sizeof(selected_path), "%s/%s", state->current_path, state->entries[state->selection]);
 
             if (state->is_dir[state->selection]) {
                 if (strcmp(state->entries[state->selection], "..") == 0) {
@@ -183,20 +300,16 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                 }
                 explorer_reload_entries(state);
             } else {
-                // Lógica para escolher a janela
+                // Open file logic
                 mvwprintw(jw->win, jw->altura - 1, 2, "Open in window [1-9]: ");
                 wrefresh(jw->win);
-                
                 wint_t target_ch;
                 wget_wch(jw->win, &target_ch);
-
                 if (target_ch >= '1' && target_ch <= '9') {
                     int target_idx = target_ch - '1';
                     if (target_idx < ACTIVE_WS->num_janelas && ACTIVE_WS->janelas[target_idx]->tipo == TIPOJANELA_EDITOR) {
                         load_file(ACTIVE_WS->janelas[target_idx]->estado, selected_path);
-                        ACTIVE_WS->janela_ativa_idx = target_idx; // Foca na janela onde o arquivo foi aberto
-                    } else {
-                        // Ação opcional: mostrar erro se a janela não for um editor
+                        ACTIVE_WS->janela_ativa_idx = target_idx;
                     }
                 }
             }
