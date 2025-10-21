@@ -284,6 +284,13 @@ typedef struct EditorState {
 
 #ifndef EXPLORERSTATE_DEFINED
 #define EXPLORERSTATE_DEFINED
+
+typedef enum {
+    OP_NONE,
+    OP_COPY,
+    OP_CUT
+} ClipboardOperation;
+
 typedef struct {
     char current_path[PATH_MAX];
     char **entries;
@@ -291,6 +298,10 @@ typedef struct {
     int num_entries;
     int selection;
     int scroll_top;
+
+    // Clipboard for file operations
+    char source_path[PATH_MAX];
+    ClipboardOperation clipboard_operation;
 } ExplorerState;
 #endif
 
