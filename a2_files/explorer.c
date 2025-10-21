@@ -22,6 +22,7 @@ const char* get_icon_for_filename(const char *filename) {
     if (strcmp(ext, ".md") == 0) return "📝";
     if (strcmp(ext, ".json") == 0) return "{}";
     if (strcmp(ext, "Makefile") == 0) return "🛠️";
+    if (strcmp(ext, ".sh") == 0) return ">_";
     if (strcmp(ext, ".git") == 0 || strcmp(ext, ".gitignore") == 0) return "🌿";
 
     return "📄"; // Ícone padrão
