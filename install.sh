@@ -120,7 +120,7 @@ install_libvterm_from_source() {
 compile_project() {
     info "Compiling a2..."
     make clean
-    make
+    make rebuild
     info "Compilation successful."
 }
 
