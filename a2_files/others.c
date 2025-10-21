@@ -915,20 +915,35 @@ void editor_end_completion(EditorState *state) {
 void editor_apply_completion(EditorState *state) {
     if (state->completion_mode == COMPLETION_NONE || state->num_suggestions == 0) return;
 
-    const char* selected = state->completion_suggestions[state->selected_suggestion];
+    const char* original_selected = state->completion_suggestions[state->selected_suggestion];
+    char* temp_selected = strdup(original_selected);
+
+    // Clean up the suggestion from the LSP
+    char* actual_start = temp_selected;
+    while (*actual_start && !isalnum(*actual_start)) {
+        actual_start++;
+    }
+    char *paren = strchr(actual_start, '(');
+    if (paren) {
+        *paren = '\0';
+    }
+    const char* selected = actual_start;
+
 
     if (state->completion_mode == COMPLETION_TEXT) {
-        int prefix_len = strlen(state->word_to_complete);
-        int selected_len = strlen(selected);
-        char* line = state->lines[state->current_line];
-        int line_len = strlen(line);
-        char* new_line = malloc(line_len - prefix_len + selected_len + 1);
-        strncpy(new_line, line, state->completion_start_col);
-        strcpy(new_line + state->completion_start_col, selected);
-        strcpy(new_line + state->completion_start_col + selected_len, line + state->current_col);
+        char* original_line = state->lines[state->current_line];
+        char* rest_of_line = original_line + state->current_col;
+        int new_len = state->completion_start_col + strlen(selected) + strlen(rest_of_line);
+        char* new_line = malloc(new_len + 1);
+
+        strncpy(new_line, original_line, state->completion_start_col);
+        new_line[state->completion_start_col] = '\0';
+        strcat(new_line, selected);
+        strcat(new_line, rest_of_line);
+
         free(state->lines[state->current_line]);
         state->lines[state->current_line] = new_line;
-        state->current_col = state->completion_start_col + selected_len;
+        state->current_col = state->completion_start_col + strlen(selected);
         state->ideal_col = state->current_col;
     } else if (state->completion_mode == COMPLETION_COMMAND) {
         strncpy(state->command_buffer, selected, sizeof(state->command_buffer) - 1);
@@ -949,6 +964,7 @@ void editor_apply_completion(EditorState *state) {
         }
     }
 
+    free(temp_selected);
     editor_end_completion(state);
 }
 
@@ -1056,10 +1072,9 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
                 for (int i = 0; i < TAB_SIZE; i++) editor_insert_char(state, ' ');
             } else {
                 // Comportamento de autocompletar
+                editor_start_completion(state); // Gera sugestões locais primeiro
                 if (state->lsp_enabled) {
-                    lsp_send_completion_request(state);
-                } else {
-                    editor_start_completion(state); // Fallback para o método antigo
+                    lsp_send_completion_request(state); // Pede sugestões ao LSP
                 }
             }
             break;

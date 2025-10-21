@@ -1002,20 +1002,24 @@ void lsp_parse_completion(EditorState *state, const char *json_response) {
         return;
     }
     
-    // Clean up existing completion
-    editor_end_completion(state);
-    
-    // Get completion items from result
-    json_t *items = json_object_get(msg->result, "items");
+    json_t *items = NULL;
+    if (json_is_array(msg->result)) {
+        items = msg->result;
+    } else if (json_is_object(msg->result)) {
+        items = json_object_get(msg->result, "items");
+    }
+
     if (!items || !json_is_array(items)) {
         lsp_free_message(msg);
         return;
     }
     
-    // Start completion mode
-    state->completion_mode = COMPLETION_TEXT;
-    state->num_suggestions = 0;
-    state->selected_suggestion = 0;
+    // If this is the first set of suggestions, initialize completion mode.
+    if (state->completion_mode == COMPLETION_NONE) {
+        state->completion_mode = COMPLETION_TEXT;
+        state->selected_suggestion = 0;
+        state->completion_scroll_top = 0;
+    }
     
     size_t num_items = json_array_size(items);
     for (size_t i = 0; i < num_items; i++) {
@@ -1027,22 +1031,24 @@ void lsp_parse_completion(EditorState *state, const char *json_response) {
         }
     }
     
-    // Create completion window
-    int win_height = min(10, state->num_suggestions);
-    int win_width = 50; // Wider to show more information
-    int start_y = state->current_line - state->top_line + 1;
-    int start_x = state->current_col - state->left_col;
-    
-    if (start_y + win_height > getmaxy(stdscr)) {
-        start_y = getmaxy(stdscr) - win_height;
+    if (state->num_suggestions > 0 && !state->completion_win) {
+        // Create completion window if it doesn't exist
+        int win_height = min(10, state->num_suggestions);
+        int win_width = 50; // Wider to show more information
+        int start_y = state->current_line - state->top_line + 1;
+        int start_x = state->current_col - state->left_col;
+        
+        if (start_y + win_height > getmaxy(stdscr)) {
+            start_y = getmaxy(stdscr) - win_height;
+        }
+        
+        if (start_x + win_width > getmaxx(stdscr)) {
+            start_x = getmaxx(stdscr) - win_width;
+        }
+        
+        state->completion_win = newwin(win_height, win_width, start_y, start_x);
+        keypad(state->completion_win, TRUE);
     }
-    
-    if (start_x + win_width > getmaxx(stdscr)) {
-        start_x = getmaxx(stdscr) - win_width;
-    }
-    
-    state->completion_win = newwin(win_height, win_width, start_y, start_x);
-    keypad(state->completion_win, TRUE);
     
     lsp_free_message(msg);
 }
