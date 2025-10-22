@@ -17,6 +17,7 @@ Then, install the dependencys and run Make with
 Documentation is in - [**Documentation**](./index.md)
 # New Release!
 A lot of things were added! So, any doubt's of keyboard shortcuts? :ksc show all of them.
+Use the command "help" to see the man pages.
 Now you can run if not any, most of the termial apps and a terminal by it self inside a2!
 
 # Multiplatform?
