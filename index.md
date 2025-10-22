@@ -6,11 +6,12 @@ Welcome to `a2`, a lightweight, fast, and configurable modal text editor inspire
 
 - **Modal Editing:** Efficiently edit text with Normal, Insert, and Visual modes.
 - **Workspaces & Splits:** Organize your work across multiple workspaces, each with its own layout of split windows.
-- **Command Palette:** A fuzzy-searchable command palette (`Alt+t`) for easy access to all editor commands.
-- **File Explorer:** A built-in file explorer (`:explorer`) to navigate and manage files with copy, paste, cut, and delete operations. Now with expanded file-type icons!
-- **LSP Support:** Language Server Protocol integration for real-time diagnostics, and project-aware code completion.
+- **Fuzzy Finder:** Quickly find and open any file in your project with a fuzzy search (`Alt+F`).
+- **Command Palette:** A searchable command palette (`Alt+T`) for easy access to all editor commands.
+- **File Explorer:** A built-in file explorer (`:explorer`) to navigate and manage files.
+- **LSP Support:** Language Server Protocol integration for real-time diagnostics and code completion.
 - **Combined Autocompletion:** Pressing `Tab` provides a unified list of suggestions from both the LSP and local words in the buffer.
-- **Macros:** Record and play back sequences of commands to automate repetitive tasks.
+- **Macros:** Record and play back sequences of commands (`q` and `@`) to automate repetitive tasks.
 - **Advanced Search & Replace:** A powerful `:s` command to perform targeted text substitutions.
 
 ## Installation
@@ -44,60 +45,140 @@ a2 path/to/your/file.c 123
 
 # Reference Guide
 
+This guide details all available commands and keybindings.
+
 ## Commands (`:` mode)
 
+### File Operations
 | Command | Description |
 |---|---|
-| `:w` | Write (save) the current file. |
-| `:w <name>` | Write to a new file with the given name. |
+| `:w [name]` | Write (save) the current file. Can optionally save to a new `name`. |
 | `:q` | Quit the active window. Exits `a2` if it's the last window. |
 | `:q!` | Force quit without saving. |
 | `:wq` | Write and quit. |
-| `:open <name>` | Open a file. |
-| `:..` | Switch to the alternate (previously opened) file. |
+| `:open <name>` | Open a file in the current window. |
 | `:new` | Create a new empty buffer. |
-| `:help` | Show the `a2` man page in a new terminal split. |
-| `:ksc` | Show the keyboard shortcuts screen. |
-| `:explorer` | Open the file explorer in a new split. |
-| `:s/find/repl/` | Replace the next occurrence of `find` with `repl`. |
-| `:s/find/repl/N` | Replace the next `N` occurrences. Use a large number for all. |
-| `:s/find/repl/lN` | Replace all occurrences on line `N`. |
-| `:term [cmd]` | Open a command in a new terminal split. |
+| `:rc` | Reload the current file from disk. |
+| `:rc!` | Force reload, discarding any local changes. |
+| `:..` | Switch to the alternate (previously opened) file. |
 
-### LSP Commands
-
+### Navigation & Search
 | Command | Description |
 |---|---|
-| `:lsp-status` | Check the status of the LSP server. |
+| `:ff` | Open the **Fuzzy Finder** to search for any file in the project. |
+| `:explorer` | Open the file explorer in a new split. |
+| `:s/find/repl/` | Replace the next occurrence of `find` with `repl`. |
+| `:s/find/repl/N` | Replace the next `N` occurrences. |
+| `:s/find/repl/lN`| Replace all occurrences on line `N`. |
+
+### Window & Workspace Management
+| Command | Description |
+|---|---|
+| `:term [cmd]` | Open a command in a new terminal split (e.g., `:term ls -l`). |
+| `:mtw <num>` | Move the current window to the specified workspace number. |
+
+### Language & Diagnostics (LSP)
+| Command | Description |
+|---|---|
+| `:lsp-status` | Check the status of the Language Server Protocol server. |
 | `:lsp-restart` | Restart the LSP server. |
-| `:lsp-definition` | Jump to the definition of the symbol under the cursor. |
+| `:lsp-definition`| Jump to the definition of the symbol under the cursor. |
+| `:lsp-references`| List all references to a symbol. |
+| `:lsp-hover` | Show information about the symbol under the cursor. |
+| `:lsp-symbols` | List symbols in the current document. |
+| `:lsp-rename <n>`| Rename the symbol under the cursor to `<new_name>`. |
+| `:lsp-list` | Show all current diagnostics in a list view. |
+| `:lsp-refresh` | Force a refresh of LSP diagnostics. |
+
+### Tools & Other
+| Command | Description |
+|---|---|
+| `![cmd]` | Execute a shell command and show output (e.g., `!ls -l`). |
+| `:help` | Show the `a2` man page in a new terminal split. |
+| `:ksc` | Show the keyboard shortcuts screen. |
+| `:gcc [libs]` | Compile the current C/C++ file (e.g., `:gcc -lm`). |
+| `:diff <f1> <f2>`| Show the difference between two files. |
+| `:timer` | Show the work time report. |
+| `:set paste` | Enable paste mode (disables auto-indent). |
+| `:set nopaste` | Disable paste mode. |
+| `:set wrap` | Enable word wrap. |
+| `:set nowrap` | Disable word wrap. |
+| `:savemacros` | Save current macros to `~/.a2_macros`. |
+| `:loadmacros` | Load macros from file. |
+| `:listmacros` | Display all loaded macros. |
+| `:toggle_auto_indent`| Toggle auto-indent on new lines. |
+
+---
 
 ## Keybindings
 
 ### Global
-
 | Shortcut | Description |
 |---|---|
-| `Alt+t` | Open the Command Palette. |
+| `Alt+F` | Open the **Fuzzy Finder**. |
+| `Alt+B` | Open the recent files navigator. |
+| `Alt+T` | Open the Command Palette. |
+| `Alt+X` | Close the active window. |
+| `Alt+Enter` | Create a new empty window. |
 | `Ctrl+]` / `Ctrl+[` | Navigate to the next/previous window (split). |
 | `Alt+N` / `Alt+M` | Navigate to the next/previous workspace. |
-| `Alt+X` | Close the active window. |
+| `Ctrl+W` | Create a new workspace. |
+| `Alt+[1-9]` | Move the active window to the specified workspace. |
+| `Alt+.` | Cycle through available window layouts. |
+| `Alt+R` | Rotate windows within the current layout. |
+
+### Normal Mode
+| Shortcut | Description |
+|---|---|
+| `i` | Enter **Insert Mode**. |
+| `v` | Enter **Visual Mode**. |
+| `:` | Enter **Command Mode**. |
+| `h,j,k,l` / Arrows | Move cursor left, down, up, right. |
+| `g` / `G` | Jump to the start / end of the file. |
+| `K` / `Home` | Jump to the start of the line. |
+| `Ç` / `End` | Jump to the end of the line. |
+| `O` / `PageUp` | Page up. |
+| `L` / `PageDown` | Page down. |
+| `Alt+W` / `Alt+Q` | Move to next / previous word. |
+| `u` / `U` | Create a new line above/below and enter Insert Mode. |
+| `yy` | Yank (copy) the current line. |
+| `p` / `P` | Paste from local / global register after the cursor. |
+| `m` | Paste from the "move" register (used after cutting in Visual Mode). |
+| `q` | Start or stop recording a macro (`q` + register `a-z`). |
+| `@` | Play back a macro (`@` + register `a-z`). `@@` repeats the last one. |
+| `Ctrl+F` | Start a search. |
+| `Ctrl+D` / `Ctrl+A` | Find next / previous occurrence of the last search. |
+| `Ctrl+Del` / `Ctrl+K` | Delete the current line. |
+| `Alt+C` | Toggle comment on the current line or visual selection. |
+
+### Insert Mode
+| Shortcut | Description |
+|---|---|
+| `Esc` | Return to **Normal Mode**. |
+| `Ctrl+O` | Enter Normal Mode for a single command, then return to Insert. |
+| `Tab` | Context-aware: Indents if at start of line, otherwise triggers completion. |
+| `Shift+Tab` | Un-indent the current line. |
+| `Ctrl+P` | Trigger word completion. |
+| `Ctrl+U` / `Ctrl+R` | Undo / Redo. |
+| `Ctrl+V` | Paste from the local yank register. |
+
+### Visual Mode
+| Shortcut | Description |
+|---|---|
+| `Esc` | Exit Visual Mode and return to Normal Mode. |
+| `s` | Start or end a regular selection. |
+| `y` | Yank (copy) the selected text to the local register. |
+| `Ctrl+Y` | Yank the selected text to the global register. |
+| `m` | Cut the selection to the "move" register. |
+| `p` | Paste over the selection. |
+| `Shift+Tab` | Un-indent all lines in the selection. |
+| `Alt+C` | Toggle comments on all lines in the selection. |
 
 ### File Explorer Mode
-
 | Shortcut | Description |
 |---|---|
 | `j`, `k`, Arrow Keys | Navigate up and down. |
 | `Enter` | Open a file or enter a directory. |
-| `c` | Copy the selected file/directory. |
-| `x` | Cut the selected file/directory. |
-| `v` | Paste the copied/cut item into the current directory. |
+| `c` / `x` / `v` | Copy / Cut / Paste files and directories. |
 | `d` | Delete the selected item (with confirmation). |
 | `q` | Close the explorer window. |
-
-### Insert Mode
-
-| Shortcut | Description |
-|---|---|
-| `Esc` | Return to **Normal Mode**. |
-| `Tab` | Context-aware: Indents if at start of line, otherwise triggers LSP completion. |
