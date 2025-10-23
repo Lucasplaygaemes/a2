@@ -19,6 +19,7 @@ void ciclar_layout();
 void rotacionar_janelas();
 void mover_janela_para_posicao(int target_idx);
 void display_recent_files();
+void display_fuzzy_finder(EditorState *state);
 void criar_novo_workspace();
 void ciclar_workspaces(int direcao);
 void mover_janela_para_workspace(int target_idx);

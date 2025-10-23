@@ -1179,4 +1179,204 @@ end_palette:
     touchwin(stdscr);
     redesenhar_todas_as_janelas();
 }
+
+typedef struct {
+    char* path;
+} FileResult;
+
+// Simple fuzzy match: returns true if all characters in pattern appear in str in order.
+static bool fuzzy_match(const char *str, const char *pattern) {
+    while (*pattern && *str) {
+        if (tolower(*pattern) == tolower(*str)) {
+            pattern++;
+        }
+        str++;
+    }
+    return *pattern == '\0';
+}
+
+// Recursive function to find all files
+static void find_all_project_files_recursive(const char *base_path, FileResult **results, int *count, int *capacity) {
+    DIR *d = opendir(base_path);
+    if (!d) return;
+
+    struct dirent *dir;
+    char path[PATH_MAX];
+
+    while ((dir = readdir(d)) != NULL) {
+        if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0 ||
+            strcmp(dir->d_name, ".git") == 0 || strcmp(dir->d_name, "build") == 0 ||
+            strcmp(dir->d_name, "output") == 0 || strcmp(dir->d_name, ".cache") == 0) {
+            continue;
+        }
+
+        snprintf(path, sizeof(path), "%s/%s", base_path, dir->d_name);
+
+        struct stat st;
+        if (stat(path, &st) == 0) {
+            if (S_ISDIR(st.st_mode)) {
+                find_all_project_files_recursive(path, results, count, capacity);
+            } else if (S_ISREG(st.st_mode)) {
+                if (*count >= *capacity) {
+                    *capacity = (*capacity == 0) ? 256 : *capacity * 2;
+                    *results = realloc(*results, sizeof(FileResult) * *capacity);
+                }
+                if (*results) {
+                    (*results)[*count].path = strdup(path);
+                    (*count)++;
+                }
+            }
+        }
+    }
+    closedir(d);
+}
+
+void display_fuzzy_finder(EditorState *state) {
+    FileResult *all_files = NULL;
+    int num_all_files = 0;
+    int capacity = 0;
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        snprintf(state->status_msg, sizeof(state->status_msg), "Error getting current directory.");
+        return;
+    }
+    find_all_project_files_recursive(cwd, &all_files, &num_all_files, &capacity);
+
+    if (num_all_files == 0) {
+        snprintf(state->status_msg, sizeof(state->status_msg), "No files found.");
+        free(all_files);
+        return;
+    }
+
+    WINDOW *finder_win;
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+
+    int win_h = min(20, rows - 4);
+    int win_w = cols / 2;
+    if (win_w < 80) win_w = min(cols - 4, 80);
+    int win_y = (rows - win_h) / 2;
+    int win_x = (cols - win_w) / 2;
+
+    finder_win = newwin(win_h, win_w, win_y, win_x);
+    keypad(finder_win, TRUE);
+    wbkgd(finder_win, COLOR_PAIR(9));
+
+    int current_selection = 0;
+    int top_of_list = 0;
+    char search_term[100] = {0};
+    int search_pos = 0;
+
+    FileResult *filtered_results = malloc(sizeof(FileResult) * num_all_files);
+    int num_filtered = 0;
+
+    while (1) {
+        // Filter results based on search_term
+        num_filtered = 0;
+        if (search_term[0] != '\0') {
+            for (int i = 0; i < num_all_files; i++) {
+                if (fuzzy_match(all_files[i].path, search_term)) {
+                    filtered_results[num_filtered++].path = all_files[i].path;
+                }
+            }
+        } else {
+            for (int i = 0; i < num_all_files; i++) {
+                filtered_results[num_filtered++].path = all_files[i].path;
+            }
+        }
+
+        if (current_selection >= num_filtered) {
+            current_selection = num_filtered > 0 ? num_filtered - 1 : 0;
+        }
+        if (top_of_list > current_selection) top_of_list = current_selection;
+        if (win_h > 3 && top_of_list < current_selection - (win_h - 3)) {
+            top_of_list = current_selection - (win_h - 3);
+        }
+
+        werase(finder_win);
+        box(finder_win, 0, 0);
+        mvwprintw(finder_win, 0, (win_w - 14) / 2, " Fuzzy Finder ");
+
+        for (int i = 0; i < win_h - 2; i++) {
+            int item_idx = top_of_list + i;
+            if (item_idx >= num_filtered) break;
+
+            if (item_idx == current_selection) wattron(finder_win, A_REVERSE);
+
+            char *path_to_show = filtered_results[item_idx].path;
+            char display_name[win_w - 4];
+            
+            // Make path relative to CWD for display
+            if (strncmp(path_to_show, cwd, strlen(cwd)) == 0) {
+                snprintf(display_name, sizeof(display_name), ".%s", path_to_show + strlen(cwd));
+            } else {
+                strncpy(display_name, path_to_show, sizeof(display_name) - 1);
+            }
+            display_name[sizeof(display_name)-1] = '\0';
+
+            mvwprintw(finder_win, i + 1, 2, "%.*s", win_w - 3, display_name);
+
+            if (item_idx == current_selection) wattroff(finder_win, A_REVERSE);
+        }
+        
+        wattron(finder_win, A_REVERSE);
+        mvwprintw(finder_win, win_h - 1, 1, "> %s", search_term);
+        wattroff(finder_win, A_REVERSE);
+        wmove(finder_win, win_h - 1, search_pos + 3);
+        curs_set(1);
+        wrefresh(finder_win);
+
+        int ch = wgetch(finder_win);
+        switch(ch) {
+            case KEY_UP: case KEY_CTRL_P:
+                if (current_selection > 0) current_selection--;
+                break;
+            case KEY_DOWN: case 'j':
+                if (current_selection < num_filtered - 1) current_selection++;
+                break;
+            case KEY_ENTER: case '\n':
+                if (num_filtered > 0) {
+                    char* selected_file = filtered_results[current_selection].path;
+                    if (state->buffer_modified) {
+                        delwin(finder_win);
+                        touchwin(stdscr);
+                        redesenhar_todas_as_janelas();
+                        if (!confirm_action("Unsaved changes. Open file anyway?")) {
+                             goto end_finder;
+                        }
+                    }
+                    load_file(state, selected_file);
+                    const char * syntax_file = get_syntax_file_from_extension(selected_file);
+                    load_syntax_file(state, syntax_file);
+                }
+                goto end_finder;
+            case 27: // ESC
+                goto end_finder;
+            case KEY_BACKSPACE: case 127:
+                if (search_pos > 0) {
+                    search_term[--search_pos] = '\0';
+                    current_selection = 0;
+                    top_of_list = 0;
+                }
+                break;
+            default:
+                if (isprint(ch) && search_pos < (int)sizeof(search_term) - 1) {
+                    search_term[search_pos++] = ch;
+                    search_term[search_pos] = '\0';
+                    current_selection = 0;
+                    top_of_list = 0;
+                }
+                break;
+        }
+    }
+
+end_finder:
+    for (int i = 0; i < num_all_files; i++) free(all_files[i].path);
+    free(all_files);
+    free(filtered_results);
+    delwin(finder_win);
+    touchwin(stdscr);
+    redesenhar_todas_as_janelas();
+    curs_set(1);
+}
         
