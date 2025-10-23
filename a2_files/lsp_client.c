@@ -1009,12 +1009,13 @@ void lsp_parse_completion(EditorState *state, const char *json_response) {
         items = json_object_get(msg->result, "items");
     }
 
-    if (!items || !json_is_array(items)) {
+    // FIX: Check if items exist and the array is not empty before proceeding
+    if (!items || !json_is_array(items) || json_array_size(items) == 0) {
         lsp_free_message(msg);
-        return;
+        return; // No items, so do nothing and don't enter completion mode
     }
     
-    // If this is the first set of suggestions, initialize completion mode.
+    // Only now, when we know we have suggestions, do we enter completion mode.
     if (state->completion_mode == COMPLETION_NONE) {
         state->completion_mode = COMPLETION_TEXT;
         state->selected_suggestion = 0;

@@ -969,6 +969,14 @@ void editor_apply_completion(EditorState *state) {
 }
 
 void editor_draw_completion_win(WINDOW *win, EditorState *state) {
+    // FIX: Defensive guard against drawing with no suggestions
+    if (state->num_suggestions == 0) {
+        if (state->completion_mode != COMPLETION_NONE) {
+            editor_end_completion(state);
+        }
+        return;
+    }
+
     int max_len = 0;
     for (int i = 0; i < state->num_suggestions; i++) {
         int len = strlen(state->completion_suggestions[i]);

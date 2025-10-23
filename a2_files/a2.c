@@ -153,7 +153,8 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
             else if (next_ch == 'b' || next_ch == 'B') display_recent_files();
             else if (next_ch == 'd' || next_ch == 'D') prompt_and_create_gdb_workspace();
             else if (next_ch == 'h' || next_ch == 'H') gf2_starter();
-            else if (next_ch == 'f' || next_ch == 'w') editor_move_to_next_word(state);
+            else if (next_ch == 'f' || next_ch == 'F') display_fuzzy_finder(state);
+            else if (next_ch == 'w') editor_move_to_next_word(state);
             else if (next_ch == 'b' || next_ch == 'q') editor_move_to_previous_word(state);
             else if (next_ch == 'g' || next_ch == 'G') prompt_for_directory_change(state);
             else if (next_ch == '.' || next_ch == '>') ciclar_layout();
@@ -847,4 +848,8 @@ int main(int argc, char *argv[]) {
     endwin(); 
     return 0;
 }
+            
+
+
+
 
