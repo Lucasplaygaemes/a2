@@ -166,6 +166,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
             }
             else if (next_ch == 't' || next_ch == 'T') display_command_palette(state);
             else if (next_ch == 'r' || next_ch == 'R') rotacionar_janelas();
+            else if (next_ch == 's' || next_ch == 'S') display_content_search(state, NULL);
             else if (next_ch == '	') {   
                 if (state->mode == VISUAL) {
                     int start_line, end_line;
