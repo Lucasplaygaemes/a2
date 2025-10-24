@@ -92,29 +92,44 @@ void process_command(EditorState *state, bool *should_exit) {
     } else if (strcmp(command, "diff") == 0) {
         diff_command(state, args);
     } else if (strcmp(command, "set") == 0) {
-        if (strcmp(args, "paste") == 0) {
-            state->paste_mode = true;
-            state->auto_indent_on_newline = false;
-            snprintf(state->status_msg, sizeof(state->status_msg), "-- PASTE MODE ON --");
-        } else if (strcmp(args, "nopaste") == 0) {
-            state->paste_mode = false;
-            state->auto_indent_on_newline = true;
-            snprintf(state->status_msg, sizeof(state->status_msg), "-- PASTE MODE OFF --");
-        }
-        else if (strcmp(args, "wrap") == 0) {
-            state->word_wrap_enabled = true;
-            snprintf(state->status_msg, sizeof(state->status_msg), "Word wrap enabled");
-        } else if (strcmp(args, "grep") == 0) {
-            display_content_search(state, args);
-            
-        } else if (strcmp(args, "nowrap") == 0) {
-            state->word_wrap_enabled = false;
-            snprintf(state->status_msg, sizeof(state->status_msg), "Word wrap disabled");
-        }
-        else {
-            snprintf(state->status_msg, sizeof(state->status_msg), "Unknown argument for set: %s", args);
+        char set_cmd[100] = "", set_val[100] = "";
+        int items = sscanf(args, "%99s %99s", set_cmd, set_val);
+
+        if (items >= 1) {
+            if (strcmp(set_cmd, "paste") == 0) {
+                state->paste_mode = true;
+                state->auto_indent_on_newline = false;
+                snprintf(state->status_msg, sizeof(state->status_msg), "-- PASTE MODE ON --");
+            } else if (strcmp(set_cmd, "nopaste") == 0) {
+                state->paste_mode = false;
+                state->auto_indent_on_newline = true;
+                snprintf(state->status_msg, sizeof(state->status_msg), "-- PASTE MODE OFF --");
+            } else if (strcmp(set_cmd, "wrap") == 0) {
+                state->word_wrap_enabled = true;
+                snprintf(state->status_msg, sizeof(state->status_msg), "Word wrap enabled");
+            } else if (strcmp(set_cmd, "nowrap") == 0) {
+                state->word_wrap_enabled = false;
+                snprintf(state->status_msg, sizeof(state->status_msg), "Word wrap disabled");
+            } else if (strcmp(set_cmd, "bar") == 0 && items == 2) {
+                int mode = atoi(set_val);
+                if (mode == 0 || mode == 1) {
+                    GerenciadorJanelas *ws = ACTIVE_WS;
+                    for (int i = 0; i < ws->num_janelas; i++) {
+                        if (ws->janelas[i]->tipo == TIPOJANELA_EDITOR && ws->janelas[i]->estado) {
+                            ws->janelas[i]->estado->status_bar_mode = mode;
+                        }
+                    }
+                    snprintf(state->status_msg, sizeof(state->status_msg), "Status bar set to style %d", mode);
+                } else {
+                    snprintf(state->status_msg, sizeof(state->status_msg), "Invalid bar style. Use 0 or 1.");
                 }
-            } else if (strcmp(command, "savemacros") == 0) {
+            } else {
+                snprintf(state->status_msg, sizeof(state->status_msg), "Unknown argument for set: %s", args);
+            }
+        } else {
+            snprintf(state->status_msg, sizeof(state->status_msg), "Usage: :set <option> [value]");
+        }
+    } else if (strcmp(command, "savemacros") == 0) {
                 save_macros(state);
             } else if (strcmp(command, "loadmacros") == 0) {
                 load_macros(state);
@@ -127,8 +142,9 @@ void process_command(EditorState *state, bool *should_exit) {
                 display_fuzzy_finder(state);
             } else if (strcmp(command, "explorer") == 0) {
                     criar_janela_explorer();
-            } else if (strcmp(command, "term") == 0) {                executar_comando_em_novo_workspace(args);
-        
+            } else if (strcmp(command, "term") == 0) {
+                executar_comando_em_novo_workspace(args);
+            
       // LSP Commands
     } else if (strncmp(command, "lsp-restart", 11) == 0) {
           process_lsp_restart(state);

@@ -287,7 +287,8 @@ typedef struct EditorState {
     
     char last_played_macro_register;
     bool single_command_mode;    
-
+    
+    int status_bar_mode;
 } EditorState;
 #endif
 

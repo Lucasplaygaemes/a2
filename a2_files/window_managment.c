@@ -266,6 +266,7 @@ void criar_nova_janela(const char *filename) {
     state->is_recording_macro = false;
     state->last_played_macro_register = 0;
     state->single_command_mode = false;
+    state->status_bar_mode = 1;
     for (int i = 0; i < 26; i++) {
         state->macro_registers[i] = NULL;
     }

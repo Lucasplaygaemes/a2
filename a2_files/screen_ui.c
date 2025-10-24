@@ -496,11 +496,13 @@ void editor_redraw(WINDOW *win, EditorState *state) {
         }
     }
 
-    int color_pair = 1;
+    int color_pair = 8; // Cor padrão
     if (state->is_moving) {
         color_pair = 2;
     } else if (strstr(state->status_msg, "Warning:") != NULL || strstr(state->status_msg, "Error:") != NULL) {
-        color_pair = 3;
+        color_pair = 11;
+    } else if (state->mode == VISUAL) {
+        color_pair = 1;
     }
     
     wattron(win, COLOR_PAIR(color_pair));
@@ -515,31 +517,50 @@ void editor_redraw(WINDOW *win, EditorState *state) {
         switch (state->mode) {
             case NORMAL: strcpy(mode_str, "-- NORMAL --"); break; 
             case INSERT: strcpy(mode_str, "-- INSERT --"); break;
-            case VISUAL: 
-                strcpy(mode_str, "-- VISUAL --"); 
-                break;
-            case OPERATOR_PENDING:
-                snprintf(mode_str, sizeof(mode_str), "-- (%c) --", state->pending_operator);
-                break;
+            case VISUAL: strcpy(mode_str, "-- VISUAL --"); break;
+            case OPERATOR_PENDING: snprintf(mode_str, sizeof(mode_str), "-- (%c) --", state->pending_operator); break;
             default: strcpy(mode_str, "--          --"); break;
         }
         char display_filename[40];
         strncpy(display_filename, state->filename, sizeof(display_filename) - 1);
         display_filename[sizeof(display_filename) - 1] = '\0'; 
         int visual_col = get_visual_col(state->lines[state->current_line], state->current_col);
-        
         int diag_count = (state->lsp_document) ? state->lsp_document->diagnostics_count : -1;
-        char final_bar[cols + 1];
-        snprintf(final_bar, sizeof(final_bar), "WS %d | %s | %s%s | Diags: %d | %s | Line %d/%d, Col %d", 
-            gerenciador_workspaces.workspace_ativo_idx + 1, mode_str, display_filename, state->buffer_modified ? "*" : "", 
-            diag_count, state->status_msg, state->current_line + 1, state->num_lines, visual_col + 1);
 
-        mvwprintw(win, rows - 1, 1, "%.*s", cols - 2, final_bar);
-    }
+        // ---- LÓGICA CONDICIONAL ----
+        if (state->status_bar_mode == 1) { // Novo estilo robusto
+            char left_bar[200];
+            char right_bar[100];
+
+            snprintf(left_bar, sizeof(left_bar), "WS %d | %s | %s%s",
+                gerenciador_workspaces.workspace_ativo_idx + 1, mode_str, display_filename, state->buffer_modified ? "*" : "");
+
+            snprintf(right_bar, sizeof(right_bar), "Diags: %d | Line %d/%d, Col %d",
+                diag_count, state->current_line + 1, state->num_lines, visual_col + 1);
+
+            mvwprintw(win, rows - 1, 1, "%s", left_bar);
+
+            int right_bar_len = strlen(right_bar);
+            mvwprintw(win, rows - 1, cols - 1 - right_bar_len, "%s", right_bar);
+
+            int left_len = strlen(left_bar);
+            int available_space = (cols - 1 - right_bar_len) - (left_len + 3);
+            if (available_space > 5 && state->status_msg[0] != '\0') {
+                mvwprintw(win, rows - 1, left_len + 2, "| %.*s", available_space - 2, state->status_msg);
+            }
+                                        } else { // Estilo clássico (antigo)
+                                            char final_bar[cols + 1];
+                                            // Estilo 0 simplificado para ser visualmente distinto
+                                            snprintf(final_bar, sizeof(final_bar), "%s%s -- Line %d/%d, Col %d",
+                                                display_filename, state->buffer_modified ? "*" : "",
+                                                state->current_line + 1, state->num_lines, visual_col + 1);
+                                
+                                            int print_width = cols > 2 ? cols - 2 : 0;
+                                            mvwprintw(win, rows - 1, 1, "%.*s", print_width, final_bar);
+                                        }    }
     wattroff(win, COLOR_PAIR(color_pair));
 
     wnoutrefresh(win);
-
 }
 
 
