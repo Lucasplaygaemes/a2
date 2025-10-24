@@ -175,14 +175,14 @@ void explorer_redraw(JanelaEditor *jw) {
     }
 
     // Display clipboard status
-    wattron(jw->win, A_REVERSE);
-    for(int i = 1; i < jw->largura - 1; i++) { mvwaddch(jw->win, jw->altura - 2, i, ' '); }
     if (state->clipboard_operation != OP_NONE) {
+        wattron(jw->win, A_REVERSE);
+        for(int i = 1; i < jw->largura - 1; i++) { mvwaddch(jw->win, jw->altura - 2, i, ' '); }
         char *op_str = (state->clipboard_operation == OP_COPY) ? "COPIED" : "CUT";
         char *filename = basename(state->source_path);
         mvwprintw(jw->win, jw->altura - 2, 2, "[%s: %s]", op_str, filename);
+        wattroff(jw->win, A_REVERSE);
     }
-     wattroff(jw->win, A_REVERSE);
 
     wnoutrefresh(jw->win);
 }
