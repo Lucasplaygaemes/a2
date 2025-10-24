@@ -103,6 +103,15 @@ typedef enum {
 } FileRecoveryChoice;
 #endif
 
+#ifndef CONTENTSEARCHRESULT_DEFINED
+#define CONTENTSEARCHRESULT_DEFINED
+typedef struct {
+    char *file_path;
+    int line_number;
+    char *line_content;
+} ContentSearchResult;
+#endif
+
 #ifndef VISUALSELECTIONMODE_DEFINED
 #define VISUALSELECTIONMODE_DEFINED
 typedef enum {

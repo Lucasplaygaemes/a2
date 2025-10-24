@@ -104,6 +104,9 @@ void process_command(EditorState *state, bool *should_exit) {
         else if (strcmp(args, "wrap") == 0) {
             state->word_wrap_enabled = true;
             snprintf(state->status_msg, sizeof(state->status_msg), "Word wrap enabled");
+        } else if (strcmp(args, "grep") == 0) {
+            display_content_search(state, args);
+            
         } else if (strcmp(args, "nowrap") == 0) {
             state->word_wrap_enabled = false;
             snprintf(state->status_msg, sizeof(state->status_msg), "Word wrap disabled");
@@ -116,13 +119,15 @@ void process_command(EditorState *state, bool *should_exit) {
             } else if (strcmp(command, "loadmacros") == 0) {
                 load_macros(state);
                 snprintf(state->status_msg, sizeof(state->status_msg), "Macros loaded.");
-                        } else if (strcmp(command, "listmacros") == 0) {
-                            display_macros_list(state);
-                        } else if (strcmp(command, "ff") == 0) {
-                            display_fuzzy_finder(state);                    } else if (strcmp(command, "ff") == 0) {
-                        display_fuzzy_finder(state);                } else if (strcmp(command, "explorer") == 0) {
+            } else if (strcmp(command, "listmacros") == 0) {
+                display_macros_list(state);
+            } else if (strcmp(command, "grep") == 0) {
+                display_content_search(state, args);
+            } else if (strcmp(command, "ff") == 0) {
+                display_fuzzy_finder(state);
+            } else if (strcmp(command, "explorer") == 0) {
                     criar_janela_explorer();
-                } else if (strcmp(command, "term") == 0) {                executar_comando_em_novo_workspace(args);
+            } else if (strcmp(command, "term") == 0) {                executar_comando_em_novo_workspace(args);
         
       // LSP Commands
     } else if (strncmp(command, "lsp-restart", 11) == 0) {
