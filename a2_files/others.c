@@ -580,13 +580,26 @@ void editor_find(EditorState *state) {
     getmaxyx(win, rows, cols);
     
     char search_term[100];
-    snprintf(state->command_buffer, sizeof(state->command_buffer), "/");
-    state->command_pos = 1;
+    // Start with the previous search term if it exists
+    if (state->last_search[0] != '\0') {
+        snprintf(state->command_buffer, sizeof(state->command_buffer), "/%s", state->last_search);
+        state->command_pos = strlen(state->command_buffer);
+    } else {
+        snprintf(state->command_buffer, sizeof(state->command_buffer), "/");
+        state->command_pos = 1;
+    }
     
     while (1) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Search: %s", state->command_buffer + 1);
-        editor_redraw(win, state);
+        // --- Direct drawing of the search prompt ---
+        wattron(win, COLOR_PAIR(8)); // Use default background
+        for (int i = 1; i < cols - 1; i++) {
+            mvwaddch(win, rows - 1, i, ' ');
+        }
+        mvwprintw(win, rows - 1, 1, "%s", state->command_buffer);
+        wattroff(win, COLOR_PAIR(8));
+        wmove(win, rows - 1, state->command_pos + 1);
         wrefresh(win);
+        // --- End of direct drawing ---
         
         wint_t ch;
         wget_wch(win, &ch);
@@ -595,7 +608,7 @@ void editor_find(EditorState *state) {
             strncpy(search_term, state->command_buffer + 1, sizeof(search_term) - 1);
             search_term[sizeof(search_term) - 1] = '\0';
             break;
-        } else if (ch == 27) {
+        } else if (ch == 27) { // ESC
             search_term[0] = '\0';
             break;
         } else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
@@ -603,16 +616,20 @@ void editor_find(EditorState *state) {
                 state->command_pos--;
                 state->command_buffer[state->command_pos] = '\0';
             }
-        } else if (isprint(ch) && state->command_pos < (int)sizeof(state->command_buffer) - 1) {
-            state->command_buffer[state->command_pos] = (char)ch;
-            state->command_pos++;
-            state->command_buffer[state->command_pos] = '\0';
+        } else if (iswprint(ch) && state->command_pos < (int)sizeof(state->command_buffer) - 1) {
+            char mb_char[MB_CUR_MAX + 1];
+            int len = wctomb(mb_char, ch);
+            if (len > 0 && (state->command_pos + len) < (int)sizeof(state->command_buffer) -1) {
+                mb_char[len] = '\0';
+                strcat(state->command_buffer, mb_char);
+                state->command_pos += len;
+            }
         }
     }
     
     state->status_msg[0] = '\0';
     state->command_buffer[0] = '\0';
-    redesenhar_todas_as_janelas();
+    redesenhar_todas_as_janelas(); // Redraw all to clear the prompt
     
     if (strlen(search_term) == 0) {
         return;
@@ -629,8 +646,8 @@ void editor_find(EditorState *state) {
     for (int i = 0; i < state->num_lines; i++) {
         int line_num = (start_line + i) % state->num_lines;
         char *line = state->lines[line_num];
+        if (!line) continue;
         
-        // For the starting line, search from start_col, for others from beginning
         char *match = (i == 0) ? strstr(line + start_col, search_term) : strstr(line, search_term);
         
         if (match) {
@@ -638,7 +655,6 @@ void editor_find(EditorState *state) {
             state->current_col = match - line;
             state->ideal_col = state->current_col;
             
-            // Ensure viewport is adjusted to show the found text
             adjust_viewport(win, state);
             
             snprintf(state->status_msg, sizeof(state->status_msg),
@@ -646,7 +662,6 @@ void editor_find(EditorState *state) {
             return;
         }
         
-        // Reset start_col for subsequent lines
         start_col = 0;
     }
     
