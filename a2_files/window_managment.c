@@ -1180,6 +1180,180 @@ end_palette:
     redesenhar_todas_as_janelas();
 }
 
+// ===================================================================
+// Content Search (Grep)
+// ===================================================================
+
+static void search_in_file(const char *file_path, const char *pattern, ContentSearchResult **results, int *count, int *capacity) {
+    FILE *f = fopen(file_path, "r");
+    if (!f) return;
+
+    char line[MAX_LINE_LEN];
+    int line_num = 1;
+    while (fgets(line, sizeof(line), f)) {
+        if (strstr(line, pattern)) {
+            if (*count >= *capacity) {
+                *capacity = (*capacity == 0) ? 128 : *capacity * 2;
+                *results = realloc(*results, sizeof(ContentSearchResult) * *capacity);
+                if (!*results) { fclose(f); return; }
+            }
+            
+            line[strcspn(line, "\n")] = 0; // Remove newline
+
+            (*results)[*count].file_path = strdup(file_path);
+            (*results)[*count].line_number = line_num;
+            (*results)[*count].line_content = strdup(trim_whitespace(line));
+            (*count)++;
+        }
+        line_num++;
+    }
+    fclose(f);
+}
+
+static void recursive_content_search(const char *base_path, const char *pattern, ContentSearchResult **results, int *count, int *capacity) {
+    DIR *d = opendir(base_path);
+    if (!d) return;
+
+    struct dirent *dir;
+    char path[PATH_MAX];
+
+    while ((dir = readdir(d)) != NULL) {
+        if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0 ||
+            strcmp(dir->d_name, ".git") == 0 || strcmp(dir->d_name, "build") == 0 ||
+            strcmp(dir->d_name, "output") == 0 || strcmp(dir->d_name, ".cache") == 0) {
+            continue;
+        }
+
+        snprintf(path, sizeof(path), "%s/%s", base_path, dir->d_name);
+
+        struct stat st;
+        if (stat(path, &st) == 0) {
+            if (S_ISDIR(st.st_mode)) {
+                recursive_content_search(path, pattern, results, count, capacity);
+            } else if (S_ISREG(st.st_mode)) {
+                // Simple check to avoid searching in binary files
+                FILE *f = fopen(path, "r");
+                if (f) {
+                    char buffer[1024];
+                    size_t bytes_read = fread(buffer, 1, 1024, f);
+                    fclose(f);
+                    if (memchr(buffer, 0, bytes_read) == NULL) { // No null bytes? Likely text.
+                        search_in_file(path, pattern, results, count, capacity);
+                    }
+                }
+            }
+        }
+    }
+    closedir(d);
+}
+
+void display_content_search(EditorState *state, const char* prefilled_term) {
+    char search_term[100] = {0};
+
+    if (prefilled_term && prefilled_term[0] != '\0') {
+        strncpy(search_term, prefilled_term, sizeof(search_term) - 1);
+    } else {
+        int rows, cols; getmaxyx(stdscr, rows, cols);
+        int win_h = 3; int win_w = cols / 2;
+        int win_y = (rows - win_h) / 2; int win_x = (cols - win_w) / 2;
+        WINDOW *input_win = newwin(win_h, win_w, win_y, win_x);
+        keypad(input_win, TRUE);
+        wbkgd(input_win, COLOR_PAIR(9));
+        box(input_win, 0, 0);
+        mvwprintw(input_win, 1, 2, "Grep for: ");
+        wrefresh(input_win);
+        curs_set(1); echo();
+        wgetnstr(input_win, search_term, sizeof(search_term) - 1);
+        noecho(); curs_set(0);
+        delwin(input_win);
+        touchwin(stdscr);
+        redesenhar_todas_as_janelas();
+    }
+
+    if (strlen(search_term) == 0) return;
+
+    ContentSearchResult *results = NULL;
+    int num_results = 0;
+    int capacity = 0;
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd)) == NULL) return;
+
+    recursive_content_search(cwd, search_term, &results, &num_results, &capacity);
+
+    if (num_results == 0) {
+        snprintf(state->status_msg, sizeof(state->status_msg), "No results found for '%s'", search_term);
+        return;
+    }
+
+    WINDOW *results_win;
+    int rows, cols; getmaxyx(stdscr, rows, cols);
+    int win_h = min(25, rows - 4); int win_w = cols - 10;
+    int win_y = (rows - win_h) / 2; int win_x = (cols - win_w) / 2;
+    results_win = newwin(win_h, win_w, win_y, win_x);
+    keypad(results_win, TRUE);
+    wbkgd(results_win, COLOR_PAIR(9));
+
+    int current_selection = 0;
+    int top_of_list = 0;
+
+    while (1) {
+        werase(results_win);
+        box(results_win, 0, 0);
+        mvwprintw(results_win, 0, 2, " Results for '%s' (%d) ", search_term, num_results);
+
+        int y_pos = 1;
+        for (int i = 0; y_pos < win_h - 1; i++) {
+            int item_idx = top_of_list + i;
+            if (item_idx >= num_results) break;
+            
+            if (item_idx == current_selection) wattron(results_win, A_REVERSE);
+
+            char display_path[win_w - 4];
+            snprintf(display_path, sizeof(display_path), "%s:%d", results[item_idx].file_path, results[item_idx].line_number);
+            mvwprintw(results_win, y_pos++, 2, "%.*s", win_w - 3, display_path);
+            
+            if (y_pos < win_h - 1) {
+                mvwprintw(results_win, y_pos++, 6, "%.*s", win_w - 7, results[item_idx].line_content);
+            }
+
+            if (item_idx == current_selection) wattroff(results_win, A_REVERSE);
+        }
+        wrefresh(results_win);
+
+        int ch = wgetch(results_win);
+        switch(ch) {
+            case KEY_UP: case 'k': if (current_selection > 0) current_selection--; break;
+            case KEY_DOWN: case 'j': if (current_selection < num_results - 1) current_selection++; break;
+            case KEY_ENTER: case '\n':
+                if (num_results > 0) {
+                    ContentSearchResult selected = results[current_selection];
+                    load_file(state, selected.file_path);
+                    state->current_line = selected.line_number - 1;
+                    state->ideal_col = 0;
+                    adjust_viewport(ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->win, state);
+                }
+                goto end_grep;
+            case 27: case 'q': goto end_grep;
+        }
+        if (current_selection < top_of_list) top_of_list = current_selection;
+        if (current_selection >= top_of_list + (win_h - 2) / 2) {
+            top_of_list = current_selection - ((win_h - 2) / 2) + 1;
+            if (top_of_list < 0) top_of_list = 0;
+        }
+    }
+
+end_grep:
+    for (int i = 0; i < num_results; i++) {
+        free(results[i].file_path);
+        free(results[i].line_content);
+    }
+    free(results);
+    delwin(results_win);
+    touchwin(stdscr);
+    redesenhar_todas_as_janelas();
+}
+
+
 typedef struct {
     char* path;
 } FileResult;
@@ -1379,4 +1553,4 @@ end_finder:
     redesenhar_todas_as_janelas();
     curs_set(1);
 }
-        
+

@@ -33,6 +33,8 @@ void gf2_starter();
 void display_command_palette(EditorState *state);
 void criar_janela_explorer();
 
+void display_command_palette(EditorState *state);
+void display_content_search(EditorState *state, const char *prefilled_term);
 
 
 #endif // WINDOW_MANAGMENT_H
