@@ -1,0 +1,13 @@
+# Dark Theme for a2
+default: COLOR_WHITE, default
+selection: COLOR_BLACK, COLOR_BLUE
+status_bar: COLOR_BLUE, COLOR_BLACK
+status_moving: COLOR_BLUE, default
+keyword: COLOR_YELLOW, default
+type: COLOR_CYAN, default
+std_function: COLOR_BLUE, default
+comment: COLOR_CYAN, default
+popup: COLOR_BLACK, COLOR_MAGENTA
+diff_add: COLOR_GREEN, default
+error: COLOR_RED, default
+warning: COLOR_YELLOW, default
