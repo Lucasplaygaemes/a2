@@ -97,7 +97,7 @@ This guide details all available commands and keybindings.
 | `![cmd]` | Execute a shell command and show output (e.g., `!ls -l`). |
 | `:help` | Show the `a2` man page in a new terminal split. |
 | `:ksc` | Show the keyboard shortcuts screen. |
-| `:theme <name>` | Load and apply a theme (e.g., `:theme monokai`). |
+| `:theme <name>` | Load and apply a theme (e.g., `:theme monokai`). Use Tab to autocomplete. |
 | `:gcc [libs]` | Compile the current C/C++ file (e.g., `:gcc -lm`). |
 | `:diff <f1> <f2>`| Show the difference between two files. |
 | `:timer` | Show the work time report. |
