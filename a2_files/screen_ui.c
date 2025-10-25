@@ -1,4 +1,5 @@
 #include "screen_ui.h"
+#include "themes.h"
 #include "defs.h"
 #include "others.h"
 #include "lsp_client.h"
@@ -207,6 +208,7 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
 
 
 void editor_redraw(WINDOW *win, EditorState *state) {
+    wbkgd(win, COLOR_PAIR(PAIR_DEFAULT));
     // The popup cleanup was moved to redesenhar_todas_as_janelas() to prevent it from being cleared prematurely.
 
     if (state->buffer_modified) {
@@ -221,11 +223,13 @@ void editor_redraw(WINDOW *win, EditorState *state) {
 
     if (border_offset) {
         if (ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->estado == state) {
-            wattron(win, COLOR_PAIR(3) | A_BOLD);
+            wattron(win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
             box(win, 0, 0);
-            wattroff(win, COLOR_PAIR(3) | A_BOLD);
+            wattroff(win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
         } else {
+            wattron(win, COLOR_PAIR(PAIR_BORDER_INACTIVE));
             box(win, 0, 0);
+            wattroff(win, COLOR_PAIR(PAIR_BORDER_INACTIVE));
         }
     }
     
@@ -299,7 +303,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         if (getcurx(win) >= cols - 1 - border_offset) break;
                         int token_start_in_line = line_offset + current_pos_in_segment;
                         if (line[token_start_in_line] == '#' || (line[token_start_in_line] == '/' && (size_t)token_start_in_line + 1 < strlen(line) && line[token_start_in_line + 1] == '/')) {
-                            wattron(win, COLOR_PAIR(6)); mvwprintw(win, screen_y + border_offset, getcurx(win), "%.*s", cols - getcurx(win) - border_offset, &line[token_start_in_line]); wattroff(win, COLOR_PAIR(6)); break;
+                            wattron(win, COLOR_PAIR(PAIR_COMMENT)); mvwprintw(win, screen_y + border_offset, getcurx(win), "%.*s", cols - getcurx(win) - border_offset, &line[token_start_in_line]); wattroff(win, COLOR_PAIR(PAIR_COMMENT)); break;
                         }
                         int token_start_in_segment = current_pos_in_segment;
                         if (strchr(delimiters, line[token_start_in_line])) {
@@ -314,16 +318,16 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                             bool selected = is_selected(state, file_line_idx, token_start_in_line);
 
                             if (selected && state->visual_selection_mode == VISUAL_MODE_SELECT) {
-                                color_pair = 1;
+                                color_pair = PAIR_SELECTION;
                             } else if (token_len == 1 && is_unmatched_bracket(state, file_line_idx, token_start_in_line)) {
                                 color_pair = 11; // Red
                             } else if (!strchr(delimiters, *token_ptr)) {
                                 for (int j = 0; j < state->num_syntax_rules; j++) {
                                     if (strlen(state->syntax_rules[j].word) == (size_t)token_len && strncmp(token_ptr, state->syntax_rules[j].word, token_len) == 0) {
                                         switch(state->syntax_rules[j].type) {
-                                            case SYNTAX_KEYWORD: color_pair = 3; break;
-                                            case SYNTAX_TYPE: color_pair = 4; break;
-                                            case SYNTAX_STD_FUNCTION: color_pair = 5; break;
+                                            case SYNTAX_KEYWORD: color_pair = PAIR_KEYWORD; break;
+                                            case SYNTAX_TYPE: color_pair = PAIR_TYPE; break;
+                                            case SYNTAX_STD_FUNCTION: color_pair = PAIR_STD_FUNCTION; break;
                                         }
                                         break;
                                     }
@@ -415,21 +419,20 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                 bool selected = is_selected(state, line_idx, token_start);
 
                 if (selected && state->visual_selection_mode == VISUAL_MODE_SELECT) {
-                    color_pair = 1;
+                    color_pair = PAIR_SELECTION;
                 } else if (token_len == 1 && is_unmatched_bracket(state, line_idx, token_start)) {
                     color_pair = 11; // Red
                 } else if (current_char == '#' || (current_char == '/' && (size_t)token_start + 1 < strlen(line) && line[token_start + 1] == '/')) {
-                    color_pair = 6;
+                    color_pair = PAIR_COMMENT;
                     token_len = line_len - token_start;
                 } else if (!strchr(delimiters, current_char)) {
                     for (int j = 0; j < state->num_syntax_rules; j++) {
                         if (strlen(state->syntax_rules[j].word) == (size_t)token_len && strncmp(token_ptr, state->syntax_rules[j].word, token_len) == 0) {
                             switch(state->syntax_rules[j].type) {
-                                case SYNTAX_KEYWORD: color_pair = 3; break;
-                                case SYNTAX_TYPE: color_pair = 4; break;
-                                case SYNTAX_STD_FUNCTION: color_pair = 5; break;
-                            }
-                            break;
+                                case SYNTAX_KEYWORD: color_pair = PAIR_KEYWORD; break;
+                                case SYNTAX_TYPE: color_pair = PAIR_TYPE; break;
+                                case SYNTAX_STD_FUNCTION: color_pair = PAIR_STD_FUNCTION; break;
+                            }                            break;
                         }
                     }
                 }

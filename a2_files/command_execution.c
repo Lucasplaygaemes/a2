@@ -7,6 +7,7 @@
 #include "others.h" // For trim_whitespace, display_work_summary
 #include "timer.h" // For display_work_summary
 #include "cache.h"
+#include "themes.h"
 
 #include <ctype.h> // For isspace
 #include <errno.h> // For errno
@@ -63,6 +64,25 @@ void process_command(EditorState *state, bool *should_exit) {
         criar_janela_terminal_generica(cmd);
     } else if (strcmp(command, "ksc") == 0) {
         display_shortcuts_screen();
+    } else if (strcmp(command, "theme") == 0) {
+        if (strlen(args) > 0) {
+            char theme_name[256];
+            if (strstr(args, ".theme")) {
+                snprintf(theme_name, sizeof(theme_name), "%s", args);
+            } else {
+                snprintf(theme_name, sizeof(theme_name), "%s.theme", args);
+            }
+            
+            if (load_theme(theme_name)) {
+                apply_theme();
+                redesenhar_todas_as_janelas();
+                snprintf(state->status_msg, sizeof(state->status_msg), "Theme set to %s", args);
+            } else {
+                snprintf(state->status_msg, sizeof(state->status_msg), "Error: Theme '%s' not found.", args);
+            }
+        } else {
+            snprintf(state->status_msg, sizeof(state->status_msg), "Usage: :theme <themename>");
+        }
     } else if (strcmp(command, "gcc") == 0) {
         compile_file(state, args);
     } else if (strcmp(command, "rc") == 0) {

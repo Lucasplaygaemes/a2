@@ -8,6 +8,7 @@
 #include "lsp_client.h"
 #include "timer.h"
 #include "explorer.h"
+#include "themes.h"
 #include <locale.h>
 #include <libgen.h> // For dirname()
 #include <limits.h> // For PATH_MAX
@@ -30,6 +31,8 @@ const int ansi_to_ncurses_map[16] = {
     COLOR_WHITE    // Bright White
 };
 
+
+/*
 void inicializar_ncurses() {
     initscr(); cbreak(); noecho(); keypad(stdscr, TRUE);
     set_escdelay(25);
@@ -60,6 +63,37 @@ void inicializar_ncurses() {
     
     bkgd(COLOR_PAIR(8));
 }
+*/
+
+void inicializar_ncurses() {
+    initscr(); cbreak(); noecho(); keypad(stdscr, TRUE);
+    set_escdelay(25);
+    start_color();
+    
+    // FIX: Replaces use_default_colors() with a robust solution
+    // Tells ncurses to map the terminal's default colors to COLOR_WHITE and COLOR_BLACK
+    assume_default_colors(COLOR_WHITE, COLOR_BLACK);
+
+    // Editor color pairs (will now use COLOR_BLACK as a "transparent" background)
+    init_pair(1, COLOR_BLACK, COLOR_BLUE);
+    init_pair(2, COLOR_YELLOW, COLOR_BLACK);
+    init_pair(3, COLOR_YELLOW, COLOR_BLACK);
+    init_pair(4, COLOR_GREEN, COLOR_BLACK);
+    init_pair(5, COLOR_BLUE, COLOR_BLACK);
+    init_pair(6, COLOR_CYAN, COLOR_BLACK);
+    init_pair(7, COLOR_MAGENTA, COLOR_BLACK);
+    init_pair(8, COLOR_WHITE, COLOR_BLACK); // Default pair: white text, transparent background
+    init_pair(9, COLOR_BLACK, COLOR_MAGENTA);
+    init_pair(10, COLOR_GREEN, COLOR_BLACK);
+    init_pair(11, COLOR_RED, COLOR_BLACK);
+    init_pair(12, COLOR_BLACK, COLOR_YELLOW);
+
+    // Color pairs for the terminal (will also use the "transparent" background)
+    for (int i = 0; i < 16; i++) {
+        init_pair(16 + i, ansi_to_ncurses_map[i], COLOR_BLACK);
+    }
+}
+
 
 void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     // Store initial window/workspace counts to detect if a window is closed.
@@ -656,6 +690,10 @@ int main(int argc, char *argv[]) {
     start_work_timer();
     setlocale(LC_ALL, "");
     inicializar_ncurses();
+    
+    if (load_theme("dark.theme")) {
+        apply_theme();
+    }
     
     inicializar_workspaces();
 
