@@ -697,6 +697,10 @@ int main(int argc, char *argv[]) {
     
     inicializar_workspaces();
 
+    // DEBUG: Show executable_dir on startup
+    snprintf(ACTIVE_WS->janelas[0]->estado->status_msg, STATUS_MSG_LEN, "Exec Dir: %s", executable_dir);
+
+
     // Automatically load macros on startup
     load_macros(ACTIVE_WS->janelas[0]->estado);
 

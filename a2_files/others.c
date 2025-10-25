@@ -1,4 +1,5 @@
 #include "others.h" // Include its own header
+#include "fileio.h"
 #include "defs.h" // For EditorState, etc.
 #include "lsp_client.h" // For lsp_did_change
 #include "screen_ui.h" // For editor_redraw, redrawing all windows, get_visual_pos, get_visual_col
@@ -1555,18 +1556,33 @@ void editor_start_theme_completion(EditorState *state) {
     }
     state->num_suggestions = 0;
 
-    const char* dirs_to_check[3];
+    const char* dirs_to_check[4];
     int dir_count = 0;
     char exec_theme_path[PATH_MAX];
+    char custom_theme_dir[PATH_MAX] = {0};
 
-    // Path 1: Relative to executable
+    // Path 1: Custom theme dir
+    char config_path[PATH_MAX];
+    get_theme_config_path(config_path, sizeof(config_path));
+    FILE* config_file = fopen(config_path, "r");
+    if (config_file) {
+        if (fgets(custom_theme_dir, sizeof(custom_theme_dir), config_file) != NULL) {
+            custom_theme_dir[strcspn(custom_theme_dir, "\n")] = 0;
+            if (custom_theme_dir[0] != '\0') {
+                dirs_to_check[dir_count++] = custom_theme_dir;
+            }
+        }
+        fclose(config_file);
+    }
+
+    // Path 2: Relative to executable
     if (executable_dir[0] != '\0') {
         snprintf(exec_theme_path, sizeof(exec_theme_path), "%s/themes", executable_dir);
         dirs_to_check[dir_count++] = exec_theme_path;
     }
-    // Path 2: Relative to CWD
+    // Path 3: Relative to CWD
     dirs_to_check[dir_count++] = "themes";
-    // Path 3: System-wide
+    // Path 4: System-wide
     dirs_to_check[dir_count++] = "/usr/local/share/a2/themes";
 
     for (int i = 0; i < dir_count; i++) {

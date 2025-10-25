@@ -143,6 +143,17 @@ void process_command(EditorState *state, bool *should_exit) {
                 } else {
                     snprintf(state->status_msg, sizeof(state->status_msg), "Invalid bar style. Use 0 or 1.");
                 }
+            } else if (strcmp(set_cmd, "themedir") == 0 && items == 2) {
+                char config_path[PATH_MAX];
+                get_theme_config_path(config_path, sizeof(config_path));
+                FILE* f = fopen(config_path, "w");
+                if (f) {
+                    fprintf(f, "%s", set_val);
+                    fclose(f);
+                    snprintf(state->status_msg, sizeof(state->status_msg), "Theme directory set to: %s", set_val);
+                } else {
+                    snprintf(state->status_msg, sizeof(state->status_msg), "Error setting theme directory.");
+                }
             } else {
                 snprintf(state->status_msg, sizeof(state->status_msg), "Unknown argument for set: %s", args);
             }

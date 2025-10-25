@@ -1,4 +1,5 @@
 #include "themes.h"
+#include "fileio.h"
 #include "defs.h"
 #include <stdio.h>
 #include <string.h>
@@ -54,23 +55,44 @@ static void set_default_theme() {
 bool load_theme(const char* theme_name) {
     char path[PATH_MAX];
     FILE *f = NULL;
+    char custom_theme_dir[PATH_MAX] = {0};
 
-    // 1. Try absolute path first, or path relative to CWD
-    f = fopen(theme_name, "r");
+    // Read custom theme dir from config file
+    char config_path[PATH_MAX];
+    get_theme_config_path(config_path, sizeof(config_path));
+    FILE* config_file = fopen(config_path, "r");
+    if (config_file) {
+        if (fgets(custom_theme_dir, sizeof(custom_theme_dir), config_file) != NULL) {
+            // trim newline
+            custom_theme_dir[strcspn(custom_theme_dir, "\n")] = 0;
+        }
+        fclose(config_file);
+    }
 
-    // 2. Try system-wide install path
+    // 1. Try custom path
+    if (custom_theme_dir[0] != '\0') {
+        snprintf(path, sizeof(path), "%s/%s", custom_theme_dir, theme_name);
+        f = fopen(path, "r");
+    }
+
+    // 2. Try absolute path first, or path relative to CWD
+    if (!f) {
+        f = fopen(theme_name, "r");
+    }
+
+    // 3. Try system-wide install path
     if (!f) {
         snprintf(path, sizeof(path), "/usr/local/share/a2/themes/%s", theme_name);
         f = fopen(path, "r");
     }
 
-    // 3. If not found, try path relative to executable's themes directory
+    // 4. If not found, try path relative to executable's themes directory
     if (!f && executable_dir[0] != '\0') {
         snprintf(path, sizeof(path), "%s/themes/%s", executable_dir, theme_name);
         f = fopen(path, "r");
     }
 
-    // 4. If still not found, try path relative to CWD's themes directory
+    // 5. If still not found, try path relative to CWD's themes directory
     if (!f) {
         snprintf(path, sizeof(path), "themes/%s", theme_name);
         f = fopen(path, "r");

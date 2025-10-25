@@ -595,3 +595,13 @@ void load_macros(EditorState *state) {
     fclose(f);
     // No status message for automatic loading
 }
+
+void get_theme_config_path(char* buffer, size_t size) {
+    const char *home_dir = getenv("HOME");
+    if (home_dir) {
+        snprintf(buffer, size, "%s/.a2_themedir", home_dir);
+    } else {
+        // Fallback if HOME is not set
+        snprintf(buffer, size, ".a2_themedir");
+    }
+}

@@ -106,6 +106,7 @@ This guide details all available commands and keybindings.
 | `:set wrap` | Enable word wrap. |
 | `:set nowrap` | Disable word wrap. |
 | `:set bar <0|1>` | Set status bar style (0: minimalist, 1: default). |
+| `:set themedir <path>` | Set a persistent custom directory for themes. |
 | `:savemacros` | Save current macros to `~/.a2_macros`. |
 | `:loadmacros` | Load macros from file. |
 | `:listmacros` | Display all loaded macros. |
