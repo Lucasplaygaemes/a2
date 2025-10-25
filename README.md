@@ -21,6 +21,9 @@ A lot of things were added! So, any doubt's of keyboard shortcuts? :ksc show all
 Use the command "help" to see the man pages.
 Now you can run if not any, most of the termial apps and a terminal by it self inside a2!
 
+# Themes!
+Now a2 have themes! and they are quite easy to make, instructions will be added to help.
+
 # Multiplatform?
 a2 is not windows compatible without any modifications i think. I don't plan to make it. Not for now at least
 
