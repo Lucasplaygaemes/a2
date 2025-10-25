@@ -48,6 +48,7 @@ void do_redo(EditorState *state);
 void add_suggestion(EditorState *state, const char *suggestion);
 void editor_start_completion(EditorState *state);
 void editor_start_command_completion(EditorState *state);
+void editor_start_theme_completion(EditorState *state);
 void editor_start_file_completion(EditorState *state);
 void editor_end_completion(EditorState *state);
 void editor_apply_completion(EditorState *state);

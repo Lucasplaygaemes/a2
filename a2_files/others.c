@@ -1160,6 +1160,8 @@ void handle_command_mode_key(EditorState *state, wint_t ch, bool *should_exit) {
         case KEY_CTRL_P: case '\t':
             if (strncmp(state->command_buffer, "open ", 5) == 0) {
                 editor_start_file_completion(state);
+            } else if (strncmp(state->command_buffer, "theme ", 6) == 0) {
+                editor_start_theme_completion(state);
             } else {
                 editor_start_command_completion(state);
             }
@@ -1536,6 +1538,59 @@ void editor_do_replace(EditorState *state, const char *find, const char *replace
         snprintf(state->status_msg, sizeof(state->status_msg), "%d replacements made.", replacements);
     } else {
         snprintf(state->status_msg, sizeof(state->status_msg), "Pattern not found: %s", find);
+    }
+}
+
+void editor_start_theme_completion(EditorState *state) {
+    char *space = strchr(state->command_buffer, ' ');
+    if (!space) return;
+
+    char *prefix = space + 1;
+    int prefix_len = strlen(prefix);
+
+    if (state->completion_suggestions) {
+        for (int i = 0; i < state->num_suggestions; i++) free(state->completion_suggestions[i]);
+        free(state->completion_suggestions);
+        state->completion_suggestions = NULL;
+    }
+    state->num_suggestions = 0;
+
+    const char* dirs_to_check[3];
+    int dir_count = 0;
+    char exec_theme_path[PATH_MAX];
+
+    // Path 1: Relative to executable
+    if (executable_dir[0] != '\0') {
+        snprintf(exec_theme_path, sizeof(exec_theme_path), "%s/themes", executable_dir);
+        dirs_to_check[dir_count++] = exec_theme_path;
+    }
+    // Path 2: Relative to CWD
+    dirs_to_check[dir_count++] = "themes";
+    // Path 3: System-wide
+    dirs_to_check[dir_count++] = "/usr/local/share/a2/themes";
+
+    for (int i = 0; i < dir_count; i++) {
+        DIR *d = opendir(dirs_to_check[i]);
+        if (d) {
+            struct dirent *dir;
+            while ((dir = readdir(d)) != NULL) {
+                if (strstr(dir->d_name, ".theme")) {
+                    if (strncmp(dir->d_name, prefix, prefix_len) == 0) {
+                        add_suggestion(state, dir->d_name);
+                    }
+                }
+            }
+            closedir(d);
+        }
+    }
+
+    if (state->num_suggestions > 0) {
+        state->completion_mode = COMPLETION_FILE; // Reuse file completion logic
+        state->selected_suggestion = 0;
+        state->completion_scroll_top = 0;
+        strncpy(state->word_to_complete, prefix, sizeof(state->word_to_complete) - 1);
+        state->word_to_complete[sizeof(state->word_to_complete) - 1] = '\0';
+        state->completion_start_col = prefix - state->command_buffer;
     }
 }
 
