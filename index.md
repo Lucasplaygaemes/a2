@@ -13,6 +13,7 @@ Welcome to `a2`, a lightweight, fast, and configurable modal text editor inspire
 - **Combined Autocompletion:** Pressing `Tab` provides a unified list of suggestions from both the LSP and local words in the buffer.
 - **Macros:** Record and play back sequences of commands (`q` and `@`) to automate repetitive tasks.
 - **Advanced Search & Replace:** A powerful `:s` command to perform targeted text substitutions.
+- **Theming:** Customize the editor's appearance with simple `.theme` files. Several themes like Solarized, Monokai, and Dracula are included.
 
 ## Installation
 
@@ -96,6 +97,7 @@ This guide details all available commands and keybindings.
 | `![cmd]` | Execute a shell command and show output (e.g., `!ls -l`). |
 | `:help` | Show the `a2` man page in a new terminal split. |
 | `:ksc` | Show the keyboard shortcuts screen. |
+| `:theme <name>` | Load and apply a theme (e.g., `:theme monokai`). |
 | `:gcc [libs]` | Compile the current C/C++ file (e.g., `:gcc -lm`). |
 | `:diff <f1> <f2>`| Show the difference between two files. |
 | `:timer` | Show the work time report. |
