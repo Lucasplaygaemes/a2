@@ -1,4 +1,5 @@
 #include "command_execution.h" // Include its own header
+#include "project.h"
 #include "defs.h" // For EditorState, etc.
 #include "fileio.h" // For save_file, load_file, get_syntax_file_from_extension, load_syntax_file
 #include "lsp_client.h" // For lsp_did_save, lsp_did_change
@@ -9,6 +10,7 @@
 #include "cache.h"
 #include "themes.h"
 
+#include <sys/stat.h>
 #include <ctype.h> // For isspace
 #include <errno.h> // For errno
 #include <unistd.h> // For chdir, getcwd, close
@@ -174,6 +176,18 @@ void process_command(EditorState *state, bool *should_exit) {
                 display_fuzzy_finder(state);
             } else if (strcmp(command, "explorer") == 0) {
                     criar_janela_explorer();
+            } else if (strcmp(command, "save-project") == 0) {
+                project_save_session(args);
+            } else if (strcmp(command, "load-project") == 0) {
+                if (strlen(args) > 0) {
+                    if (!project_load_session(args)) {
+                        snprintf(state->status_msg, sizeof(state->status_msg), "Could not load project session '%s'.", args);
+                    }
+                } else {
+                    snprintf(state->status_msg, sizeof(state->status_msg), "Usage: :load-project <name>");
+                }
+            } else if (strcmp(command, "list-projects") == 0) {
+                display_project_list();
             } else if (strcmp(command, "term") == 0) {
                 executar_comando_em_novo_workspace(args);
             
@@ -249,7 +263,7 @@ void process_command(EditorState *state, bool *should_exit) {
 
             load_file(state, state->previous_filename);
 
-            // Atualiza o previous_filename para permitir alternar de volta
+            // Update previous_filename to allow toggling back
             strcpy(state->previous_filename, current_file_before_jump);
         } else {
             snprintf(state->status_msg, sizeof(state->status_msg), "No previous file to switch to.");
@@ -259,7 +273,7 @@ void process_command(EditorState *state, bool *should_exit) {
         char *replace = strtok(NULL, "/");
         char *flags = strtok(NULL, "/");
         
-        if (find) { // `replace` pode ser vazio
+        if (find) { // `replace` can be empty
             editor_do_replace(state, find, replace ? replace : "", flags);
         } else {
             snprintf(state->status_msg, sizeof(state->status_msg), "Usage: :s/find/replace/[flags]");
@@ -575,4 +589,5 @@ void paste_from_clipboard(EditorState *state) {
 
     snprintf(state->status_msg, sizeof(state->status_msg), "Pasted from clipboard.");
 }
+
 

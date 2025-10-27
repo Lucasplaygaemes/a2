@@ -29,4 +29,6 @@ void get_word_at_cursor(EditorState *state, char *buffer, size_t buffer_size);
 
 void executar_comando_no_terminal(const char *comando_str);
 
+void project_save_session();
+
 #endif // COMMAND_EXECUTION_H
