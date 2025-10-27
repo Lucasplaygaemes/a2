@@ -1,6 +1,6 @@
 ## A2
 A2 is an text editor vim alike and emacs alike, this isn't a project where i want to surpass or be in the same ground as those two, making it for hobby and to learn C better!
-<img width="1920" height="1010" alt="image" src="https://github.com/user-attachments/assets/8671aa24-5771-4cfa-a072-58f9995ef668" />
+<img width="1920" height="1016" alt="image" src="https://github.com/user-attachments/assets/e3daf5d7-c7c5-4f83-b85d-756793cd2e5b" />
 
 
 
