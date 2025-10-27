@@ -18,6 +18,11 @@
 #include <sys/select.h>
 #include <sys/wait.h> 
 
+#include "project.h"
+
+void criar_novo_workspace_vazio();
+
+
 const int ansi_to_ncurses_map[16] = {
     COLOR_BLACK, COLOR_RED, COLOR_GREEN, COLOR_YELLOW,
     COLOR_BLUE, COLOR_MAGENTA, COLOR_CYAN, COLOR_WHITE,
@@ -30,7 +35,6 @@ const int ansi_to_ncurses_map[16] = {
     COLOR_CYAN,    // Bright Cyan
     COLOR_WHITE    // Bright White
 };
-
 
 void inicializar_ncurses() {
     initscr(); cbreak(); noecho(); keypad(stdscr, TRUE);
@@ -644,6 +648,8 @@ bool handle_global_shortcut(int ch, bool *should_exit) {
             return false; // Not a global shortcut, so the active window should handle it
     }
 }
+
+
 int main(int argc, char *argv[]) {
     char exe_path_buf[PATH_MAX];
     if (realpath(argv[0], exe_path_buf)) {
@@ -674,9 +680,11 @@ int main(int argc, char *argv[]) {
         
     inicializar_workspaces();
 
-    // DEBUG: Show executable_dir on startup
-    snprintf(ACTIVE_WS->janelas[0]->estado->status_msg, STATUS_MSG_LEN, "Exec Dir: %s", executable_dir);
+    project_startup_check();
 
+    if (gerenciador_workspaces.num_workspaces > 0 && ACTIVE_WS->num_janelas > 0 && ACTIVE_WS->janelas[0]->estado) {
+        snprintf(ACTIVE_WS->janelas[0]->estado->status_msg, STATUS_MSG_LEN, "Welcome to a2!");
+    }
 
     // Automatically load macros on startup
     load_macros(ACTIVE_WS->janelas[0]->estado);
@@ -766,7 +774,7 @@ int main(int argc, char *argv[]) {
                 ssize_t len = read(STDIN_FILENO, input_buf, sizeof(input_buf));
                 if (len > 0) {
                     bool atalho_consumido = false;
-                    // Checa pelos atalhos de navegação de janela
+                    // Check for window navigation shortcuts
                     if (len == 1 && input_buf[0] == KEY_CTRL_RIGHT_BRACKET) {
                         proxima_janela();
                         atalho_consumido = true;
@@ -774,7 +782,7 @@ int main(int argc, char *argv[]) {
                         janela_anterior();
                         atalho_consumido = true;
                     } 
-                    // Checa por atalhos com Alt
+                    // Check for Alt shortcuts
                     else if (len == 2 && input_buf[0] == 27) { // Check for Alt + key
                         if (handle_global_shortcut(input_buf[1], &should_exit)) {
                             atalho_consumido = true;
