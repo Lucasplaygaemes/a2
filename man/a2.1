@@ -1,12 +1,9 @@
-." TH - Title Header. Sintaxe: .TH <nome> <seção> <data> <fonte> <manual>
 .TH A2 1 "October 2025" "a2 Manual"
 
-." SH - Section Header. Define uma seção principal (NOME, SINOPSE, etc.)
 .SH NAME
 a2 \- a modal, terminal-based text editor
 
 .SH SYNOPSIS
-." B - Bold. Deixa o texto em negrito.
 .B a2
 [FILE] [LINE]
 
@@ -17,7 +14,6 @@ a2 \- a modal, terminal-based text editor
 .SH MODAL EDITING
 .B a2
  operates in several modes. The primary modes are:
-." TP - Tagged Paragraph. Cria um parágrafo com um rótulo na linha anterior.
 .TP
 .B NORMAL MODE
  The default mode. Every key press is interpreted as a command (e.g., for navigation, deletion, or yanking text). You cannot insert text directly in this mode.
@@ -30,6 +26,18 @@ a2 \- a modal, terminal-based text editor
 .TP
 .B COMMAND MODE
  Entered by pressing ':' in Normal Mode. Allows you to type extended commands, such as saving, quitting, or running the search and replace tool.
+
+.SH PROJECT MANAGEMENT
+.B a2
+can save and load sessions on a per-project basis. A session includes the list of open files, window layouts, and cursor positions. Sessions are stored in a local `.a2` directory.
+.TP
+.B :save-project [name]
+Saves the current layout as a named session.
+.TP
+.B :load-project <name>
+Loads a named session.
+.TP
+On startup, if a default `session.json` is found, the editor will prompt to load it.
 
 .SH COMMANDS
 Below is a list of the most important commands available in Command Mode.

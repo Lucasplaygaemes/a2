@@ -57,6 +57,17 @@ Move the current window to the specified workspace (1-9).
 .B :theme <name>
 Load and apply a theme. Themes are loaded from the `themes` directory. Use Tab to autocomplete theme names.
 
+.SH PROJECT COMMANDS
+.TP
+.B :save-project [name]
+Saves the current session (open files, layout, etc.) to a named file within the project's .a2 directory. Defaults to "session" if no name is given.
+.TP
+.B :load-project <name>
+Loads a named project session from the .a2 directory.
+.TP
+.B :list-projects
+Lists all saved project sessions found in the .a2 directory.
+
 .SH LSP COMMANDS
 .TP
 .B :lsp-definition
