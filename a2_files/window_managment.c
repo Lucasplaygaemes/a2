@@ -1,6 +1,6 @@
 #include <stddef.h>
 #include <wchar.h>
-#include <stdlib.h> // Para setenv()
+#include <stdlib.h>
 #include "window_managment.h"
 #include "defs.h"
 #include "fileio.h"
@@ -62,7 +62,7 @@ void criar_janela_terminal_generica(char *const argv[]) {
         ws->num_janelas--; free(jw); return;
     }
     if (pid == 0) {
-        // Informa ao processo filho que ele está rodando em um terminal xterm
+        // Tell the child process it's running in an xterm-256color terminal
         setenv("TERM", "xterm-256color", 1);
         execvp(argv[0], argv);
         exit(127);
@@ -83,7 +83,7 @@ void criar_janela_terminal_generica(char *const argv[]) {
     vterm_wnd_set(jw->term.vterm, jw->win);
     vterm_set_userptr(jw->term.vterm, jw);
 
-    // Notifica o PTY e o vterm do tamanho final da janela. ESTA É A CORREÇÃO.
+    // Notify PTY and vterm of the final window size. THIS IS THE FIX.
     vterm_resize(jw->term.vterm, cols - 2 * border_offset, rows - 2 * border_offset);
     atualizar_tamanho_pty(jw);
 }
@@ -582,7 +582,7 @@ void redesenhar_todas_as_janelas() {
             } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
                 explorer_redraw(jw);
             } else if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.vterm) {
-                werase(jw->win); // Limpa a janela antes de desenhar para evitar artefatos
+                werase(jw->win); // Clear the window before drawing to prevent artifacts
                 // Tell libvterm to redraw its content in the associated WINDOW.
                 vterm_wnd_update(jw->term.vterm, -1, 0, VTERM_WND_RENDER_ALL);
             }
@@ -627,7 +627,7 @@ void posicionar_cursor_ativo() {
         // We just ensure it is visible if the process is active.
         curs_set(active_jw->term.pid != -1 ? 1 : 0);
     } else if (active_jw->tipo == TIPOJANELA_EXPLORER) {
-        curs_set(0); // O explorer não precisa de cursor
+        curs_set(0); // The explorer does not need a cursor
     } 
     // If the window is an editor, we handle the cursor manually.
     else if (active_jw->tipo == TIPOJANELA_EDITOR) {
@@ -1017,10 +1017,7 @@ void prompt_and_create_gdb_workspace() {
     redesenhar_todas_as_janelas();
 
     if (strlen(path_buffer) > 0) {
-        // 1. Create a new empty workspace
         criar_novo_workspace_vazio();
-        
-        // 2. Add a single terminal window to this new workspace
         char *const cmd[] = {"gdb", "-tui", path_buffer, NULL};
         criar_janela_terminal_generica(cmd);
     }

@@ -21,6 +21,7 @@ void mover_janela_para_posicao(int target_idx);
 void display_recent_files();
 void display_fuzzy_finder(EditorState *state);
 void criar_novo_workspace();
+void criar_novo_workspace_vazio();
 void ciclar_workspaces(int direcao);
 void mover_janela_para_workspace(int target_idx);
 void fechar_workspace_ativo(bool *should_exit);
