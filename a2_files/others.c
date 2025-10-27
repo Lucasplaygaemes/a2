@@ -1152,6 +1152,24 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
         case KEY_HOME: state->current_col = 0; state->ideal_col = 0; break;
         case KEY_END: { char* line = state->lines[state->current_line]; if(line) state->current_col = strlen(line); state->ideal_col = state->current_col; } break;
         case KEY_SDC: editor_delete_line(state); break;
+        case '(':
+        case '[':
+        case '{':
+        case '"':
+        case '\'': {
+            char close_char = 0;
+            if (ch == '(') close_char = ')';
+            else if (ch == '[') close_char = ']';
+            else if (ch == '{') close_char = '}';
+            else if (ch == '"') close_char = '"';
+            else if (ch == '\'') close_char = '\'';
+            
+            editor_insert_char(state, ch);
+            editor_insert_char(state, close_char);
+            state->current_col--;
+            state->ideal_col = state->current_col;
+            break;
+        }      
         default: if (iswprint(ch)) { editor_insert_char(state, ch); } break;
     }
 }
