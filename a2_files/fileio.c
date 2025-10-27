@@ -605,3 +605,46 @@ void get_theme_config_path(char* buffer, size_t size) {
         snprintf(buffer, size, ".a2_themedir");
     }
 }
+
+void get_default_theme_config_path(char *buffer, size_t size) {
+    const char *home_dir = getenv("HOME");
+    if (home_dir) {
+        snprintf(buffer, size, "%s/.a2_default_theme", home_dir);
+    } else {
+        snprintf(buffer, size, ".a2_default_theme");
+    }
+}
+
+void save_default_theme(const char * theme_name) {
+    char path[PATH_MAX];
+    get_default_theme_config_path(path, sizeof(path));
+    FILE *f = fopen(path, "w");
+    if (f) {
+        fprintf(f, "%s", theme_name);
+        fclose(f);
+    }
+}
+
+char *load_default_theme_name() {
+    char path[PATH_MAX];
+    get_default_theme_config_path(path, sizeof(path));
+    FILE *f = fopen(path, "w");
+    if (f) {
+        return NULL;
+    }
+    
+    char *theme_name = malloc(256);
+    if (!theme_name) {
+        fclose(f);
+        return NULL;
+    }
+    if (fgets(theme_name, 256, f)) {
+        theme_name[strcspn(theme_name, "\n")] = 0;
+        fclose(f);
+        return theme_name;
+    }
+    
+    fclose(f);
+    free(theme_name);
+    return NULL;
+}

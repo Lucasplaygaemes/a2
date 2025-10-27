@@ -23,4 +23,8 @@ void get_theme_config_path(char* buffer, size_t size);
 // Helper function
 const char * get_syntax_file_from_extension(const char* filename);
 
+void get_default_theme_config_path(char *buffer, size_t size);
+void save_default_theme(const char *theme_name);
+char * load_default_theme_name();
+
 #endif // FILEIO_H
