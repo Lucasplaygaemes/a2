@@ -14,6 +14,7 @@ Welcome to `a2`, a lightweight, fast, and configurable modal text editor inspire
 - **Macros:** Record and play back sequences of commands (`q` and `@`) to automate repetitive tasks.
 - **Advanced Search & Replace:** A powerful `:s` command to perform targeted text substitutions.
 - **Theming:** Customize the editor's appearance with simple `.theme` files. Several themes like Solarized, Monokai, and Dracula are included.
+- **Project Management:** Save and load project sessions, including open files, window layouts, and cursor positions for quick context switching.
 
 ## Installation
 
@@ -77,6 +78,13 @@ This guide details all available commands and keybindings.
 |---|---|
 | `:term [cmd]` | Open a command in a new terminal split (e.g., `:term ls -l`). |
 | `:mtw <num>` | Move the current window to the specified workspace number. |
+
+### Project Management
+| Command | Description |
+|---|---|
+| `:save-project [name]` | Saves the current session (open files, layout). Uses `session` as default name. |
+| `:load-project <name>` | Loads a named project session. |
+| `:list-projects` | Lists all saved project sessions in the `.a2` directory. |
 
 ### Language & Diagnostics (LSP)
 | Command | Description |
