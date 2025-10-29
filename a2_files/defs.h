@@ -243,6 +243,7 @@ typedef struct EditorState {
     EditorMode mode;
     char filename[256], status_msg[STATUS_MSG_LEN], command_buffer[100];
     char previous_filename[256];
+    char git_branch[256];
     char *command_history[MAX_COMMAND_HISTORY];
     int history_count, history_pos;
     CompletionMode completion_mode;

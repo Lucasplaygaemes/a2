@@ -5,6 +5,7 @@
 #include "others.h" // For trim_whitespace, editor_find_unmatched_brackets
 #include "command_execution.h" // For run_and_display_command
 #include "direct_navigation.h"
+#include "git_utils.h"
 
 #include <limits.h> // For PATH_MAX
 #include <errno.h> // For errno, ENOENT
@@ -115,13 +116,13 @@ void load_file_core(EditorState *state, const char *filename) {
     state->last_file_mod_time = get_file_mod_time(state->filename);
     editor_find_unmatched_brackets(state);
 }
-   
+
 void load_file(EditorState *state, const char *filename) {
-    // Salva o nome do arquivo anterior antes de carregar um novo
+    editor_update_git_branch(state);
+    // Save the previous filename before loading a new one
     if (strcmp(state->filename, filename) != 0) {
         strncpy(state->previous_filename, state->filename, sizeof(state->previous_filename) - 1);
     }
-
     add_to_file_history(state, filename);
 
     // Add the file's directory to the directory history
@@ -648,3 +649,4 @@ char *load_default_theme_name() {
     free(theme_name);
     return NULL;
 }
+

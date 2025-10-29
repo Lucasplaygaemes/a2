@@ -3,6 +3,7 @@
 #include "screen_ui.h" // For redrawing all windows
 #include "window_managment.h" // For redrawing all windows
 #include "cache.h"
+#include "git_utils.h"
 
 #include <limits.h> // For PATH_MAX
 #include <unistd.h> // For chdir, getcwd
@@ -153,6 +154,7 @@ void update_directory_access(EditorState *state, const char *path) {
 
 void change_directory(EditorState *state, const char *new_path) {
     if (chdir(new_path) == 0) {
+        editor_update_git_branch(state);
         update_directory_access(state, new_path);
         char cwd[1024];
         if (getcwd(cwd, sizeof(cwd)) != NULL) {
