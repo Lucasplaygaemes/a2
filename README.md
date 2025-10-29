@@ -22,6 +22,7 @@ Use the command "help" to see the man pages.
 Now you can run if not any, most of the termial apps and a terminal by it self inside a2!
 
 #Projects
+Now you can save "projects", the windows, workspaces, and files you open, all of them can be open with just a command!
 
 # Themes!
 Now a2 have themes! and they are quite easy to make, Themes will be searched in the default app folder, but, if no found, or if you want to add another folder, you can with the command :set themedir <dir>
