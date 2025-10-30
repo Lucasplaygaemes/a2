@@ -57,6 +57,23 @@ Move the current window to the specified workspace (1-9).
 .B :theme <name>
 Load and apply a theme. Themes are loaded from the `themes` directory. Use Tab to autocomplete theme names.
 
+.SH GIT COMMANDS
+.TP
+.B :gstatus
+Show the output of `git status` in a new terminal window.
+.TP
+.B :gadd <file>
+Stage a file for the next commit. Use `.` to stage all changes.
+.TP
+.B :gcommit [message]
+Run `git commit`. If a `message` is provided, it is used with the `-m` flag. Otherwise, runs interactively.
+.TP
+.B :gpush
+Run `git push` in a new terminal window.
+.TP
+.B :gpull
+Run `git pull` in a new terminal window.
+
 .SH PROJECT COMMANDS
 .TP
 .B :save-project [name]

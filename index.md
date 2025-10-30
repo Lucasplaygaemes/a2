@@ -79,6 +79,15 @@ This guide details all available commands and keybindings.
 | `:term [cmd]` | Open a command in a new terminal split (e.g., `:term ls -l`). |
 | `:mtw <num>` | Move the current window to the specified workspace number. |
 
+### Git Integration
+| Command | Description |
+|---|---|
+| `:gstatus` | Show the output of `git status` in a new terminal window. |
+| `:gadd <file>` | Stage a file. Use `.` to stage all changes. |
+| `:gcommit [msg]`| Run `git commit`. If a message is provided, uses `-m`. Otherwise, runs interactively. |
+| `:gpush` | Run `git push`. |
+| `:gpull` | Run `git pull`. |
+
 ### Project Management
 | Command | Description |
 |---|---|
