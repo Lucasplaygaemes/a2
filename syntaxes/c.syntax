@@ -5,7 +5,6 @@
 
 # Color 3 (Yellow: Keywords of C)
 # -------------------------------------------------------------
-KEYWORD:PINTO
 KEYWORD:auto
 KEYWORD:break
 KEYWORD:case
@@ -31,7 +30,6 @@ KEYWORD:typedef
 KEYWORD:union
 KEYWORD:volatile
 KEYWORD:while
-
 # Color 4 (Green): Data types and modifers
 # -------------------------------------------------------------
 TYPE:char

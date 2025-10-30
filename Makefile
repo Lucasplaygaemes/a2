@@ -53,6 +53,7 @@ install: all
 	sudo cp man/a2.1 /usr/local/share/man/man1/a2.1
 	sudo cp man/a2-commands.1 /usr/local/share/man/man1/a2-commands.1
 	sudo cp man/a2-shortcuts.1 /usr/local/share/man/man1/a2-shortcuts.1
+	sudo cp -r syntaxes/* /usr/local/share/a2/syntaxes/
 	sudo gzip -f /usr/local/share/man/man1/a2.1
 	sudo gzip -f /usr/local/share/man/man1/a2-commands.1
 	sudo gzip -f /usr/local/share/man/man1/a2-shortcuts.1
