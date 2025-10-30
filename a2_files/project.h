@@ -15,4 +15,6 @@ void project_startup_check();
 // Lists all saved project session files in the .a2 directory
 void display_project_list();
 
+char *find_project_root(const char *file_path);
+
 #endif // PROJECT_H

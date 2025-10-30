@@ -10,6 +10,8 @@
 #include <unistd.h>
 #include <string.h>
 #include <dirent.h>
+#include <libgen.h>
+#include <string.h>
 
 void project_save_session(const char *project_name) {
     char final_project_name[256];
@@ -202,4 +204,22 @@ void display_project_list() {
     display_output_screen("--- Project List ---", temp_filename);
     remove(temp_filename);
     free(temp_filename);
+}
+
+char *find_project_root(const char *file_path) {
+    char path_copy[PATH_MAX];
+    strncpy(path_copy, file_path, sizeof(path_copy) - 1);
+    path_copy[sizeof(path_copy) - 1] = '\0';
+    
+    char *current_dir = dirname(path_copy);
+    char temp_path[PATH_MAX];
+    
+    while (strcmp(current_dir, "/") != 0 && strcmp(current_dir, ".") != 0) {
+        snprintf(temp_path, sizeof(temp_path), "%s/compile_commands.json", current_dir);
+        if (access(temp_path, F_OK) == 0) {
+            return strdup(current_dir);
+        }
+        current_dir = dirname(current_dir);
+    }
+    return NULL;
 }
