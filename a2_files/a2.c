@@ -793,6 +793,23 @@ int main(int argc, char *argv[]) {
                         write(active_jw->term.pty_fd, input_buf, len);
                     }
                 }
+            } else if (active_jw->tipo == TIPOJANELA_TERMINAL && active_jw->term.pty_fd == -1) {
+                // Handle input for a "dead" terminal (process finished)
+                wint_t ch;
+                if (wget_wch(stdscr, &ch) != ERR) {
+                    if (ch == 27) { // Alt key
+                        nodelay(stdscr, TRUE);
+                        int next_ch = wgetch(stdscr);
+                        nodelay(stdscr, FALSE);
+                        if (next_ch != ERR) {
+                            handle_global_shortcut(next_ch, &should_exit);
+                        }
+                    } else if (ch == KEY_CTRL_RIGHT_BRACKET) {
+                        proxima_janela();
+                    } else if (ch == KEY_CTRL_LEFT_BRACKET) {
+                        janela_anterior();
+                    }
+                }
             }
         }
 
@@ -809,18 +826,15 @@ int main(int argc, char *argv[]) {
                         buffer[bytes_lidos] = '\0';
                         vterm_render(jw->term.vterm, buffer, bytes_lidos);
                     } else {
-                        // Terminal process finished, convert to a "dead" editor window
+                        // Process finished or error. Mark terminal as "dead" but keep content.
                         close(jw->term.pty_fd);
                         jw->term.pty_fd = -1;
-                        waitpid(jw->term.pid, NULL, 0);
+                        waitpid(jw->term.pid, NULL, 0); // Clean up the zombie process
                         jw->term.pid = -1;
-                        jw->tipo = TIPOJANELA_EDITOR; 
-                        jw->estado = calloc(1, sizeof(EditorState));
-                        if (jw->estado) {
-                            jw->estado->num_lines = 1;
-                            jw->estado->lines[0] = strdup("[Processo finalizado. Pressione Alt+X para fechar]");
-                            strcpy(jw->estado->filename, "[Terminal Output]");
-                        }
+
+                        // Append a message to the vterm buffer itself to indicate completion
+                        const char* end_msg = "\r\n\n[Processo finalizado. Pressione Alt+X para fechar]";
+                        vterm_render(jw->term.vterm, end_msg, strlen(end_msg));
                     }
                 }
                 // Process LSP output
