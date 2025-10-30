@@ -9,6 +9,7 @@
 #include "lsp_client.h"
 #include "direct_navigation.h"
 #include "explorer.h"
+#include "themes.h"
 #include <unistd.h>
 #include <sys/stat.h>
 #include <dirent.h>
@@ -583,8 +584,18 @@ void redesenhar_todas_as_janelas() {
                 explorer_redraw(jw);
             } else if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.vterm) {
                 werase(jw->win); // Clear the window before drawing to prevent artifacts
-                // Tell libvterm to redraw its content in the associated WINDOW.
-                vterm_wnd_update(jw->term.vterm, -1, 0, VTERM_WND_RENDER_ALL);
+                    vterm_wnd_update(jw->term.vterm, -1, 0, VTERM_WND_RENDER_ALL);
+                    if (ws->num_janelas > 1) {
+                        if (i == ws->janela_ativa_idx) {
+                        wattron(jw->win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
+                        box(jw->win, 0, 0);
+                        wattroff(jw->win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
+                    } else {
+                        wattron(jw->win, COLOR_PAIR(PAIR_BORDER_INACTIVE));
+                        box(jw->win, 0, 0);
+                        wattroff(jw->win, COLOR_PAIR(PAIR_BORDER_INACTIVE));
+                        }
+                   }
             }
             // Add the window to the redraw "queue"
             wnoutrefresh(jw->win);

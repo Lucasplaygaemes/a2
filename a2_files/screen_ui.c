@@ -220,7 +220,6 @@ void editor_redraw(WINDOW *win, EditorState *state) {
     getmaxyx(win, rows, cols);
 
     int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
-
     if (border_offset) {
         if (ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->estado == state) {
             wattron(win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
@@ -231,8 +230,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             box(win, 0, 0);
             wattroff(win, COLOR_PAIR(PAIR_BORDER_INACTIVE));
         }
-    }
-    
+    } 
     adjust_viewport(win, state);
 
     const char *delimiters = " \t\n\r,;()[]{}<>=+-*/%&|!^.";

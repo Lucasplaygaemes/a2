@@ -3,6 +3,7 @@
 #include "others.h"
 #include "cache.h"
 #include "fileio.h" // Para load_file()
+#include "project.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1064,19 +1065,14 @@ void lsp_send_initialize(EditorState *state) {
     json_t *publishDiagnostics = json_object();
     json_t *diagnosticProvider = json_object();
     
-    // Build capabilities object with more complete support
+    // --- Configuração de "capabilities" ---
     json_object_set_new(completionItem, "snippetSupport", json_false());
     json_object_set_new(completion, "completionItem", completionItem);
-    
     json_object_set_new(publishDiagnostics, "relatedInformation", json_false());
     json_object_set_new(textDocument, "publishDiagnostics", publishDiagnostics);
-    
-    // Add diagnostic provider support
     json_object_set_new(diagnosticProvider, "interFileDependencies", json_false());
     json_object_set_new(diagnosticProvider, "workspaceDiagnostics", json_false());
     json_object_set_new(textDocument, "diagnostic", diagnosticProvider);
-    
-    // Add more text document capabilities
     json_object_set_new(textDocument, "synchronization", json_object());
     json_object_set_new(textDocument, "completion", completion);
     json_object_set_new(textDocument, "hover", json_object());
@@ -1086,71 +1082,62 @@ void lsp_send_initialize(EditorState *state) {
     json_object_set_new(textDocument, "typeDefinition", json_object());
     json_object_set_new(textDocument, "implementation", json_object());
     json_object_set_new(textDocument, "documentSymbol", json_object());
-    
     json_object_set_new(capabilities, "workspace", workspace);
     json_object_set_new(capabilities, "textDocument", textDocument);
     
-    // Build params object
+    // --- Início da Lógica Corrigida ---
+
     json_object_set_new(params, "processId", json_integer(getpid()));
-    
-    // Get current working directory for rootUri
-    char cwd[PATH_MAX];
-    if (getcwd(cwd, sizeof(cwd)) != NULL) {
-        char *uri = lsp_get_uri_from_path(cwd);
-        json_object_set_new(params, "rootUri", json_string(uri));
-        free(uri);
+    json_object_set_new(params, "capabilities", capabilities);
+
+    char* project_root = find_project_root(state->filename);
+    char root_path_buffer[PATH_MAX]; // Buffer para o fallback
+    char* root_path_for_lsp = NULL;
+
+    if (project_root) {
+        root_path_for_lsp = project_root;
     } else {
-        json_object_set_new(params, "rootUri", json_string("file:///tmp"));
-    }
-/*
-    // Check for compile_commands.json
-    char compile_commands_path[PATH_MAX];
-    if (getcwd(cwd, sizeof(cwd)) != NULL) {
-        snprintf(compile_commands_path, sizeof(compile_commands_path), "%s/compile_commands.json", cwd);
-        
-        if (access(compile_commands_path, F_OK) == 0) {
-            json_object_set_new(params, "compilationDatabase", json_string(compile_commands_path));
-        } else {
-            json_t *args = json_array();
-            const char *default_flags[] = {"-Wall", "-Wextra", "-std=c11", NULL};
-            
-            for (int i = 0; default_flags[i] != NULL; i++) {
-                json_array_append_new(args, json_string(default_flags[i]));
-            }
-            
-            json_object_set_new(params, "compilerArgs", args);
+        // Fallback: se não encontrar, usa o diretório de trabalho atual
+        if (getcwd(root_path_buffer, sizeof(root_path_buffer)) != NULL) {
+            root_path_for_lsp = root_path_buffer;
         }
     }
-*/
+
+    if (root_path_for_lsp) {
+        char *uri = lsp_get_uri_from_path(root_path_for_lsp);
+        if (uri) {
+            json_object_set_new(params, "rootUri", json_string(uri));
+            free(uri);
+        }
+    } else {
+       json_object_set_new(params, "rootUri", json_string("file:///tmp"));
+    }
+
     json_t *initOptions = json_object();
     if (strcmp(state->lsp_client->languageId, "c") == 0 || strcmp(state->lsp_client->languageId, "cpp") == 0) {
-        if (getcwd(cwd, sizeof(cwd)) != NULL) {
-            json_object_set_new(initOptions, "compilationDatabasePath", json_string(cwd));
-            }
-        } else if (strcmp(state->lsp_client->languageId, "python") == 0) {
-            json_t *pylsp_plugins = json_object();
-            
-            json_t *ruff_plugin = json_object();
-            json_object_set_new(ruff_plugin, "enabled", json_true());
-            json_object_set_new(pylsp_plugins, "ruff", ruff_plugin);
-            
-            json_t *pycodestyle_plugin = json_object();
-            json_object_set_new(pycodestyle_plugin, "enabled", json_true());
-            json_object_set_new(pylsp_plugins, "pycodestyle", pycodestyle_plugin);
-            
-            json_t *pyflakes_plugin = json_object();
-            json_object_set_new(pyflakes_plugin, "enabled", json_true());
-            json_object_set_new(pylsp_plugins, "pyflakes", pyflakes_plugin);
-                
-            json_object_set_new(initOptions, "plugins", pylsp_plugins);
+        if (root_path_for_lsp) {
+            json_object_set_new(initOptions, "compilationDatabasePath", json_string(root_path_for_lsp));
         }
-        if (json_object_size(initOptions) > 0) {
-            json_object_set_new(params, "initializationOptions", initOptions);
-        } else {
-            json_decref(initOptions);
-     }
+    } else if (strcmp(state->lsp_client->languageId, "python") == 0) {
+        json_t *pylsp_plugins = json_object();
+        json_t *ruff_plugin = json_object();
+        json_object_set_new(ruff_plugin, "enabled", json_true());
+        json_object_set_new(pylsp_plugins, "ruff", ruff_plugin);
+        json_t *pycodestyle_plugin = json_object();
+        json_object_set_new(pycodestyle_plugin, "enabled", json_true());
+        json_object_set_new(pylsp_plugins, "pycodestyle", pycodestyle_plugin);
+        json_t *pyflakes_plugin = json_object();
+        json_object_set_new(pyflakes_plugin, "enabled", json_true());
+        json_object_set_new(pylsp_plugins, "pyflakes", pyflakes_plugin);
+        json_object_set_new(initOptions, "plugins", pylsp_plugins);
+    }
+    
+    if (json_object_size(initOptions) > 0) {
+        json_object_set_new(params, "initializationOptions", initOptions);
+    } else {
+        json_decref(initOptions);
+    }
             
-    // Create and send message
     LspMessage *msg = lsp_create_message();
     msg->id = strdup("1");
     msg->method = strdup("initialize");
@@ -1184,7 +1171,12 @@ void lsp_send_initialize(EditorState *state) {
                 bytes_written, strlen(header), content_length);
         fclose(log);
     }
-    lsp_send_message(state, json_str);
+
+    if (project_root) {
+        free(project_root);
+    }
+    
+    // lsp_send_message(state, json_str); // This call is redundant and was removed.
     free(json_str);
     lsp_free_message(msg);
 }
