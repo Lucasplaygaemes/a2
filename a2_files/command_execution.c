@@ -66,6 +66,30 @@ void process_command(EditorState *state, bool *should_exit) {
         criar_janela_terminal_generica(cmd);
     } else if (strcmp(command, "ksc") == 0) {
         display_shortcuts_screen();
+    } else if (strcmp(command, "gstatus") == 0) {
+        char *const cmd[] = {"git", "status", NULL};
+        criar_janela_terminal_generica(cmd);
+    } else if (strcmp(command, "gadd") == 0) {
+        if (strlen(args) > 0) {
+            char *const cmd[] = {"git", "add", args, NULL};
+            criar_janela_terminal_generica(cmd);
+        } else {
+            snprintf(state->status_msg, sizeof(state->status_msg), "Usage: :gadd <file_path or .>");
+        }
+    } else if (strcmp(command, "gcommit") == 0) {
+        if (strlen(args) > 0) {
+            char *const cmd[] = {"git", "commit", "-m", args, NULL};
+            criar_janela_terminal_generica(cmd);
+        } else {
+            char *const cmd[] = {"git", "commit", NULL};
+            criar_janela_terminal_generica(cmd);
+        }
+    } else if (strcmp(command, "gpush") == 0) {
+        char *const cmd[] = {"git", "push", NULL};
+        criar_janela_terminal_generica(cmd);
+    } else if (strcmp(command, "gpull") == 0) {
+        char *const cmd[] = {"git", "pull", NULL};
+        criar_janela_terminal_generica(cmd);
     } else if (strcmp(command, "theme") == 0) {
         if (strlen(args) > 0) {
             char theme_name[256];
