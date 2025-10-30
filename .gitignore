@@ -58,3 +58,4 @@ dkms.conf
 #a2 files
 .sv
 .pos
+.a2
