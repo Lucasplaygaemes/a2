@@ -17,6 +17,7 @@
 #include <locale.h>
 #include <sys/select.h>
 #include <sys/wait.h> 
+#include <pthread.h>
 
 #include "project.h"
 
@@ -171,7 +172,9 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
             }
             else if (next_ch == 't' || next_ch == 'T') display_command_palette(state);
             else if (next_ch == 'r' || next_ch == 'R') rotacionar_janelas();
-            else if (next_ch == 's' || next_ch == 'S') display_content_search(state, NULL);
+            else if (next_ch == 's' || next_ch == 'S') {
+                display_content_search(state, NULL);
+                }
             else if (next_ch == '	') {   
                 if (state->mode == VISUAL) {
                     int start_line, end_line;
@@ -677,7 +680,7 @@ int main(int argc, char *argv[]) {
         load_theme("dark.theme");
     }
     apply_theme();
-        
+    pthread_mutex_init(&global_grep_state.mutex, NULL);
     inicializar_workspaces();
 
     project_startup_check();
@@ -877,7 +880,15 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
-
+                            
+        pthread_mutex_init(&global_grep_state.mutex, NULL);
+        if (global_grep_state.results_ready) {
+            global_grep_state.results_ready = false;
+            pthread_mutex_unlock(&global_grep_state.mutex);
+            display_grep_results();
+        } else {
+            pthread_mutex_unlock(&global_grep_state.mutex);
+            }
         redesenhar_todas_as_janelas();
     }
     
@@ -890,8 +901,3 @@ int main(int argc, char *argv[]) {
     endwin(); 
     return 0;
 }
-            
-
-
-
-

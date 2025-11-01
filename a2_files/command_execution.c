@@ -196,6 +196,15 @@ void process_command(EditorState *state, bool *should_exit) {
                 display_macros_list(state);
             } else if (strcmp(command, "grep") == 0) {
                 display_content_search(state, args);
+            } else if (strcmp(command, "showgrep") == 0) {
+                pthread_mutex_lock(&global_grep_state.mutex);
+                if (global_grep_state.num_results > 0) {
+                    pthread_mutex_unlock(&global_grep_state.mutex);
+                    display_grep_results();
+                } else {
+                    pthread_mutex_unlock(&global_grep_state.mutex);
+                    snprintf(state->status_msg, sizeof(state->status_msg), "Nenhum resultado de grep para mostrar.");
+                }
             } else if (strcmp(command, "ff") == 0) {
                 display_fuzzy_finder(state);
             } else if (strcmp(command, "explorer") == 0) {
