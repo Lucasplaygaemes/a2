@@ -388,4 +388,20 @@ extern GerenciadorWorkspaces gerenciador_workspaces;
 extern char executable_dir[PATH_MAX];
 extern char* global_yank_register;
 
+#ifndef GREPSTATE_DEFINED
+#define GREPSTATE_DEFINED
+#include <pthread.h> // For pthread types
+typedef struct {
+    pthread_t thread;
+    bool is_running;
+    char search_term[100];
+    ContentSearchResult* results;
+    int num_results;
+    bool results_ready;
+    pthread_mutex_t mutex;
+} GrepState;
+#endif
+
+extern GrepState global_grep_state;
+
 #endif // DEFS_H
