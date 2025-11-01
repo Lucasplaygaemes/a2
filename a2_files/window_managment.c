@@ -1193,7 +1193,7 @@ end_palette:
 // Content Search (Grep)
 // ===================================================================
 
-static void search_in_file(const char *file_path, const char *pattern, ContentSearchResult **results, int *count, int *capacity) {
+void search_in_file(const char *file_path, const char *pattern, ContentSearchResult **results, int *count, int *capacity) {
     FILE *f = fopen(file_path, "r");
     if (!f) return;
 
@@ -1219,7 +1219,7 @@ static void search_in_file(const char *file_path, const char *pattern, ContentSe
     fclose(f);
 }
 
-static void recursive_content_search(const char *base_path, const char *pattern, ContentSearchResult **results, int *count, int *capacity) {
+void recursive_content_search(const char *base_path, const char *pattern, ContentSearchResult **results, int *count, int *capacity) {
     DIR *d = opendir(base_path);
     if (!d) return;
 
@@ -1257,6 +1257,15 @@ static void recursive_content_search(const char *base_path, const char *pattern,
 }
 
 void display_content_search(EditorState *state, const char* prefilled_term) {
+    pthread_mutex_lock(&global_grep_state.mutex);
+    
+    if (global_grep_state.is_running) {
+        snprintf(state->status_msg, sizeof(state->status_msg), "Grep is already running in the background");
+        pthread_mutex_unlock(&global_grep_state.mutex);
+        return;
+    }
+    pthread_mutex_unlock(&global_grep_state.mutex);
+
     char search_term[100] = {0};
 
     if (prefilled_term && prefilled_term[0] != '\0') {
@@ -1280,7 +1289,23 @@ void display_content_search(EditorState *state, const char* prefilled_term) {
     }
 
     if (strlen(search_term) == 0) return;
-
+    
+    pthread_mutex_lock(&global_grep_state.mutex);
+    global_grep_state.is_running = true;
+    global_grep_state.results_ready = false;
+    strncpy(global_grep_state.search_term, search_term, sizeof(global_grep_state.search_term) - 1);
+    pthread_mutex_unlock(&global_grep_state.mutex);
+    
+    if (pthread_create(&global_grep_state.thread, NULL, background_grep_worker, NULL) != 0) {
+        snprintf(state->status_msg, sizeof(state->status_msg), " Error creating the thread of grep.");
+        global_grep_state.is_running = false;
+    } else {
+        pthread_detach(global_grep_state.thread);
+        snprintf(state->status_msg, sizeof(state->status_msg), "Searching for '%s' in the background.", search_term);
+    }
+        
+}
+/*
     ContentSearchResult *results = NULL;
     int num_results = 0;
     int capacity = 0;
@@ -1361,7 +1386,7 @@ end_grep:
     touchwin(stdscr);
     redesenhar_todas_as_janelas();
 }
-
+*/
 
 typedef struct {
     char* path;
@@ -1414,45 +1439,38 @@ static void find_all_project_files_recursive(const char *base_path, FileResult *
     closedir(d);
 }
 
-void display_fuzzy_finder(EditorState *state) {
+void *display_fuzzy_finder(EditorState *state) {
     FileResult *all_files = NULL;
     int num_all_files = 0;
     int capacity = 0;
     char cwd[PATH_MAX];
     if (getcwd(cwd, sizeof(cwd)) == NULL) {
         snprintf(state->status_msg, sizeof(state->status_msg), "Error getting current directory.");
-        return;
+        return NULL;
     }
     find_all_project_files_recursive(cwd, &all_files, &num_all_files, &capacity);
-
     if (num_all_files == 0) {
         snprintf(state->status_msg, sizeof(state->status_msg), "No files found.");
         free(all_files);
-        return;
+        return NULL;
     }
-
     WINDOW *finder_win;
     int rows, cols;
     getmaxyx(stdscr, rows, cols);
-
     int win_h = min(20, rows - 4);
     int win_w = cols / 2;
     if (win_w < 80) win_w = min(cols - 4, 80);
     int win_y = (rows - win_h) / 2;
     int win_x = (cols - win_w) / 2;
-
     finder_win = newwin(win_h, win_w, win_y, win_x);
     keypad(finder_win, TRUE);
     wbkgd(finder_win, COLOR_PAIR(9));
-
     int current_selection = 0;
     int top_of_list = 0;
     char search_term[100] = {0};
     int search_pos = 0;
-
     FileResult *filtered_results = malloc(sizeof(FileResult) * num_all_files);
     int num_filtered = 0;
-
     while (1) {
         // Filter results based on search_term
         num_filtered = 0;
@@ -1467,7 +1485,6 @@ void display_fuzzy_finder(EditorState *state) {
                 filtered_results[num_filtered++].path = all_files[i].path;
             }
         }
-
         if (current_selection >= num_filtered) {
             current_selection = num_filtered > 0 ? num_filtered - 1 : 0;
         }
@@ -1475,17 +1492,13 @@ void display_fuzzy_finder(EditorState *state) {
         if (win_h > 3 && top_of_list < current_selection - (win_h - 3)) {
             top_of_list = current_selection - (win_h - 3);
         }
-
         werase(finder_win);
         box(finder_win, 0, 0);
         mvwprintw(finder_win, 0, (win_w - 14) / 2, " Fuzzy Finder ");
-
         for (int i = 0; i < win_h - 2; i++) {
             int item_idx = top_of_list + i;
             if (item_idx >= num_filtered) break;
-
             if (item_idx == current_selection) wattron(finder_win, A_REVERSE);
-
             char *path_to_show = filtered_results[item_idx].path;
             char display_name[win_w - 4];
             
@@ -1496,9 +1509,7 @@ void display_fuzzy_finder(EditorState *state) {
                 strncpy(display_name, path_to_show, sizeof(display_name) - 1);
             }
             display_name[sizeof(display_name)-1] = '\0';
-
             mvwprintw(finder_win, i + 1, 2, "%.*s", win_w - 3, display_name);
-
             if (item_idx == current_selection) wattroff(finder_win, A_REVERSE);
         }
         
@@ -1508,7 +1519,6 @@ void display_fuzzy_finder(EditorState *state) {
         wmove(finder_win, win_h - 1, search_pos + 3);
         curs_set(1);
         wrefresh(finder_win);
-
         int ch = wgetch(finder_win);
         switch(ch) {
             case KEY_UP: case KEY_CTRL_P:
@@ -1552,7 +1562,6 @@ void display_fuzzy_finder(EditorState *state) {
                 break;
         }
     }
-
 end_finder:
     for (int i = 0; i < num_all_files; i++) free(all_files[i].path);
     free(all_files);
