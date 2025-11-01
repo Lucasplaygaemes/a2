@@ -22,7 +22,7 @@ Use the command "help" to see the man pages.
 Now you can run if not any, most of the termial apps and a terminal by it self inside a2!
 Content search (:grep) now runs in the background, so you can keep working while it searches.
 
-#Projects
+# Projects
 Now you can save "projects", the windows, workspaces, and files you open, all of them can be open with just a command!
 More explanation are in the Documentation!
 
