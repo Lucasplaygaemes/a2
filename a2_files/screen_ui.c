@@ -549,16 +549,16 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             if (available_space > 5 && state->status_msg[0] != '\0') {
                 mvwprintw(win, rows - 1, left_len + 2, "| %.*s", available_space - 2, state->status_msg);
             }
-                                        } else { // Estilo clássico (antigo)
-                                            char final_bar[cols + 1];
-                                            // Estilo 0 simplificado para ser visualmente distinto
-                                            snprintf(final_bar, sizeof(final_bar), "%s%s -- Line %d/%d, Col %d",
-                                                display_filename, state->buffer_modified ? "*" : "",
-                                                state->current_line + 1, state->num_lines, visual_col + 1);
-                                
-                                            int print_width = cols > 2 ? cols - 2 : 0;
-                                            mvwprintw(win, rows - 1, 1, "%.*s", print_width, final_bar);
-                                        }    }
+            } else { // Estilo clássico (antigo)
+                char final_bar[cols + 1];
+                // Estilo 0 simplificado para ser visualmente distinto
+                snprintf(final_bar, sizeof(final_bar), "%s%s -- Line %d/%d, Col %d",
+                    display_filename, state->buffer_modified ? "*" : "",
+                    state->current_line + 1, state->num_lines, visual_col + 1);
+    
+                int print_width = cols > 2 ? cols - 2 : 0;
+                mvwprintw(win, rows - 1, 1, "%.*s", print_width, final_bar);
+            }    }
     wattroff(win, COLOR_PAIR(color_pair));
 
     wnoutrefresh(win);
