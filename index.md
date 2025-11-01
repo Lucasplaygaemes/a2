@@ -72,6 +72,8 @@ This guide details all available commands and keybindings.
 | `:s/find/repl/` | Replace the next occurrence of `find` with `repl`. |
 | `:s/find/repl/N` | Replace the next `N` occurrences. |
 | `:s/find/repl/lN`| Replace all occurrences on line `N`. |
+| `:grep <term>` | Search for `term` across all files in the project (runs in the background). |
+| `:showgrep` | Show the results of the last grep search. |
 
 ### Window & Workspace Management
 | Command | Description |
