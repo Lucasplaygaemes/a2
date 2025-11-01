@@ -4,12 +4,16 @@
 #include "lsp_client.h" // For lsp_did_change
 #include "screen_ui.h" // For editor_redraw, redrawing all windows, get_visual_pos, get_visual_col
 #include "fileio.h" // For load_last_line, save_last_line
-#include "window_managment.h" // For manager
+#include "window_managment.h"
 #include "command_execution.h"
+#include <pthread.h>
+#include <unistd.h>
 #include <ctype.h>
 #include <ctype.h>
 #include <dirent.h>
 #include <wctype.h>
+#include <pthread.h>
+#include "screen_ui.h"
 
 const char *editor_commands[] = {
     "q", "q!", "w", "wq", "help", "gcc", "rc", "rc!", "open", "new", "timer", "diff", "set",
@@ -1628,4 +1632,119 @@ void editor_start_theme_completion(EditorState *state) {
     }
 }
 
+void *background_grep_worker(void *arg) {
+    (void)arg;
+    
+    ContentSearchResult *local_results = NULL;
+    int num_local_results = 0;
+    int local_capacity = 0;
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        pthread_mutex_lock(&global_grep_state.mutex);
+        global_grep_state.is_running = false;
+        pthread_mutex_unlock(&global_grep_state.mutex);
+        return NULL;
+   }
+   recursive_content_search(cwd, global_grep_state.search_term, &local_results, &num_local_results, &local_capacity);
+   
+   //lock the global state to update it with the results
+   pthread_mutex_lock(&global_grep_state.mutex);
+   
+   // unlock the results of the last search, if it has.
+   if (global_grep_state.results) {
+       for (int i = 0; i < global_grep_state.num_results; i++) {
+           free(global_grep_state.results[i].file_path);
+           free(global_grep_state.results[i].line_content);
+       }
+       free(global_grep_state.results);
+   }
+   //copy the local results to the global state
+   global_grep_state.results = local_results;
+   global_grep_state.num_results = num_local_results;
+   global_grep_state.results_ready = true;
+   //the last line flags the main thread
+   global_grep_state.is_running = false;
+   
+   pthread_mutex_unlock(&global_grep_state.mutex);
+   
+   return NULL;
 
+}
+
+void display_grep_results() {
+    EditorState *state = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->estado;
+    if (global_grep_state.num_results == 0) {
+        snprintf(state->status_msg, sizeof(state->status_msg), "Nenhum resultado para '%s'", global_grep_state.search_term);
+        return;
+    }
+
+    WINDOW *results_win;
+    int rows, cols; getmaxyx(stdscr, rows, cols);
+    int win_h = min(25, rows - 4); int win_w = cols - 10;
+    int win_y = (rows - win_h) / 2; int win_x = (cols - win_w) / 2;
+    results_win = newwin(win_h, win_w, win_y, win_x);
+    keypad(results_win, TRUE);
+    wbkgd(results_win, COLOR_PAIR(9));
+
+    int current_selection = 0;
+    int top_of_list = 0;
+
+    while (1) {
+        werase(results_win);
+        box(results_win, 0, 0);
+        mvwprintw(results_win, 0, 2, " Resultados para '%s' (%d) ", global_grep_state.search_term, global_grep_state.num_results);
+
+        int y_pos = 1;
+        for (int i = 0; y_pos < win_h - 1; i++) {
+            int item_idx = top_of_list + i;
+            if (item_idx >= global_grep_state.num_results) break;
+            
+            if (item_idx == current_selection) wattron(results_win, A_REVERSE);
+
+            char display_path[win_w - 4];
+            snprintf(display_path, sizeof(display_path), "%s:%d", global_grep_state.results[item_idx].file_path, global_grep_state.results[item_idx].line_number);
+            mvwprintw(results_win, y_pos++, 2, "%.*s", win_w - 3, display_path);
+            
+            if (y_pos < win_h - 1) {
+                mvwprintw(results_win, y_pos++, 6, "%.*s", win_w - 7, global_grep_state.results[item_idx].line_content);
+            }
+
+            if (item_idx == current_selection) wattroff(results_win, A_REVERSE);
+        }
+        wrefresh(results_win);
+
+        int ch = wgetch(results_win);
+        switch(ch) {
+            case KEY_UP: case 'k': 
+                if (current_selection > 0) current_selection--; 
+                break;
+            case KEY_DOWN: case 'j': 
+                if (current_selection < global_grep_state.num_results - 1) current_selection++; 
+                break;
+            case KEY_ENTER: case '\n':
+                if (global_grep_state.num_results > 0) {
+                    ContentSearchResult selected = global_grep_state.results[current_selection];
+                    load_file(state, selected.file_path);
+                    state->current_line = selected.line_number - 1;
+                    state->ideal_col = 0;
+                    adjust_viewport(ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->win, state);
+                }
+                goto end_grep_display;
+            case 27: case 'q': 
+                goto end_grep_display;
+        }
+        int visible_items = (win_h - 2) / 2; // -2 for borders, /2 for double lines
+        if (visible_items <= 0) visible_items = 1;
+
+        if (current_selection < top_of_list) {
+            top_of_list = current_selection;
+        } else if (current_selection >= top_of_list + visible_items) {
+            top_of_list = current_selection - visible_items + 1;
+        }
+    }
+
+end_grep_display:
+    delwin(results_win);
+    touchwin(stdscr);
+    redesenhar_todas_as_janelas();
+}

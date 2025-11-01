@@ -69,5 +69,8 @@ extern const int num_editor_commands;
 
 void editor_do_replace(EditorState *state, const char *find, const char *replace, const char *flags);
 
+void* background_grep_worker(void* arg);
+
+void display_grep_results();
 
 #endif // OTHERS_H
