@@ -138,9 +138,10 @@ This guide details all available commands and keybindings.
 ### Global
 | Shortcut | Description |
 |---|---|
-| `Alt+F` | Open the **Fuzzy Finder**. |
-| `Alt+B` | Open the recent files navigator. |
 | `Alt+T` | Open the Command Palette. |
+| `Alt+F` / `Alt+D, E` | Open the **Fuzzy Finder**. |
+| `Alt+D, D` | Open GDB in a new workspace to debug an executable. |
+| `Alt+B` | Open the recent files navigator. |
 | `Alt+X` | Close the active window. |
 | `Alt+Enter` | Create a new empty window. |
 | `Ctrl+]` / `Ctrl+[` | Navigate to the next/previous window (split). |
