@@ -23,7 +23,6 @@
 
 void criar_novo_workspace_vazio();
 
-
 const int ansi_to_ncurses_map[16] = {
     COLOR_BLACK, COLOR_RED, COLOR_GREEN, COLOR_YELLOW,
     COLOR_BLUE, COLOR_MAGENTA, COLOR_CYAN, COLOR_WHITE,
@@ -135,94 +134,125 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         }
     }
         
-    if (ch == 27 || ch == 31) { // ESC
+    if (ch == 27 || ch == 31) { // ESC or Alt
         nodelay(active_win, TRUE);
-        int next_ch = wgetch(active_win);
+        wint_t next_ch;
+        int get_result = wget_wch(active_win, &next_ch);
         nodelay(active_win, FALSE);
 
-        if (next_ch == ERR) { // Just ESC
-             if (state->mode == INSERT || state->mode == VISUAL) {
+        if (get_result == ERR) { // Just a single ESC press
+            // Cancel any pending multi-key sequence
+            if (state->pending_sequence_key != 0) {
+                state->pending_sequence_key = 0;
+                state->status_msg[0] = '\0'; // Clear status message
+            } else if (state->mode == INSERT || state->mode == VISUAL) {
                 state->mode = NORMAL;
             }
-             if (state->is_moving) {
-                 state->is_moving = false;
-                 free(state->move_register);
-                 state->move_register = NULL;
-                 snprintf(state->status_msg, sizeof(state->status_msg), "Move cancelled.");
-             }
-        } else { // Alt sequence
-            if (next_ch == 'n') ciclar_workspaces(-1);
-            else if (next_ch == 'm') ciclar_workspaces(1);
-            else if (next_ch == '\n' || next_ch == KEY_ENTER) criar_nova_janela(NULL);
-            else if (next_ch == 'x' || next_ch == 'X') fechar_janela_ativa(should_exit);
-            else if (next_ch == 'c' || next_ch == 'C') editor_toggle_comment(state);
-            else if (next_ch == 'b' || next_ch == 'B') display_recent_files();
-            else if (next_ch == 'd' || next_ch == 'D') prompt_and_create_gdb_workspace();
-            else if (next_ch == 'h' || next_ch == 'H') gf2_starter();
-            else if (next_ch == 'f' || next_ch == 'F') display_fuzzy_finder(state);
-            else if (next_ch == 'w') editor_move_to_next_word(state);
-            else if (next_ch == 'b' || next_ch == 'q') editor_move_to_previous_word(state);
-            else if (next_ch == 'g' || next_ch == 'G') prompt_for_directory_change(state);
-            else if (next_ch == '.' || next_ch == '>') ciclar_layout();
-            else if (next_ch >= '1' && next_ch <= '9') mover_janela_para_workspace(next_ch - '1');
-            else if (strchr("!@#$%^&*(", next_ch)) {
-                const char* symbols = "!@#$%^&*(";
-                char* p = strchr(symbols, next_ch);
-                if (p) mover_janela_para_posicao(p - symbols);
+
+            if (state->is_moving) {
+                state->is_moving = false;
+                free(state->move_register);
+                state->move_register = NULL;
+                snprintf(state->status_msg, sizeof(state->status_msg), "Move cancelled.");
             }
-            else if (next_ch == 't' || next_ch == 'T') display_command_palette(state);
-            else if (next_ch == 'r' || next_ch == 'R') rotacionar_janelas();
-            else if (next_ch == 's' || next_ch == 'S') {
-                display_content_search(state, NULL);
-                }
-            else if (next_ch == '	') {   
-                if (state->mode == VISUAL) {
-                    int start_line, end_line;
-                    if (state->selection_start_line < state->current_line) {
-                        start_line = state->selection_start_line;
-                        end_line = state->current_line;
+        } else { // Alt sequence or a sequence key
+            if (state->pending_sequence_key != 0) {
+                wint_t first_key = state->pending_sequence_key;
+                state->pending_sequence_key = 0; // Reset for the next sequence
+
+                if (first_key == 'd') {
+                    if (next_ch == 'd') {
+                        // ACTION for Alt+d, d
+                        prompt_and_create_gdb_workspace();
+                    } else if (next_ch == 'e') {
+                        // ACTION for Alt+d, e
+                        display_fuzzy_finder(state);
                     } else {
-                        start_line = state->current_line;
-                        end_line = state->selection_start_line;
+                        snprintf(state->status_msg, sizeof(state->status_msg), "Unknown sequence: Alt+d, %lc", next_ch);
                     }
-                    for (int i = start_line; i <= end_line; i++) {
-                        editor_ident_line(state, i);
+                }
+                // You can add more sequences here, e.g., else if (first_key == 'g') { ... }
+
+            } else { // This is the first key of a potential sequence or a single Alt shortcut
+                // --- Check for keys that START a sequence ---
+                if (next_ch == 'd' || next_ch == 'D') {
+                    state->pending_sequence_key = 'd'; // Use lowercase for consistency
+                    snprintf(state->status_msg, sizeof(state->status_msg), "(Alt+d)...");
+                }
+                // --- Handle all other single Alt shortcuts ---
+                else if (next_ch == 'n') ciclar_workspaces(-1);
+                else if (next_ch == 'm') ciclar_workspaces(1);
+                else if (next_ch == '\n' || next_ch == KEY_ENTER) criar_nova_janela(NULL);
+                else if (next_ch == 'x' || next_ch == 'X') fechar_janela_ativa(should_exit);
+                else if (next_ch == 'c' || next_ch == 'C') editor_toggle_comment(state);
+                else if (next_ch == 'b' || next_ch == 'B') display_recent_files();
+                // The old 'd' logic is now handled above as a sequence starter
+                else if (next_ch == 'h' || next_ch == 'H') gf2_starter();
+                else if (next_ch == 'f' || next_ch == 'F') display_fuzzy_finder(state);
+                else if (next_ch == 'w') editor_move_to_next_word(state);
+                else if (next_ch == 'b' || next_ch == 'q') editor_move_to_previous_word(state);
+                else if (next_ch == 'g' || next_ch == 'G') prompt_for_directory_change(state);
+                else if (next_ch == '.' || next_ch == '>') ciclar_layout();
+                else if (next_ch >= '1' && next_ch <= '9') mover_janela_para_workspace(next_ch - '1');
+                else if (strchr("!@#$%^&*(", next_ch)) {
+                    const char* symbols = "!@#$%^&*(";
+                    char* p = strchr(symbols, next_ch);
+                    if (p) mover_janela_para_posicao(p - symbols);
+                }
+                else if (next_ch == 't' || next_ch == 'T') display_command_palette(state);
+                else if (next_ch == 'r' || next_ch == 'R') rotacionar_janelas();
+                else if (next_ch == 's' || next_ch == 'S') {
+                    display_content_search(state, NULL);
+                }
+                else if (next_ch == '	') { // Tab
+                    if (state->mode == VISUAL) {
+                        int start_line, end_line;
+                        if (state->selection_start_line < state->current_line) {
+                            start_line = state->selection_start_line;
+                            end_line = state->current_line;
+                        } else {
+                            start_line = state->current_line;
+                            end_line = state->selection_start_line;
+                        }
+                        for (int i = start_line; i <= end_line; i++) {
+                            editor_ident_line(state, i);
+                        }
+                    } else {
+                       editor_ident_line(state, state->current_line);
                     }
-                } else {
-                   editor_ident_line(state, state->current_line);
+                    flushinp(); // Discard any pending typeahead to prevent key repeat issues
                 }
-                flushinp(); // Discard any pending typeahead to prevent key repeat issues
-            }
-            else if (next_ch == 'y' || next_ch == 'Y') { // Changed from 'o' to 'y' for system clipboard copy
-                if (state->mode == VISUAL && state->visual_selection_mode != VISUAL_MODE_NONE) copy_selection_to_clipboard(state);
-            }
-            else if (next_ch == 'u' || next_ch == 'U') {
-                state->current_col = 0;
-                state->ideal_col = 0;
-                editor_handle_enter(state);
-                state->current_line--;
-                editor_global_paste(state);
-                state->mode = INSERT;
-            }
-            // Removed Alt+k for global paste. Use 'P' in NORMAL mode instead.
-            else if (next_ch == 'j' || next_ch == 'J') {
-                state->current_col = strlen(state->lines[state->current_line]);
-                editor_handle_enter(state);
-                editor_global_paste(state);
-            }
-            else if (next_ch == 'p' || next_ch == 'P') {
-                if (state->mode == NORMAL || state->mode == INSERT) paste_from_clipboard(state);
-                else if (state->mode == VISUAL && state->visual_selection_mode != VISUAL_MODE_NONE) {
-                    editor_delete_selection(state);
-                    paste_from_clipboard(state);
+                else if (next_ch == 'y' || next_ch == 'Y') { // Changed from 'o' to 'y' for system clipboard copy
+                    if (state->mode == VISUAL && state->visual_selection_mode != VISUAL_MODE_NONE) copy_selection_to_clipboard(state);
                 }
-            }
-            else if (next_ch == 'v' || next_ch == 'V') { // Global Paste
-                if (state->mode == VISUAL && state->visual_selection_mode != VISUAL_MODE_NONE) {
-                    editor_delete_selection(state);
+                else if (next_ch == 'u' || next_ch == 'U') {
+                    state->current_col = 0;
+                    state->ideal_col = 0;
+                    editor_handle_enter(state);
+                    state->current_line--;
                     editor_global_paste(state);
-                } else { // NORMAL or INSERT
+                    state->mode = INSERT;
+                }
+                // Removed Alt+k for global paste. Use 'P' in NORMAL mode instead.
+                else if (next_ch == 'j' || next_ch == 'J') {
+                    state->current_col = strlen(state->lines[state->current_line]);
+                    editor_handle_enter(state);
                     editor_global_paste(state);
+                }
+                else if (next_ch == 'p' || next_ch == 'P') {
+                    if (state->mode == NORMAL || state->mode == INSERT) paste_from_clipboard(state);
+                    else if (state->mode == VISUAL && state->visual_selection_mode != VISUAL_MODE_NONE) {
+                        editor_delete_selection(state);
+                        paste_from_clipboard(state);
+                    }
+                }
+                else if (next_ch == 'v' || next_ch == 'V') { // Global Paste
+                    if (state->mode == VISUAL && state->visual_selection_mode != VISUAL_MODE_NONE) {
+                        editor_delete_selection(state);
+                        editor_global_paste(state);
+                    } else { // NORMAL or INSERT
+                        editor_global_paste(state);
+                    }
                 }
             }
         }
@@ -327,7 +357,6 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                                 state->current_col = 0;
                                 state->ideal_col = 0;
                                 break;
-
                             case 'v': state->mode = NORMAL; break;
                             case 'i': state->mode = INSERT; break;
                             case ':': state->mode = COMMAND; state->history_pos = state->history_count; state->command_buffer[0] = '\0'; state->command_pos = 0; break;

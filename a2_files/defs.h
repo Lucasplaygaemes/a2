@@ -290,6 +290,7 @@ typedef struct EditorState {
     bool single_command_mode;    
     
     int status_bar_mode;
+    wint_t pending_sequence_key;
 } EditorState;
 #endif
 
