@@ -1,0 +1,118 @@
+.TH A2-SHORTCUTS 1 "October 2025" "a2 Manual"
+
+.SH NAME
+a2-shortcuts \- Keyboard shortcuts for the a2 editor
+
+.SH DESCRIPTION
+This page provides a list of keyboard shortcuts for use in `a2`.
+
+.SH GLOBAL & WORKSPACE/WINDOW MANAGEMENT
+.TP
+.B Alt+t
+Open the Command Palette.
+.TP
+.B Ctrl+] / Ctrl+[
+Navigate to the next/previous window (split).
+.TP
+.B Alt+N / Alt+M
+Navigate to the next/previous workspace.
+.TP
+.B Alt+X
+Close the active window.
+.TP
+.B Ctrl+W
+Create a new workspace.
+.TP
+.B Alt+Enter
+Create a new split window.
+.TP
+.B Alt+.
+Cycle through available window layouts.
+.TP
+.B Alt+R
+Rotate windows within the current layout.
+.TP
+.B Alt+[1-9]
+Move the active window to the specified workspace.
+.TP
+.B Alt+D
+Open GDB in a new workspace.
+
+.SH NORMAL MODE
+.TP
+.B i
+Enter .B Insert Mode.
+.TP
+.B v
+Enter .B Visual Mode.
+.TP
+.B :
+Enter .B Command Mode.
+.TP
+.B yy
+Yank (copy) the current line.
+.TP
+.B p / P
+Paste from the local/global register.
+.TP
+.B u / U
+Create a new line above/below and enter Insert Mode.
+.TP
+.B q[a-z]
+Start or stop recording a macro into the specified register.
+.TP
+.B @[a-z]
+Playback a macro from the specified register.
+.TP
+.B Alt+c
+Toggle comment on the current line or visual selection.
+
+.SH INSERT MODE
+.TP
+.B Esc
+Return to .B Normal Mode.
+.TP
+.B Tab
+Context-aware: Indents if at start of line, otherwise triggers LSP completion.
+
+.SH VISUAL MODE
+.TP
+.B s
+Start or end a character-wise selection.
+.TP
+.B y
+Yank (copy) the selection to the window's local register.
+.TP
+.B m
+Cut the selection to the special "move" register.
+.TP
+.B Alt+Y
+Copy the selection to the system clipboard.
+
+.SH EXPLORER MODE
+.TP
+.B j,k / Arrow Keys
+Navigate up and down the file list.
+.TP
+.B Enter
+Open a file or enter a directory.
+.TP
+.B c
+Copy the selected file/directory.
+.TP
+.B x
+Cut the selected file/directory.
+.TP
+.B v
+Paste the copied/cut file/directory.
+.TP
+.B d
+Delete the selected file/directory (with confirmation).
+.TP
+.B q
+Close the explorer window.
+
+.SH SEE ALSO
+.B a2(1)
+, 
+.B a2-commands(1)
