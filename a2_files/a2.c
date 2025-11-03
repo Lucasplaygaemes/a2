@@ -170,14 +170,29 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     } else {
                         snprintf(state->status_msg, sizeof(state->status_msg), "Unknown sequence: Alt+d, %lc", next_ch);
                     }
-                }
+                } else if (first_key == 'g') {
+                    if (next_ch == 'a') {
+                        char *const cmd[] = {"git", "add", "-u", NULL};
+                        criar_janela_terminal_generica(cmd);
+                    } else if (next_ch == 's') {
+                        char *const cmd[] = {"git", "status", NULL};
+                        criar_janela_terminal_generica(cmd);
+                    } else if (next_ch == 'g') {
+                        prompt_for_directory_change(state);
+                    } else {
+                        snprintf(state->status_msg, sizeof(state->status_msg), "Unknown sequence: Alt+z, %lc", next_ch);
+                    }       
+                    }
                 // You can add more sequences here, e.g., else if (first_key == 'g') { ... }
 
             } else { // This is the first key of a potential sequence or a single Alt shortcut
                 // --- Check for keys that START a sequence ---
-                if (next_ch == 'd' || next_ch == 'D') {
+                if (next_ch == 'd') {
                     state->pending_sequence_key = 'd'; // Use lowercase for consistency
                     snprintf(state->status_msg, sizeof(state->status_msg), "(Alt+d)...");
+                } else if (next_ch == 'g') {
+                    state->pending_sequence_key = 'g';
+                    snprintf(state->status_msg, sizeof(state->status_msg), "(Alt+g)...");
                 }
                 // --- Handle all other single Alt shortcuts ---
                 else if (next_ch == 'n') ciclar_workspaces(-1);
@@ -191,7 +206,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 else if (next_ch == 'f' || next_ch == 'F') display_fuzzy_finder(state);
                 else if (next_ch == 'w') editor_move_to_next_word(state);
                 else if (next_ch == 'b' || next_ch == 'q') editor_move_to_previous_word(state);
-                else if (next_ch == 'g' || next_ch == 'G') prompt_for_directory_change(state);
+                // else if (next_ch == 'g' || next_ch == 'G') prompt_for_directory_change(state);
                 else if (next_ch == '.' || next_ch == '>') ciclar_layout();
                 else if (next_ch >= '1' && next_ch <= '9') mover_janela_para_workspace(next_ch - '1');
                 else if (strchr("!@#$%^&*(", next_ch)) {
