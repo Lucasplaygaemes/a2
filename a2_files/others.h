@@ -61,6 +61,7 @@ void handle_command_mode_key(EditorState *state, wint_t ch, bool *should_exit);
 void editor_toggle_comment(EditorState *state);
 void editor_do_replace(EditorState *state, const char *find, const char *replace, const char *flags);
 
+char *analyze_include_and_generate_flags(EditorState *state);
 
 
 extern const char *editor_commands[];
@@ -71,6 +72,7 @@ void editor_do_replace(EditorState *state, const char *find, const char *replace
 
 void* background_grep_worker(void* arg);
 
+void make_make_file(EditorState *state, const char *args);
 void display_grep_results();
 
 #endif // OTHERS_H

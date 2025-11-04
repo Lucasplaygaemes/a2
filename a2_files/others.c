@@ -14,6 +14,7 @@
 #include <wctype.h>
 #include <pthread.h>
 #include "screen_ui.h"
+#include <errno.h>
 
 const char *editor_commands[] = {
     "q", "q!", "w", "wq", "help", "gcc", "rc", "rc!", "open", "new", "timer", "diff", "set",
@@ -28,6 +29,73 @@ typedef struct {
     const char **symbols;
     int count;
 } KnownHeader;
+
+typedef struct {
+    const char *header;
+    const char *flag;
+} HeaderFlagMap;
+
+static const HeaderFlagMap header_flags[] = {
+    {"aio.h", "-lrt"},
+    {"alsa/asoundlib.h", "-lasound"},
+    {"archive.h", "-larchive"},
+    {"bluetooth/bluetooth.h", "-lbluetooth"},
+    {"bzlib.h", "-lbz2"},
+    {"cairo.h", "-lcairo"},
+    {"curses.h", "-lncursesw"},
+    {"crypt.h", "-lcrypt"},
+    {"curl/curl.h", "-lcurl"},
+    {"dlfcn.h", "-ldl"},
+    {"execinfo.h", "-lexecinfo"},
+    {"fontconfig/fontconfig.h", "-lfontconfig"},
+    {"freetype2/ft2build.h", "-lfreetype"},
+    {"gdbm.h", "-lgdbm"},
+    {"gd.h", "-lgd"},
+    {"gmp.h", "-lgmp"},
+    {"gnutls/gnutls.h", "-lgnutls"},
+    {"history.h", "-lreadline"},
+    {"id3tag.h", "-lid3tag"},
+    {"jpeglib.h", "-ljpeg"},
+    {"json-c/json.h", "-ljson-c"},
+    {"lcms2.h", "-llcms2"},
+    {"lzma.h", "-llzma"},
+    {"lzo/lzo1x.h", "-llzo2"},
+    {"mariadb/mysql.h", "-lmariadb"},
+    {"math.h", "-lm"},
+    {"mpfr.h", "-lmpfr"},
+    {"ncurses.h", "-lncursesw"},
+    {"netdb.h", "-lnsl"},
+    {"netinet/in.h", ""},
+    {"notify.h", "-lnotify"},
+    {"odbcss.h", "-lodbc"},
+    {"openal/al.h", "-lopenal"},
+    {"openssl/ssl.h", "-lssl -lcrypto"},
+    {"panel.h", "-lpanel"},
+    {"pcap.h", "-lpcap"},
+    {"pcre.h", "-lpcre"},
+    {"png.h", "-lpng"},
+    {"postgresql/libpq-fe.h", "-lpq"},
+    {"pulse/pulseaudio.h", "-lpulse"},
+    {"pthread.h", "-lpthread"},
+    {"readline/readline.h", "-lreadline"},
+    {"sasl/sasl.h", "-lsasl2"},
+    {"sdl2/SDL.h", "-lSDL2"},
+    {"sqlite3.h", "-lsqlite3"},
+    {"tiff.h", "-ltiff"},
+    {"tirpc/rpc/rpc.h", "-ltirpc"},
+    {"udev.h", "-ludev"},
+    {"usb.h", "-lusb"},
+    {"uuid/uuid.h", "-luuid"},
+    {"vorbis/codec.h", "-lvorbis"},
+    {"X11/Xlib.h", "-lX11"},
+    {"xml2/libxml2.h", "-lxml2"},
+    {"xslt/xsltutils.h", "-lxslt"},
+    {"yaml.h", "-lyaml"},
+    {"zlib.h", "-lz"},
+    {"zstd.h", "-lzstd"}
+};
+
+static const int num_header_flags = sizeof(header_flags) / sizeof(header_flags[0]);
 
 const KnownHeader known_headers[] = {};
 const int num_known_headers = 0;
@@ -1747,4 +1815,117 @@ end_grep_display:
     delwin(results_win);
     touchwin(stdscr);
     redesenhar_todas_as_janelas();
+}
+
+static bool flag_existe(const char* flags_str, const char* flag) {
+    char temp_flags[1024];
+    snprintf(temp_flags, sizeof(temp_flags), " %s ", flags_str);
+    char temp_flag[100];
+    snprintf(temp_flag, sizeof(temp_flag), " %s ", flag);
+    return strstr(temp_flags, temp_flag) != NULL;
+}
+
+char* analisar_includes_e_gerar_flags(EditorState *state) {
+    size_t buffer_size = 1024;
+    char* flags = malloc(buffer_size);
+    if (!flags) {
+        return NULL;
+    }
+    flags[0] = '\0';
+    size_t offset = 0;
+
+    for (int i = 0; i < state->num_lines; i++) {
+        char* linha = state->lines[i];
+        if (!linha) continue;
+        
+        char* trimmed_line = trim_whitespace(linha);
+        if (strncmp(trimmed_line, "#include", 8) == 0) {
+            char* inicio = NULL;
+            char* fim = NULL;
+            
+            char *open_bracket = strchr(trimmed_line, '<');
+            if (open_bracket) {
+                char *close_bracket = strchr(open_bracket, '>');
+                if (close_bracket) {
+                    inicio = open_bracket;
+                    fim = close_bracket;
+                }
+            }
+            
+            if (!inicio) {
+                open_bracket = strchr(trimmed_line, '"');
+                if (open_bracket) {
+                    char *close_bracket = strchr(open_bracket + 1, '"');
+                    if (close_bracket) {
+                        inicio = open_bracket;
+                        fim = close_bracket;
+                    }
+                }
+            }
+            
+            if (inicio && fim && fim > inicio) {
+                int tamanho = fim - inicio - 1;
+                char nome_lib[256];
+                if (tamanho > 0 && tamanho < 255) {
+                    strncpy(nome_lib, inicio + 1, tamanho);
+                    nome_lib[tamanho] = '\0';
+
+                    for (int j = 0; j < num_header_flags; j++) {
+                        if (strcmp(nome_lib, header_flags[j].header) == 0) {
+                            if (!flag_existe(flags, header_flags[j].flag)) {
+                                int written = snprintf(flags + offset, buffer_size - offset, "%s ", header_flags[j].flag);
+                                if (written > 0 && (size_t)written < buffer_size - offset) {
+                                    offset += written;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return flags;
+}
+
+void make_make_file(EditorState *state, const char *args) {
+    save_file(state);
+
+    char *ldflags = analisar_includes_e_gerar_flags(state);
+
+    FILE *f = fopen("Makefile", "w");
+    if (!f) {
+        snprintf(state->status_msg, sizeof(state->status_msg), "Erro ao criar Makefile: %s", strerror(errno));
+        if (ldflags) free(ldflags);
+        return;
+    }
+
+    char executable_name[256];
+    strncpy(executable_name, state->filename, sizeof(executable_name) - 1);
+    executable_name[sizeof(executable_name) - 1] = '\0';
+    char *ponto = strrchr(executable_name, '.');
+    if (ponto) *ponto = '\0';
+
+    fprintf(f, "CC=gcc\n");
+    fprintf(f, "TARGET=%s\n", executable_name);
+    fprintf(f, "SOURCES=$(wildcard *.c)\n");
+    fprintf(f, "OBJECTS=$(SOURCES:.c=.o)\n");
+    fprintf(f, "CFLAGS+=-g -Wall %s\n", args ? args : "");
+    fprintf(f, "LDFLAGS+=%s\n\n", ldflags ? ldflags : "");
+    fprintf(f, ".PHONY: all clean\n\n");
+    fprintf(f, "all: $(TARGET)\n\n");
+    fprintf(f, "$(TARGET): $(OBJECTS)\n");
+    fprintf(f, "\t$(CC) $(CFLAGS) -o $(TARGET) $(OBJECTS) $(LDFLAGS)\n\n");
+    fprintf(f, "%%.o: %%.c\n");
+    fprintf(f, "\t$(CC) $(CFLAGS) -c $< -o $@ -MMD\n\n");
+    fprintf(f, "clean:\n");
+    fprintf(f, "\trm -f $(TARGET) $(OBJECTS) $(OBJECTS:.o=.d)\n\n");
+    fprintf(f, "-include $(OBJECTS:.o=.d)\n");
+
+    fclose(f);
+    if (ldflags) free(ldflags);
+
+    char *const cmd[] = {"make", NULL};
+    criar_janela_terminal_generica(cmd);
+    snprintf(state->status_msg, sizeof(state->status_msg), "Makefile robusto gerado. Compilando com 'make'...");
 }
