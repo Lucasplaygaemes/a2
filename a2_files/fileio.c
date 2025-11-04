@@ -629,9 +629,9 @@ void save_default_theme(const char * theme_name) {
 char *load_default_theme_name() {
     char path[PATH_MAX];
     get_default_theme_config_path(path, sizeof(path));
-    FILE *f = fopen(path, "w");
-    if (f) {
-        return NULL;
+    FILE *f = fopen(path, "r"); // FIX: Open for reading
+    if (!f) {
+        return NULL; // File doesn't exist or can't be opened
     }
     
     char *theme_name = malloc(256);
@@ -639,13 +639,21 @@ char *load_default_theme_name() {
         fclose(f);
         return NULL;
     }
+
+    // Try to read the theme name from the file
     if (fgets(theme_name, 256, f)) {
-        theme_name[strcspn(theme_name, "\n")] = 0;
+        theme_name[strcspn(theme_name, "\n")] = 0; // Remove newline
         fclose(f);
-        return theme_name;
+        // Ensure the line read was not empty
+        if (theme_name[0] != '\0') {
+            return theme_name;
+        }
+    } else {
+        // If fgets fails (e.g., empty file), still need to close the handle
+        fclose(f);
     }
     
-    fclose(f);
+    // Cleanup if theme name was empty or read failed
     free(theme_name);
     return NULL;
 }

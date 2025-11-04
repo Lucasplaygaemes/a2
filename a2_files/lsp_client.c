@@ -385,25 +385,19 @@ void lsp_did_save(EditorState *state) {
 
 void lsp_shutdown(EditorState *state) {
     if (!state || !state->lsp_client) return;
-    static bool shutting_down = false;
-    if (shutting_down) return;
-    shutting_down = true;
-    
-    // Check if the lsp_client pointer seems valid (not a low address)
+
     if ((uintptr_t)state->lsp_client < 0x1000) {
         state->lsp_client = NULL;
         return;
     }
-    // Send shutdown and exit messages if the pipes are still valid
+
     if (state->lsp_client->stdin_fd != -1) {
         char *shutdown_msg = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"shutdown\",\"params\":{}}";
         write(state->lsp_client->stdin_fd, shutdown_msg, strlen(shutdown_msg));
-        
         char *exit_msg = "{\"jsonrpc\":\"2.0\",\"method\":\"exit\",\"params\":{}}";
         write(state->lsp_client->stdin_fd, exit_msg, strlen(exit_msg));
     }
-    
-    // Close pipes
+
     if (state->lsp_client->stdin_fd != -1) {
         close(state->lsp_client->stdin_fd);
         state->lsp_client->stdin_fd = -1;
@@ -416,14 +410,14 @@ void lsp_shutdown(EditorState *state) {
         close(state->lsp_client->stderr_fd);
         state->lsp_client->stderr_fd = -1;
     }
-    
-    // Wait for the LSP server process
+
     if (state->lsp_client->server_pid != -1) {
-        waitpid(state->lsp_client->server_pid, NULL, 0);
+        // Use WNOHANG to prevent blocking if the server is slow to exit.
+        // The main loop's waitpid will clean up the zombie process later.
+        waitpid(state->lsp_client->server_pid, NULL, WNOHANG);
         state->lsp_client->server_pid = -1;
     }
-    
-    // Free all memory allocated for the LSP client
+
     if (state->lsp_client->languageId) {
         free(state->lsp_client->languageId);
         state->lsp_client->languageId = NULL;
@@ -444,13 +438,11 @@ void lsp_shutdown(EditorState *state) {
         free(state->lsp_client->compilationDatabase);
         state->lsp_client->compilationDatabase = NULL;
     }
-    
-    // Free the main LSP client structure
+
     free(state->lsp_client);
     state->lsp_client = NULL;
     state->lsp_enabled = false;
-    
-    // Free LSP document state
+
     lsp_free_document_state(state);
 }
 

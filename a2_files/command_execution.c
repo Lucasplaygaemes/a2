@@ -111,7 +111,11 @@ void process_command(EditorState *state, bool *should_exit) {
             snprintf(state->status_msg, sizeof(state->status_msg), "Usage: :theme <themename>");
         }
     } else if (strcmp(command, "gcc") == 0) {
-        compile_file(state, args);
+        if (strcmp(state->filename, "[No Name]") == 0) {
+            snprintf(state->status_msg, sizeof(state->status_msg), "Save the file before compile.");
+        } else {
+            make_make_file(state, args);
+            }
     } else if (strcmp(command, "rc") == 0) {
         editor_reload_file(state);
     } else if (strcmp(command, "rc!") == 0) {
