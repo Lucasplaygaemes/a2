@@ -140,8 +140,10 @@ This guide details all available commands and keybindings.
 |---|---|
 | `Alt+T` | Open the Command Palette. |
 | `Alt+F` / `Alt+D, E` | Open the **Fuzzy Finder**. |
-| `Alt+D, D` | Open GDB in a new workspace to debug an executable. |
 | `Alt+B` | Open the recent files navigator. |
+| `Alt+D, D` | Open GDB in a new workspace to debug an executable. |
+| `Alt+Z, Z` | Open the directory navigator. |
+| `Alt+Z, S` | Show `git status` in a new window. |
 | `Alt+X` | Close the active window. |
 | `Alt+Enter` | Create a new empty window. |
 | `Ctrl+]` / `Ctrl+[` | Navigate to the next/previous window (split). |
