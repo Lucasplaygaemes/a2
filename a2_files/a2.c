@@ -206,7 +206,6 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 else if (next_ch == 'f' || next_ch == 'F') display_fuzzy_finder(state);
                 else if (next_ch == 'w') editor_move_to_next_word(state);
                 else if (next_ch == 'b' || next_ch == 'q') editor_move_to_previous_word(state);
-                // else if (next_ch == 'g' || next_ch == 'G') prompt_for_directory_change(state);
                 else if (next_ch == '.' || next_ch == '>') ciclar_layout();
                 else if (next_ch >= '1' && next_ch <= '9') mover_janela_para_workspace(next_ch - '1');
                 else if (strchr("!@#$%^&*(", next_ch)) {

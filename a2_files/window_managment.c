@@ -63,7 +63,6 @@ void criar_janela_terminal_generica(char *const argv[]) {
         ws->num_janelas--; free(jw); return;
     }
     if (pid == 0) {
-        // Tell the child process it's running in an xterm-256color terminal
         setenv("TERM", "xterm-256color", 1);
         execvp(argv[0], argv);
         exit(127);
@@ -84,9 +83,9 @@ void criar_janela_terminal_generica(char *const argv[]) {
     vterm_wnd_set(jw->term.vterm, jw->win);
     vterm_set_userptr(jw->term.vterm, jw);
 
-    // Notify PTY and vterm of the final window size. THIS IS THE FIX.
     vterm_resize(jw->term.vterm, cols - 2 * border_offset, rows - 2 * border_offset);
     atualizar_tamanho_pty(jw);
+    redesenhar_todas_as_janelas();
 }
 
 
@@ -327,9 +326,8 @@ void fechar_janela_ativa(bool *should_exit) {
     }
 
     // Now it is safe to free the memory
-    free_janela_editor(jw_to_free);
-
     recalcular_layout_janelas();
+    redesenhar_todas_as_janelas();
 }
 
 void fechar_workspace_ativo(bool *should_exit) {
@@ -343,6 +341,9 @@ void fechar_workspace_ativo(bool *should_exit) {
             snprintf(last_state->status_msg, sizeof(last_state->status_msg), "Warning: Unsaved changes! Use :q! to force quit.");
             return;
         }
+        free_workspace(gerenciador_workspaces.workspaces[0]);
+        gerenciador_workspaces.workspaces[0] = NULL;
+        gerenciador_workspaces.num_workspaces = 0;
         *should_exit = true;
         return;
     }
