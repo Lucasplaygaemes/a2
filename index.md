@@ -167,6 +167,7 @@ This guide details all available commands and keybindings.
 | `L` / `PageDown` | Page down. |
 | `Alt+W` / `Alt+Q` | Move to next / previous word. |
 | `u` / `U` | Create a new line above/below and enter Insert Mode. |
+| `J` | Join the current line with the line below. |
 | `yy` | Yank (copy) the current line. |
 | `p` / `P` | Paste from local / global register after the cursor. |
 | `m` | Paste from the "move" register (used after cutting in Visual Mode). |
@@ -184,7 +185,8 @@ This guide details all available commands and keybindings.
 | `Ctrl+O` | Enter Normal Mode for a single command, then return to Insert. |
 | `Tab` | Context-aware: Indents if at start of line, otherwise triggers completion. |
 | `Shift+Tab` | Un-indent the current line. |
-| `Ctrl+P` | Trigger word completion. |
+| `Ctrl+P` | Create a new line above the current line. |
+| `Ctrl+L` | Create a new line below the current line. |
 | `Ctrl+U` / `Ctrl+R` | Undo / Redo. |
 | `Ctrl+V` | Paste from the local yank register. |
 

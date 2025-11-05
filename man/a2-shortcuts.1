@@ -70,6 +70,9 @@ Paste from the local/global register.
 .B u / U
 Create a new line above/below and enter Insert Mode.
 .TP
+.B J
+Join the current line with the line below.
+.TP
 .B q[a-z]
 Start or stop recording a macro into the specified register.
 .TP
@@ -83,6 +86,15 @@ Toggle comment on the current line or visual selection.
 .TP
 .B Esc
 Return to .B Normal Mode.
+.TP
+.B Ctrl+O
+Enter Normal Mode for a single command, then return to Insert.
+.TP
+.B Ctrl+P
+Create a new line above the current line.
+.TP
+.B Ctrl+L
+Create a new line below the current line.
 .TP
 .B Tab
 Context-aware: Indents if at start of line, otherwise triggers LSP completion.
