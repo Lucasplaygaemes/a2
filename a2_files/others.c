@@ -16,6 +16,9 @@
 #include "screen_ui.h"
 #include <errno.h>
 
+#define CTRL_P 16
+#define CTRL_L 12
+
 const char *editor_commands[] = {
     "q", "q!", "w", "wq", "help", "gcc", "rc", "rc!", "open", "new", "timer", "diff", "set",
     "lsp-restart", "lsp-diag", "lsp-definition", "lsp-references", "lsp-rename",
@@ -99,7 +102,6 @@ static const int num_header_flags = sizeof(header_flags) / sizeof(header_flags[0
 
 const KnownHeader known_headers[] = {};
 const int num_known_headers = 0;
-
 
 // ===================================================================
 //  2. Bracket Matching
@@ -1128,11 +1130,6 @@ void editor_draw_completion_win(WINDOW *win, EditorState *state) {
 void handle_insert_mode_key(EditorState *state, wint_t ch) {
     WINDOW *win = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->win;
     switch (ch) {
-        case 15: // Ctrl+O
-            state->mode = NORMAL;
-            state->single_command_mode = true;
-            snprintf(state->status_msg, sizeof(state->status_msg), "-- NORMAL (one command) --");
-            break;
         case 22: // Ctrl+V for local paste
             editor_paste(state);
             break;
@@ -1140,7 +1137,6 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
         case KEY_BTAB:
             push_undo(state);
             editor_unindent_line(state, state->current_line); break;
-        case KEY_CTRL_P: editor_start_completion(state); break;
         case KEY_CTRL_DEL: case KEY_CTRL_K: editor_delete_line(state); break;
         case KEY_CTRL_D: editor_find_next(state); break;
         case KEY_CTRL_A: editor_find_previous(state); break;
@@ -1151,6 +1147,15 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
         case KEY_REDO: do_redo(state); break;
         case KEY_ENTER: case '\n': editor_handle_enter(state); break;
         case KEY_BACKSPACE: case 127: case 8: editor_handle_backspace(state); break;
+        case CTRL_P:
+            state->current_col = 0;
+            state->ideal_col = 0;
+            editor_handle_enter(state);
+            state->current_line--;
+            break;
+        case CTRL_L:
+            state->current_col = strlen(state->lines[state->current_line]);
+            editor_handle_enter(state);
         case '\t': { // Usando chaves para criar um escopo local
             char *line = state->lines[state->current_line];
             bool should_indent = true;

@@ -944,6 +944,7 @@ void display_recent_files() {
                         load_file(active_state, selected_file);
                         const char * syntax_file = get_syntax_file_from_extension(selected_file);
                         load_syntax_file(active_state, syntax_file);
+                        lsp_initialize(active_state);
                     }
                     goto end_switcher;
                 }
@@ -1543,6 +1544,8 @@ void *display_fuzzy_finder(EditorState *state) {
                     load_file(state, selected_file);
                     const char * syntax_file = get_syntax_file_from_extension(selected_file);
                     load_syntax_file(state, syntax_file);
+                    lsp_initialize(state);
+                    
                 }
                 goto end_finder;
             case 27: // ESC

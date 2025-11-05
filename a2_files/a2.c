@@ -67,6 +67,14 @@ void inicializar_ncurses() {
     bkgd(COLOR_PAIR(8));
 }
 void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
+    // Manipulação especial para Ctrl+O para evitar reversão imediata.
+    if (state->mode == INSERT && ch == 15) { // 15 é Ctrl+O
+        state->mode = NORMAL;
+        state->single_command_mode = true;
+        snprintf(state->status_msg, sizeof(state->status_msg), "-- NORMAL (one command) --");
+        return; // Sai imediatamente para esperar pelo próximo comando.
+    }
+
     // Store initial window/workspace counts to detect if a window is closed.
     int initial_num_workspaces = gerenciador_workspaces.num_workspaces;
     int initial_num_windows = (initial_num_workspaces > 0) ? ACTIVE_WS->num_janelas : 0;
@@ -239,14 +247,14 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 else if (next_ch == 'y' || next_ch == 'Y') { // Changed from 'o' to 'y' for system clipboard copy
                     if (state->mode == VISUAL && state->visual_selection_mode != VISUAL_MODE_NONE) copy_selection_to_clipboard(state);
                 }
-                else if (next_ch == 'u' || next_ch == 'U') {
+                /*else if (next_ch == 'u' || next_ch == 'U') {
                     state->current_col = 0;
                     state->ideal_col = 0;
                     editor_handle_enter(state);
                     state->current_line--;
                     editor_global_paste(state);
                     state->mode = INSERT;
-                }
+                }*/
                 // Removed Alt+k for global paste. Use 'P' in NORMAL mode instead.
                 else if (next_ch == 'j' || next_ch == 'J') {
                     state->current_col = strlen(state->lines[state->current_line]);
@@ -447,7 +455,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 }
                 
                 state->status_msg[0] = '\0';
-                return;
+                break;
             }
                 
             case NORMAL:
@@ -660,14 +668,13 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         }
         // If the command switched to another major mode (like COMMAND or VISUAL),
         // respect that new mode and just cancel the single command behavior.
-        else if (state->mode == COMMAND || state->mode == VISUAL || state->mode == INSERT) {
+        else if (state->mode == COMMAND || state->mode == INSERT) {
             state->single_command_mode = false;
         }
         // If we are in OPERATOR_PENDING, we do nothing and wait for the next keypress
         // to complete the operation.
     }
 }    
-
 
 bool handle_global_shortcut(int ch, bool *should_exit) {
     switch (ch) {
