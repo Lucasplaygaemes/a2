@@ -60,7 +60,6 @@ void load_file_core(EditorState *state, const char *filename) {
     strncpy(state->filename, filename, sizeof(state->filename) - 1);
     state->filename[sizeof(state->filename) - 1] = '\0';
 
-
     char absolute_path[PATH_MAX];
     if (realpath(filename, absolute_path) == NULL) {
         // If realpath fails, use the original filename
@@ -68,12 +67,10 @@ void load_file_core(EditorState *state, const char *filename) {
         absolute_path[PATH_MAX - 1] = '\0';
     }
 
-    for (int i = 0; i < state->num_lines; i++) { if(state->lines[i]) free(state->lines[i]); state->lines[i] = NULL; } // This line was duplicated and caused issues
+    for (int i = 0; i < state->num_lines; i++) { if(state->lines[i]) free(state->lines[i]); state->lines[i] = NULL; }
     state->num_lines = 0;
     strncpy(state->filename, absolute_path, sizeof(state->filename) - 1);
     state->filename[sizeof(state->filename) - 1] = '\0';
-
-
 
     FILE *file = fopen(filename, "r");
     if (file) {
