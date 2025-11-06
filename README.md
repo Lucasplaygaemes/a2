@@ -33,4 +33,4 @@ Now a2 have themes! and they are quite easy to make, Themes will be searched in 
 a2 is not windows compatible without any modifications i think. I don't plan to make it. Not for now at least
 
 # Contribuiting
-I would be really gratefull if you want to improve the code, it's always open to commits. and if you want you can contact me via my email. My email is lucasmoura27271@gmail.com, we can chat by email.
+I would be really gratefull if you want to improve the code, it's always open to commits. and if you want you can contact me via my email. My email is lucasplaygaemes@gmail.com, we can chat by email.
