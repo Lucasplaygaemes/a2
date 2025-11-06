@@ -190,7 +190,30 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     } else {
                         snprintf(state->status_msg, sizeof(state->status_msg), "Unknown sequence: Alt+z, %lc", next_ch);
                     }       
-                    }
+                } else if (first_key == 'p') {
+                    if (next_ch == 'a') {
+                        state->current_col = 0;
+                        state->ideal_col = 0;
+                        editor_handle_enter(state);
+                        state->current_line--;
+                        editor_paste(state);
+                    } else if (next_ch == 'P') {
+                        state->current_col = 0;
+                        state->ideal_col = 0;
+                        editor_handle_enter(state);
+                        state->current_line--;
+                        editor_global_paste(state);
+                    }  else if (next_ch == 'u') {
+                        state->current_col = strlen(state->lines[state->current_line]);
+                        editor_handle_enter(state);
+                        editor_paste(state);
+                    } else if (next_ch == 'U') {
+                        state->current_col = strlen(state->lines[state->current_line]);
+                        editor_handle_enter(state);
+                        editor_global_paste(state);
+                        }
+                }                
+                
                 // You can add more sequences here, e.g., else if (first_key == 'g') { ... }
 
             } else { // This is the first key of a potential sequence or a single Alt shortcut
@@ -201,6 +224,9 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 } else if (next_ch == 'g') {
                     state->pending_sequence_key = 'g';
                     snprintf(state->status_msg, sizeof(state->status_msg), "(Alt+g)...");
+                } else if (next_ch == 'p') {
+                    state->pending_sequence_key = 'p';
+                    snprintf(state->status_msg, sizeof(state->status_msg), "(Alt+p)...");
                 }
                 // --- Handle all other single Alt shortcuts ---
                 else if (next_ch == 'n') ciclar_workspaces(-1);
@@ -537,7 +563,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     case 22: // Ctrl+V for local paste
                         editor_paste(state);
                         break;
-                            //shift tab
+                    //shift tab
                     case KEY_BTAB:
                         push_undo(state);
                         editor_unindent_line(state, state->current_line); break;
