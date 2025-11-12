@@ -32,5 +32,8 @@ Now a2 have themes! and they are quite easy to make, Themes will be searched in 
 # Multiplatform?
 a2 is not windows compatible without any modifications i think. I don't plan to make it. Not for now at least
 
+# Delay
+I'm have hurt my wrist, so i will take a time to rest. Sorry about it
+
 # Contribuiting
 I would be really gratefull if you want to improve the code, it's always open to commits. and if you want you can contact me via my email. My email is lucasplaygaemes@gmail.com, we can chat by email.
