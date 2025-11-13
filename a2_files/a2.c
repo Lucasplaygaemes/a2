@@ -191,6 +191,10 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         snprintf(state->status_msg, sizeof(state->status_msg), "Unknown sequence: Alt+z, %lc", next_ch);
                     }       
                 } else if (first_key == 'p') {
+                    if (next_ch == 'c') {
+                        paste_from_clipboard(state);
+                    }
+                    
                     if (next_ch == 'a') {
                         state->current_col = 0;
                         state->ideal_col = 0;
