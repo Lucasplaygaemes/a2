@@ -152,6 +152,9 @@ This guide details all available commands and keybindings.
 | `Alt+[1-9]` | Move the active window to the specified workspace. |
 | `Alt+.` | Cycle through available window layouts. |
 | `Alt+R` | Rotate windows within the current layout. |
+| `Alt+p + Alt+c` | Paste from clipboard. |
+| `Alt+p + Alt+u` | Paste from clipboard below. |
+| `Alt+p + Alt+a` | Paste from clipobad above. |
 
 ### Normal Mode
 | Shortcut | Description |
