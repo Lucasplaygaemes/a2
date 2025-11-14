@@ -50,6 +50,8 @@ const char * get_syntax_file_from_extension(const char* filename) {
         return "rust.syntax";
     else if (strcmp(ext, ".go") == 0)
         return "go.syntax";
+    else if (strcmp(ext, ".s") == 0 || strcmp(ext, ".asm") == 0)
+        return "assembly.syntax";
     
     return NULL; // Default to no syntax highlighting for unknown extensions
 }
