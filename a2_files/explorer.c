@@ -25,6 +25,7 @@ const char* get_icon_for_filename(const char *filename) {
     }
 
     // Source Code
+    if (strcmp(ext, ".s") == 0) return "🇦";
     if (strcmp(ext, ".c") == 0) return "🇨";
     if (strcmp(ext, ".h") == 0) return "🇭";
     if (strcmp(ext, ".py") == 0) return "🐍";
