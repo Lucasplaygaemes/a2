@@ -916,7 +916,7 @@ int main(int argc, char *argv[]) {
                         jw->term.pid = -1;
 
                         // Append a message to the vterm buffer itself to indicate completion
-                        const char* end_msg = "\r\n\n[Processo finalizado. Pressione Alt+X para fechar]";
+                        char* end_msg = "\r\n\n[Processo finalizado. Pressione Alt+X para fechar]";
                         vterm_render(jw->term.vterm, end_msg, strlen(end_msg));
                     }
                 }
