@@ -1182,7 +1182,7 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
         }
         case KEY_UP: {
             if (state->word_wrap_enabled) {
-                int r, cols; getmaxyx(win, r, cols); if (cols <= 0) break;
+                int cols; cols = getmaxx(win); if (cols <= 0) break;
                 state->ideal_col = state->current_col % cols; 
                 if (state->current_col >= cols) {
                     state->current_col -= cols;
@@ -1205,7 +1205,7 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
             break;
         case KEY_DOWN: {
             if (state->word_wrap_enabled) {
-                int r, cols; getmaxyx(win, r, cols); if (cols <= 0) break;
+                int cols; cols = getmaxx(win); if (cols <= 0) break;
                 state->ideal_col = state->current_col % cols;
                 char *line = state->lines[state->current_line];
                 int line_len = strlen(line);
@@ -1490,7 +1490,6 @@ void editor_toggle_comment(EditorState *state) {
             
     for (int i = start_line; i <= end_line; i++) {
         char *line = state->lines[i];
-        char *trimmed_line = trim_whitespace(line);
         
         if (all_commented) {
             char *first_char = line;

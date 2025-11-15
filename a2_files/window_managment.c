@@ -303,8 +303,6 @@ void fechar_janela_ativa(bool *should_exit) {
         return;
     }
 
-    JanelaEditor *jw_to_free = ws->janelas[idx];
-
     // Shift the array to remove the pointer
     for (int i = idx; i < ws->num_janelas - 1; i++) {
         ws->janelas[i] = ws->janelas[i+1];

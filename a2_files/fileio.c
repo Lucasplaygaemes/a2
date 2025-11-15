@@ -382,6 +382,7 @@ int load_last_line(const char *filename) {
 // ===================================================================
 
 FileRecoveryChoice display_recovery_prompt(WINDOW *parent_win, EditorState *state) {
+    (void)state;
     int rows, cols;
     getmaxyx(parent_win, rows, cols);
     
