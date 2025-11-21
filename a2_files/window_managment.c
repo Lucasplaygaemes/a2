@@ -1091,104 +1091,6 @@ void gf2_starter() {
     criar_janela_terminal_generica(cmd);
 }
 
-void display_command_palette(EditorState *state) {
-    WINDOW *palette_win;
-    int rows, cols;
-    getmaxyx(stdscr, rows, cols);
-
-    int win_h = min(15, rows - 4);
-    int win_w = cols / 2;
-    if (win_w < 50) win_w = 50;
-    int win_y = (rows - win_h) / 2;
-    int win_x = (cols - win_w) / 2;
-
-    palette_win = newwin(win_h, win_w, win_y, win_x);
-    keypad(palette_win, TRUE);
-    wbkgd(palette_win, COLOR_PAIR(9));
-
-    int current_selection = 0;
-    int top_of_list = 0;
-    char search_term[100] = {0};
-    int search_pos = 0;
-
-    const char **filtered_commands = malloc(sizeof(char*) * num_editor_commands);
-    int num_filtered = 0;
-
-    while (1) {
-        num_filtered = 0;
-        if (search_term[0] != '\0') {
-            for (int i = 0; i < num_editor_commands; i++) {
-                if (strstr(editor_commands[i], search_term)) {
-                    filtered_commands[num_filtered++] = editor_commands[i];
-                }
-            }
-        } else {
-            for (int i = 0; i < num_editor_commands; i++) {
-                filtered_commands[num_filtered++] = editor_commands[i];
-            }
-        }
-
-        if (current_selection >= num_filtered) {
-            current_selection = num_filtered > 0 ? num_filtered - 1 : 0;
-        }
-        if (top_of_list > current_selection) top_of_list = current_selection;
-        if (win_h > 3 && top_of_list < current_selection - (win_h - 3)) {
-            top_of_list = current_selection - (win_h - 3);
-        }
-
-        werase(palette_win);
-        box(palette_win, 0, 0);
-        mvwprintw(palette_win, 0, (win_w - 16) / 2, " Command Palette ");
-
-        for (int i = 0; i < win_h - 2; i++) {
-            int item_idx = top_of_list + i;
-            if (item_idx >= num_filtered) break;
-            if (item_idx == current_selection) wattron(palette_win, A_REVERSE);
-            mvwprintw(palette_win, i + 1, 2, "%.*s", win_w - 3, filtered_commands[item_idx]);
-            if (item_idx == current_selection) wattroff(palette_win, A_REVERSE);
-        }
-        mvwprintw(palette_win, win_h - 1, 1, "/%s", search_term);
-        wmove(palette_win, win_h - 1, search_pos + 2);
-        wrefresh(palette_win);
-
-        int ch = wgetch(palette_win);
-        switch(ch) {
-            case KEY_UP: if (current_selection > 0) current_selection--; break;
-            case KEY_DOWN: if (current_selection < num_filtered - 1) current_selection++; break;
-            case KEY_ENTER: case '\n':
-                if (num_filtered > 0) {
-                    const char* selected_cmd = filtered_commands[current_selection];
-                    strncpy(state->command_buffer, selected_cmd, sizeof(state->command_buffer) - 1);
-                    if (strlen(selected_cmd) < sizeof(state->command_buffer) - 2) {
-                        strcat(state->command_buffer, " ");
-                    }
-                    state->command_pos = strlen(state->command_buffer);
-                    state->mode = COMMAND;
-                }
-                goto end_palette;
-            case 27: case 'q': goto end_palette;
-            case KEY_BACKSPACE: case 127:
-                if (search_pos > 0) search_term[--search_pos] = '\0';
-                current_selection = 0;
-                top_of_list = 0;
-                break;
-            default:
-                if (isprint(ch) && search_pos < sizeof(search_term) - 1) {
-                    search_term[search_pos++] = ch;
-                    search_term[search_pos] = '\0';
-                    current_selection = 0;
-                    top_of_list = 0;
-                }
-                break;
-        }
-    }
-
-end_palette:
-    free(filtered_commands);
-    delwin(palette_win);
-    touchwin(stdscr);
-    redesenhar_todas_as_janelas();
-}
 
 // ===================================================================
 // Content Search (Grep)
@@ -1306,95 +1208,12 @@ void display_content_search(EditorState *state, const char* prefilled_term) {
     }
         
 }
-/*
-    ContentSearchResult *results = NULL;
-    int num_results = 0;
-    int capacity = 0;
-    char cwd[PATH_MAX];
-    if (getcwd(cwd, sizeof(cwd)) == NULL) return;
 
-    recursive_content_search(cwd, search_term, &results, &num_results, &capacity);
+// ===================================================================
+// Command Palette & Fuzzy Finder
+// ===================================================================
 
-    if (num_results == 0) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "No results found for '%s'", search_term);
-        return;
-    }
-
-    WINDOW *results_win;
-    int rows, cols; getmaxyx(stdscr, rows, cols);
-    int win_h = min(25, rows - 4); int win_w = cols - 10;
-    int win_y = (rows - win_h) / 2; int win_x = (cols - win_w) / 2;
-    results_win = newwin(win_h, win_w, win_y, win_x);
-    keypad(results_win, TRUE);
-    wbkgd(results_win, COLOR_PAIR(9));
-
-    int current_selection = 0;
-    int top_of_list = 0;
-
-    while (1) {
-        werase(results_win);
-        box(results_win, 0, 0);
-        mvwprintw(results_win, 0, 2, " Results for '%s' (%d) ", search_term, num_results);
-
-        int y_pos = 1;
-        for (int i = 0; y_pos < win_h - 1; i++) {
-            int item_idx = top_of_list + i;
-            if (item_idx >= num_results) break;
-            
-            if (item_idx == current_selection) wattron(results_win, A_REVERSE);
-
-            char display_path[win_w - 4];
-            snprintf(display_path, sizeof(display_path), "%s:%d", results[item_idx].file_path, results[item_idx].line_number);
-            mvwprintw(results_win, y_pos++, 2, "%.*s", win_w - 3, display_path);
-            
-            if (y_pos < win_h - 1) {
-                mvwprintw(results_win, y_pos++, 6, "%.*s", win_w - 7, results[item_idx].line_content);
-            }
-
-            if (item_idx == current_selection) wattroff(results_win, A_REVERSE);
-        }
-        wrefresh(results_win);
-
-        int ch = wgetch(results_win);
-        switch(ch) {
-            case KEY_UP: case 'k': if (current_selection > 0) current_selection--; break;
-            case KEY_DOWN: case 'j': if (current_selection < num_results - 1) current_selection++; break;
-            case KEY_ENTER: case '\n':
-                if (num_results > 0) {
-                    ContentSearchResult selected = results[current_selection];
-                    load_file(state, selected.file_path);
-                    state->current_line = selected.line_number - 1;
-                    state->ideal_col = 0;
-                    adjust_viewport(ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->win, state);
-                }
-                goto end_grep;
-            case 27: case 'q': goto end_grep;
-        }
-        if (current_selection < top_of_list) top_of_list = current_selection;
-        if (current_selection >= top_of_list + (win_h - 2) / 2) {
-            top_of_list = current_selection - ((win_h - 2) / 2) + 1;
-            if (top_of_list < 0) top_of_list = 0;
-        }
-    }
-
-end_grep:
-    for (int i = 0; i < num_results; i++) {
-        free(results[i].file_path);
-        free(results[i].line_content);
-    }
-    free(results);
-    delwin(results_win);
-    touchwin(stdscr);
-    redesenhar_todas_as_janelas();
-}
-*/
-
-typedef struct {
-    char* path;
-} FileResult;
-
-// Simple fuzzy match: returns true if all characters in pattern appear in str in order.
-static bool fuzzy_match(const char *str, const char *pattern) {
+bool fuzzy_match(const char *str, const char *pattern) {
     while (*pattern && *str) {
         if (tolower(*pattern) == tolower(*str)) {
             pattern++;
@@ -1404,8 +1223,7 @@ static bool fuzzy_match(const char *str, const char *pattern) {
     return *pattern == '\0';
 }
 
-// Recursive function to find all files
-static void find_all_project_files_recursive(const char *base_path, FileResult **results, int *count, int *capacity) {
+void find_all_project_files_recursive(const char *base_path, FileResult **results, int *count, int *capacity) {
     DIR *d = opendir(base_path);
     if (!d) return;
 
@@ -1438,6 +1256,205 @@ static void find_all_project_files_recursive(const char *base_path, FileResult *
         }
     }
     closedir(d);
+}
+
+void display_command_palette(EditorState *state) {
+    // 1. Coletar todos os arquivos do projeto
+    FileResult *all_files = NULL;
+    int num_all_files = 0;
+    int capacity = 0;
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd)) == NULL) return;
+    find_all_project_files_recursive(cwd, &all_files, &num_all_files, &capacity);
+
+    // 2. Setup da janela da paleta
+    WINDOW *palette_win;
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+    int win_h = min(20, rows - 4);
+    int win_w = cols / 2;
+    if (win_w < 80) win_w = min(cols - 4, 80);
+    int win_y = (rows - win_h) / 3;
+    int win_x = (cols - win_w) / 2;
+
+    palette_win = newwin(win_h, win_w, win_y, win_x);
+    keypad(palette_win, TRUE);
+    wbkgd(palette_win, COLOR_PAIR(9));
+
+    // 3. Variáveis de estado do loop
+    int current_selection = 0;
+    int top_of_list = 0;
+    char search_term[100] = {0};
+    int search_pos = 0;
+    
+    typedef enum { MODE_FILES, MODE_COMMANDS, MODE_SYMBOLS } PaletteMode;
+    
+    FileResult *filtered_items = NULL;
+    int num_filtered = 0;
+
+    nodelay(palette_win, TRUE); // Torna o wgetch não-bloqueante
+    while (1) {
+        // Processa mensagens pendentes do LSP a cada iteração
+        lsp_check_and_process_messages(state);
+
+        PaletteMode mode;
+        if (search_term[0] == '>') {
+            mode = MODE_COMMANDS;
+        } else if (search_term[0] == '@') {
+            mode = MODE_SYMBOLS;
+        } else {
+            mode = MODE_FILES;
+        }
+
+        if (mode == MODE_SYMBOLS && state->symbols == NULL) {
+            lsp_request_document_symbols(state);
+            mvwprintw(palette_win, 1, 2, "Fetching symbols from LSP...");
+            wrefresh(palette_win);
+        }
+        
+        if(filtered_items) {
+            free(filtered_items);
+            filtered_items = NULL;
+        }
+        num_filtered = 0;
+
+        if (mode == MODE_COMMANDS) {
+            const char* command_filter = search_term + 1;
+            filtered_items = malloc(sizeof(FileResult) * num_editor_commands);
+            for (int i = 0; i < num_editor_commands; i++) {
+                if (strstr(editor_commands[i], command_filter)) {
+                    filtered_items[num_filtered++].path = (char*)editor_commands[i];
+                }
+            }
+        } else if (mode == MODE_SYMBOLS) {
+            const char* symbol_filter = search_term + 1;
+            filtered_items = malloc(sizeof(FileResult) * state->num_symbols);
+            if (state->symbols) {
+                for (int i = 0; i < state->num_symbols; i++) {
+                    if (fuzzy_match(state->symbols[i].name, symbol_filter)) {
+                        filtered_items[num_filtered++].path = state->symbols[i].name;
+                    }
+                }
+            }
+        } else { // MODE_FILES
+            filtered_items = malloc(sizeof(FileResult) * num_all_files);
+            if (search_term[0] != '\0') {
+                for (int i = 0; i < num_all_files; i++) {
+                    if (fuzzy_match(all_files[i].path, search_term)) {
+                        filtered_items[num_filtered++].path = all_files[i].path;
+                    }
+                }
+            } else {
+                for (int i = 0; i < num_all_files; i++) {
+                    filtered_items[num_filtered++].path = all_files[i].path;
+                }
+            }
+        }
+
+        if (current_selection >= num_filtered) current_selection = num_filtered > 0 ? num_filtered - 1 : 0;
+        if (top_of_list > current_selection) top_of_list = current_selection;
+        if (win_h > 3 && top_of_list < current_selection - (win_h - 3)) top_of_list = current_selection - (win_h - 3);
+
+        werase(palette_win);
+        box(palette_win, 0, 0);
+        const char* title;
+        if (mode == MODE_FILES) title = "Find File";
+        else if (mode == MODE_COMMANDS) title = "Execute Command";
+        else title = "Go to Symbol";
+        mvwprintw(palette_win, 0, (win_w - strlen(title) - 2) / 2, " %s ", title);
+
+        for (int i = 0; i < win_h - 2; i++) {
+            int item_idx = top_of_list + i;
+            if (item_idx >= num_filtered) break;
+            if (item_idx == current_selection) wattron(palette_win, A_REVERSE);
+            
+            char display_name[win_w - 4];
+            if (mode == MODE_FILES) {
+                 if (strncmp(filtered_items[item_idx].path, cwd, strlen(cwd)) == 0) {
+                    snprintf(display_name, sizeof(display_name), ".%s", filtered_items[item_idx].path + strlen(cwd));
+                } else {
+                    strncpy(display_name, filtered_items[item_idx].path, sizeof(display_name) - 1);
+                }
+            } else {
+                 strncpy(display_name, filtered_items[item_idx].path, sizeof(display_name) - 1);
+            }
+            display_name[sizeof(display_name)-1] = '\0';
+
+            mvwprintw(palette_win, i + 1, 2, "%.*s", win_w - 3, display_name);
+            if (item_idx == current_selection) wattroff(palette_win, A_REVERSE);
+        }
+        
+        mvwprintw(palette_win, win_h - 1, 1, "%s", search_term);
+        wmove(palette_win, win_h - 1, search_pos + 1);
+        curs_set(1);
+        wrefresh(palette_win);
+
+        int ch = wgetch(palette_win);
+        if (ch == ERR) { // Se nenhuma tecla foi pressionada
+            napms(20); // Pausa para não usar 100% da CPU
+            continue;
+        }
+
+        switch(ch) {
+            case KEY_UP: if (current_selection > 0) current_selection--; break;
+            case KEY_DOWN: if (current_selection < num_filtered - 1) current_selection++; break;
+            case KEY_ENTER: case '\n':
+                if (num_filtered > 0) {
+                    if (mode == MODE_FILES) {
+                        const char* selected_file = filtered_items[current_selection].path;
+                        load_file(state, selected_file);
+                        lsp_initialize(state);
+                    } else if (mode == MODE_COMMANDS) {
+                        const char* selected_cmd = filtered_items[current_selection].path;
+                        strncpy(state->command_buffer, selected_cmd, sizeof(state->command_buffer) - 1);
+                        strcat(state->command_buffer, " ");
+                        state->command_pos = strlen(state->command_buffer);
+                        state->mode = COMMAND;
+                    } else if (mode == MODE_SYMBOLS) {
+                        const char* selected_symbol_name = filtered_items[current_selection].path;
+                        for (int i = 0; i < state->num_symbols; i++) {
+                            if (strcmp(state->symbols[i].name, selected_symbol_name) == 0) {
+                                state->current_line = state->symbols[i].line;
+                                state->current_col = 0;
+                                state->ideal_col = 0;
+                                break;
+                            }
+                        }
+                    }
+                }
+                goto end_palette;
+            case 27: case 'q': goto end_palette;
+            case KEY_BACKSPACE: case 127:
+                if (search_pos > 0) {
+                    search_term[--search_pos] = '\0';
+                    current_selection = 0; top_of_list = 0;
+                }
+                break;
+            default:
+                if (isprint(ch) && (size_t)search_pos < sizeof(search_term) - 1) {
+                    search_term[search_pos++] = ch;
+                    search_term[search_pos] = '\0';
+                    current_selection = 0; top_of_list = 0;
+                }
+                break;
+        }
+    }
+
+end_palette:
+    nodelay(palette_win, FALSE); // Restaura o modo bloqueante
+    if (state->symbols) {
+        for (int i = 0; i < state->num_symbols; i++) free(state->symbols[i].name);
+        free(state->symbols);
+        state->symbols = NULL;
+        state->num_symbols = 0;
+    }
+    for (int i = 0; i < num_all_files; i++) free(all_files[i].path);
+    free(all_files);
+    free(filtered_items);
+    delwin(palette_win);
+    touchwin(stdscr);
+    redesenhar_todas_as_janelas();
+    curs_set(1);
 }
 
 void *display_fuzzy_finder(EditorState *state) {
@@ -1556,7 +1573,7 @@ void *display_fuzzy_finder(EditorState *state) {
                 }
                 break;
             default:
-                if (isprint(ch) && search_pos < (int)sizeof(search_term) - 1) {
+                if (isprint(ch) && (size_t)search_pos < sizeof(search_term) - 1) {
                     search_term[search_pos++] = ch;
                     search_term[search_pos] = '\0';
                     current_selection = 0;
@@ -1573,5 +1590,5 @@ end_finder:
     touchwin(stdscr);
     redesenhar_todas_as_janelas();
     curs_set(1);
+    return NULL;
 }
-

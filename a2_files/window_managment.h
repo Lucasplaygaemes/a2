@@ -3,6 +3,18 @@
 
 #include "defs.h" // For EditorState, etc.
 
+// Struct for file search results
+typedef struct {
+    char* path;
+} FileResult;
+
+// Helper function for fuzzy matching strings
+bool fuzzy_match(const char *str, const char *pattern);
+
+// Helper function to recursively find all files in a project
+void find_all_project_files_recursive(const char *base_path, FileResult **results, int *count, int *capacity);
+
+
 // Function prototypes for window_managment.c
 void free_editor_state(EditorState* state);
 void free_janela_editor(JanelaEditor* jw);
