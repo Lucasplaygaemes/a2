@@ -17,6 +17,15 @@
 #include <jansson.h>
 #include <vterm.h>
 
+#ifndef LSPSYMBOL_DEFINED
+#define LSPSYMBOL_DEFINED
+typedef struct {
+    char *name;
+    int kind; // (e.g., Function, Variable, Class)
+    int line;
+} LspSymbol;
+#endif
+
 #ifndef max
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #endif
@@ -291,6 +300,8 @@ typedef struct EditorState {
     
     int status_bar_mode;
     wint_t pending_sequence_key;
+    LspSymbol *symbols;
+    int num_symbols;
 } EditorState;
 #endif
 
