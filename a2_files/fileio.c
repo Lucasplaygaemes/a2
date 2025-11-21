@@ -549,6 +549,10 @@ void load_macros(EditorState *state) {
 
     char line[MAX_LINE_LEN * 4]; // Allow for escaped content
     while (fgets(line, sizeof(line), f)) {
+        char *trimmed_line = trim_whitespace(line);
+        if (trimmed_line[0] == '#') {
+            continue;
+        }
         if (strlen(line) < 3 || line[1] != ':') continue; // Invalid line format
 
         int reg_idx = line[0] - 'a';
