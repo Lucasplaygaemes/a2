@@ -1373,6 +1373,27 @@ void lsp_process_received_data(EditorState *state, const char *buffer, size_t bu
             } else if (msg->id && strcmp(msg->id, "2") == 0 && msg->result) { // Resposta do "ir para definição"
                 lsp_log("Definition response received\n");
                 lsp_handle_definition_response(state, msg->result);
+            } else if (msg->id && strcmp(msg->id, "4") == 0 && msg->result) { // Resposta do "documentSymbol"
+                lsp_log("Document symbols received\n");
+                json_t *symbols_array = msg->result;
+                if (json_is_array(symbols_array)) {
+                    state->num_symbols = json_array_size(symbols_array);
+                    state->symbols = malloc(sizeof(LspSymbol) * state->num_symbols);
+                    for (int i = 0; i < state->num_symbols; i++) {
+                        json_t *symbol_obj = json_array_get(symbols_array, i);
+                        const char *name = json_string_value(json_object_get(symbol_obj, "name"));
+                        int kind = json_integer_value(json_object_get(symbol_obj, "kind"));
+                        json_t *location = json_object_get(symbol_obj, "location");
+                        if (!location) location = symbol_obj; // Alguns LSPs aninham de forma diferente
+                        json_t *range = json_object_get(location, "range");
+                        json_t *start = json_object_get(range, "start");
+                        int line = json_integer_value(json_object_get(start, "line"));
+
+                        state->symbols[i].name = strdup(name ? name : "unknown");
+                        state->symbols[i].kind = kind;
+                        state->symbols[i].line = line;
+                    }
+                }
             }
             lsp_free_message(msg);
         }
@@ -1488,6 +1509,30 @@ void lsp_send_completion_request(EditorState *state) {
     lsp_free_message(msg);
 }
 
+void lsp_check_and_process_messages(EditorState *state) {
+    if (!lsp_is_available(state)) return;
+
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(state->lsp_client->stdout_fd, &readfds);
+
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0; // Timeout zero para não bloquear
+
+    int activity = select(state->lsp_client->stdout_fd + 1, &readfds, NULL, NULL, &timeout);
+
+    if (activity > 0 && FD_ISSET(state->lsp_client->stdout_fd, &readfds)) {
+        char buffer[4096];
+        ssize_t bytes_lidos = read(state->lsp_client->stdout_fd, buffer, sizeof(buffer) - 1);
+        if (bytes_lidos > 0) {
+            buffer[bytes_lidos] = '\0';
+            lsp_process_received_data(state, buffer, bytes_lidos);
+        }
+    }
+}
+
+
 void lsp_handle_definition_response(EditorState *state, json_t *result) {
     if (!json_is_array(result) || json_array_size(result) == 0) {
         snprintf(state->status_msg, STATUS_MSG_LEN, "Definition not found.");
@@ -1525,4 +1570,35 @@ void lsp_handle_definition_response(EditorState *state, json_t *result) {
     state->current_line = line;
     state->current_col = character;
     snprintf(state->status_msg, STATUS_MSG_LEN, "Jumped to definition.");
+}
+
+void lsp_request_document_symbols(EditorState *state) {
+    if (!lsp_is_available(state)) return;
+
+    // Limpa o cache de símbolos antigo
+    if (state->symbols) {
+        for (int i = 0; i < state->num_symbols; i++) {
+            free(state->symbols[i].name);
+        }
+        free(state->symbols);
+        state->symbols = NULL;
+        state->num_symbols = 0;
+    }
+
+    LspMessage *msg = lsp_create_message();
+    msg->id = strdup("4"); // Um novo ID para esta requisição
+    msg->method = strdup("textDocument/documentSymbol");
+
+    json_t *params = json_object();
+    json_t *textDocument = json_object();
+    json_object_set_new(textDocument, "uri", json_string(state->lsp_document->uri));
+    json_object_set_new(params, "textDocument", textDocument);
+    
+    msg->params = params;
+
+    char *json_str = lsp_serialize_message(msg);
+    lsp_send_message(state, json_str);
+
+    free(json_str);
+    lsp_free_message(msg);
 }

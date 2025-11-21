@@ -35,6 +35,8 @@ void lsp_log(const char *format, ...);
 void lsp_draw_diagnostics(WINDOW *win, EditorState *state);
 void lsp_send_completion_request(EditorState *state);
 void lsp_handle_definition_response(EditorState *state, json_t *result);
+void lsp_request_document_symbols(EditorState *state);
+void lsp_check_and_process_messages(EditorState *state);
 
 
 #endif // LSP_CLIENT_H
