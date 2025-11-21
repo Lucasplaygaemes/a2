@@ -314,6 +314,8 @@ typedef struct {
     // Clipboard for file operations
     char source_path[PATH_MAX];
     ClipboardOperation clipboard_operation;
+    
+    char status_msg[256];
 } ExplorerState;
 #endif
 
