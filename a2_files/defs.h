@@ -16,6 +16,7 @@
 #include <time.h>
 #include <jansson.h>
 #include <vterm.h>
+#include <regex.h>
 
 #ifndef LSPSYMBOL_DEFINED
 #define LSPSYMBOL_DEFINED
@@ -302,6 +303,10 @@ typedef struct EditorState {
     wint_t pending_sequence_key;
     LspSymbol *symbols;
     int num_symbols;
+    
+    bool last_search_is_regex;
+    regex_t compiled_regex;
+    
 } EditorState;
 #endif
 
