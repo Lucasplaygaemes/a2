@@ -121,6 +121,11 @@ void free_editor_state(EditorState* state) {
     if (state->unmatched_brackets) free(state->unmatched_brackets);
     if (state->yank_register) free(state->yank_register);
     if (state->move_register) free(state->move_register);
+
+    if (state->last_search_is_regex) {
+        regfree(&state->compiled_regex);
+    }
+
     for (int j = 0; j < state->num_lines; j++) {
         if (state->lines[j]) free(state->lines[j]);
     }
@@ -262,6 +267,8 @@ void criar_nova_janela(const char *filename) {
     state->word_wrap_enabled = true;
     load_directory_history(state);
     load_file_history(state);
+
+    state->last_search_is_regex = false;
 
     state->is_recording_macro = false;
     state->last_played_macro_register = 0;
