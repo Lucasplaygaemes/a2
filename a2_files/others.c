@@ -15,6 +15,7 @@
 #include <pthread.h>
 #include "screen_ui.h"
 #include <errno.h>
+#include <regex.h>
 
 #define CTRL_P 16
 #define CTRL_L 12
@@ -710,38 +711,28 @@ void editor_find(EditorState *state) {
         return;
     }
     
-    strncpy(state->last_search, search_term, sizeof(state->last_search) - 1);
-    state->last_match_line = state->current_line;
-    state->last_match_col = state->current_col;
-    
-    // Search from current position forward
-    int start_line = state->current_line;
-    int start_col = state->current_col + 1;
-    
-    for (int i = 0; i < state->num_lines; i++) {
-        int line_num = (start_line + i) % state->num_lines;
-        char *line = state->lines[line_num];
-        if (!line) continue;
-        
-        char *match = (i == 0) ? strstr(line + start_col, search_term) : strstr(line, search_term);
-        
-        if (match) {
-            state->current_line = line_num;
-            state->current_col = match - line;
-            state->ideal_col = state->current_col;
-            
-            adjust_viewport(win, state);
-            
-            snprintf(state->status_msg, sizeof(state->status_msg),
-                    "Found at line %d, col %d", state->current_line + 1, state->current_col + 1);
-            return;
-        }
-        
-        start_col = 0;
+    // --- SUBSTITUA A LÓGICA DE BUSCA EXISTENTE POR ISTO ---
+
+    // Limpa a regex antiga, se houver
+    if (state->last_search_is_regex) {
+        regfree(&state->compiled_regex);
+        state->last_search_is_regex = false;
     }
-    
-    snprintf(state->status_msg, sizeof(state->status_msg),
-            "Pattern not found: %s", search_term);
+
+    strncpy(state->last_search, search_term, sizeof(state->last_search) - 1);
+
+    // Tenta compilar a busca como uma expressão regular
+    if (regcomp(&state->compiled_regex, search_term, REG_EXTENDED | REG_NEWLINE) == 0) {
+        state->last_search_is_regex = true;
+        snprintf(state->status_msg, sizeof(state->status_msg), "Regex search: %s", search_term);
+    } else {
+        // Se a compilação falhar, trata como busca de texto normal
+        state->last_search_is_regex = false;
+        snprintf(state->status_msg, sizeof(state->status_msg), "Plain text search: %s", search_term);
+    }
+
+    // Inicia a busca a partir da posição atual
+    editor_find_next(state);
 }
 
 void editor_find_next(EditorState *state) {
@@ -750,18 +741,35 @@ void editor_find_next(EditorState *state) {
         return;
     }
 
-    int start_line = state->current_line, start_col = state->current_col + 1;
+    int start_line = state->current_line;
+    int start_col = state->current_col + 1;
+
     for (int i = 0; i < state->num_lines; i++) {
-        int current_line_idx = (start_line + i) % state->num_lines;
-        char *line = state->lines[current_line_idx];
+        int line_num = (start_line + i) % state->num_lines;
+        char *line = state->lines[line_num];
+        if (!line) continue;
         if (i > 0) start_col = 0;
-        char *match = strstr(&line[start_col], state->last_search); 
-        if (match) {
-            state->current_line = current_line_idx;
-            state->current_col = match - line;
-            state->ideal_col = state->current_col;
-            snprintf(state->status_msg, sizeof(state->status_msg), "Found at L:%d C:%d", state->current_line + 1, state->current_col + 1);
-            return;
+
+        if (state->last_search_is_regex) {
+            regmatch_t pmatch[1];
+            // Inicia a busca a partir de line + start_col
+            if (regexec(&state->compiled_regex, line + start_col, 1, pmatch, 0) == 0) {
+                state->current_line = line_num;
+                // pmatch[0].rm_so é o offset a partir do início da string buscada
+                state->current_col = start_col + pmatch[0].rm_so;
+                state->ideal_col = state->current_col;
+                snprintf(state->status_msg, sizeof(state->status_msg), "Found at L:%d C:%d", state->current_line + 1, state->current_col + 1);
+                return;
+            }
+        } else { // Fallback para busca de texto simples
+            char *match = strstr(line + start_col, state->last_search);
+            if (match) {
+                state->current_line = line_num;
+                state->current_col = match - line;
+                state->ideal_col = state->current_col;
+                snprintf(state->status_msg, sizeof(state->status_msg), "Found at L:%d C:%d", state->current_line + 1, state->current_col + 1);
+                return;
+            }
         }
     }
     snprintf(state->status_msg, sizeof(state->status_msg), "No other occurrence of: %s", state->last_search);
@@ -773,25 +781,48 @@ void editor_find_previous(EditorState *state) {
         return;
     }
 
-    int start_line = state->current_line, start_col = state->current_col;
+    int start_line = state->current_line;
+    int start_col = state->current_col;
+
     for (int i = 0; i < state->num_lines; i++) {
-        int current_line_idx = (start_line - i + state->num_lines) % state->num_lines;
-        char *line = state->lines[current_line_idx];
-        char *last_match_in_line = NULL;
-        char *match = strstr(line, state->last_search);
-        while (match) {
-            if (current_line_idx == start_line && (match - line) >= start_col) break;
-            last_match_in_line = match;
-            match = strstr(match + 1, state->last_search);
+        int line_num = (start_line - i + state->num_lines) % state->num_lines;
+        char *line = state->lines[line_num];
+        if (!line) continue;
+
+        int search_from = 0;
+        int last_match_col = -1;
+
+        if (state->last_search_is_regex) {
+            regmatch_t pmatch[1];
+            while (regexec(&state->compiled_regex, line + search_from, 1, pmatch, 0) == 0) {
+                int match_pos = search_from + pmatch[0].rm_so;
+                if (line_num == start_line && match_pos >= start_col) {
+                    break; // Passou do cursor na linha inicial
+                }
+                last_match_col = match_pos;
+                search_from = search_from + pmatch[0].rm_eo;
+                if (pmatch[0].rm_so == pmatch[0].rm_eo) search_from++; // Evita loop infinito em matches de tamanho zero
+                if (search_from >= (int)strlen(line)) break;
+            }
+        } else { // Fallback para texto simples
+            char *match = strstr(line, state->last_search);
+            while (match) {
+                if (line_num == start_line && (match - line) >= start_col) {
+                    break;
+                }
+                last_match_col = match - line;
+                match = strstr(match + 1, state->last_search);
+            }
         }
-        if (last_match_in_line) {
-            state->current_line = current_line_idx;
-            state->current_col = last_match_in_line - line;
+
+        if (last_match_col != -1) {
+            state->current_line = line_num;
+            state->current_col = last_match_col;
             state->ideal_col = state->current_col;
             snprintf(state->status_msg, sizeof(state->status_msg), "Found at L:%d C:%d", state->current_line + 1, state->current_col + 1);
             return;
         }
-        start_col = strlen(line);
+        start_col = 99999; // Para as linhas anteriores, busca desde o final
     }
     snprintf(state->status_msg, sizeof(state->status_msg), "No other occurrence of: %s", state->last_search);
 }
@@ -1932,4 +1963,9 @@ void make_make_file(EditorState *state, const char *args) {
     char *const cmd[] = {"make", NULL};
     criar_janela_terminal_generica(cmd);
     snprintf(state->status_msg, sizeof(state->status_msg), "Makefile robusto gerado. Compilando com 'make'...");
+}
+
+void editor_do_regex_replace(EditorState *state, const char *find, const char *replace, const char *flags) {
+    // Placeholder implementation
+    snprintf(state->status_msg, sizeof(state->status_msg), "Regex replace not yet implemented.");
 }

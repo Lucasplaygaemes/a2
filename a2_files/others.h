@@ -60,6 +60,7 @@ void handle_command_mode_key(EditorState *state, wint_t ch, bool *should_exit);
 
 void editor_toggle_comment(EditorState *state);
 void editor_do_replace(EditorState *state, const char *find, const char *replace, const char *flags);
+void editor_do_regex_replace(EditorState *state, const char *find, const char *replace, const char *flags);
 
 char *analyze_include_and_generate_flags(EditorState *state);
 
