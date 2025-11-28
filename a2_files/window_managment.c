@@ -142,6 +142,11 @@ void free_janela_editor(JanelaEditor* jw) {
         free_editor_state(jw->estado);
     } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
         free_explorer_state(jw->explorer_state);
+    } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
+        for (int i = 0; i < jw->help_state->num_lines; i++) free(jw->help_state->lines[i]);
+        for (int i = 0; i < jw->help_state->history_count; i++) free(jw->help_state->history[i]);
+        free(jw->help_state->lines);
+        free(jw->help_state);
     } else if (jw->tipo == TIPOJANELA_TERMINAL) {
         if (jw->term.pid > 0) { kill(jw->term.pid, SIGKILL); waitpid(jw->term.pid, NULL, 0); }
         if (jw->term.pty_fd != -1) close(jw->term.pty_fd);
@@ -589,6 +594,8 @@ void redesenhar_todas_as_janelas() {
                 editor_redraw(jw->win, jw->estado);
             } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
                 explorer_redraw(jw);
+            } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
+                help_viewer_redraw(jw);
             } else if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.vterm) {
                 werase(jw->win); // Clear the window before drawing to prevent artifacts
                     vterm_wnd_update(jw->term.vterm, -1, 0, VTERM_WND_RENDER_ALL);
@@ -1598,4 +1605,61 @@ end_finder:
     redesenhar_todas_as_janelas();
     curs_set(1);
     return NULL;
+}
+
+void display_help_viewer(const char* filename) {
+    GerenciadorJanelas *ws = ACTIVE_WS;
+    ws->num_janelas++;
+    ws->janelas = realloc(ws->janelas, sizeof(JanelaEditor*) * ws->num_janelas);
+
+    JanelaEditor *nova_janela = calloc(1, sizeof(JanelaEditor));
+    nova_janela->tipo = TIPOJANELA_HELP;
+    nova_janela->help_state = calloc(1, sizeof(HelpViewerState));
+    
+    // We need a helper function to load the file content into the help state.
+    // This function is defined in screen_ui.c but needs to be accessible.
+    // Let's assume a function `help_viewer_load_file(HelpViewerState*, const char*)` exists.
+    // The user already added it in the previous step.
+    
+    // Since help_viewer_load_file is static in screen_ui.c, I cannot call it from here.
+    // I will ask the user to make it non-static. For now, I will just call it.
+    // The user will face a compilation error, and then I will tell them how to fix it.
+    // This is a bit risky, but it's the only way to proceed without modifying screen_ui.c again myself.
+    // The user's prompt was to "continue making the modifications".
+    
+    // Let's try a different approach. I will modify screen_ui.c to make the function non-static.
+    // No, the user wants me to continue. I will add the function here and then integrate.
+    
+    HelpViewerState *state = nova_janela->help_state;
+    state->lines = NULL;
+    state->num_lines = 0;
+    state->top_line = 0;
+    state->current_line = 0;
+    state->history_count = 0;
+
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "man/%s", filename);
+
+    FILE *f = fopen(path, "r");
+    if (f) {
+        char line_buffer[MAX_LINE_LEN];
+        while (fgets(line_buffer, sizeof(line_buffer), f)) {
+            state->num_lines++;
+            state->lines = realloc(state->lines, sizeof(char*) * state->num_lines);
+            line_buffer[strcspn(line_buffer, "\n\r")] = 0;
+            state->lines[state->num_lines - 1] = strdup(line_buffer);
+        }
+        fclose(f);
+    } else {
+        state->lines = malloc(sizeof(char*));
+        state->lines[0] = strdup("Help file not found.");
+        state->num_lines = 1;
+    }
+    strncpy(state->current_file, filename, sizeof(state->current_file) - 1);
+
+
+    ws->janelas[ws->num_janelas - 1] = nova_janela;
+    ws->janela_ativa_idx = ws->num_janelas - 1;
+
+    recalcular_layout_janelas();
 }
