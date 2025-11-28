@@ -1,0 +1,64 @@
+# a2 Commands Manual
+
+This page details the commands available in Command Mode (activated with *:*).
+
+## File Operations
+- *:w [name]*: Writes (saves) the current file. Can optionally save to a new `name`.
+- *:q*: Quits the active window. Exits `a2` if it's the last window.
+- *:q!*: Forces quit without saving.
+- *:wq*: Writes and quits.
+- *:open <name>*: Opens a file in the current window.
+- *:new*: Creates a new empty buffer.
+- *:rc*: Reloads the current file from disk.
+- *:rc!*: Forces reload, discarding any local changes.
+- *:..*: Switches to the alternate (previously opened) file.
+
+## Navigation & Search
+- *:ff*: Opens the *Fuzzy Finder* to search for any file in the project.
+- *:explorer*: Opens the file explorer in a new split.
+- *:s/find/repl/*: Replaces the next occurrence of `find` with `repl`.
+- *:s/find/repl/N*: Replaces the next `N` occurrences.
+- *:s/find/repl/lN*: Replaces all occurrences on line `N`.
+- *:s/find/repl/r*: Replaces using `find` as a regular expression.
+- *:grep <term>*: Searches for `term` across all project files (runs in the background).
+- *:showgrep*: Shows the results of the last grep search.
+
+## Windows & Workspaces
+- *:term [cmd]*: Opens a command in a new terminal split (e.g., `:term ls -l`).
+- *:mtw <num>*: Moves the current window to the specified workspace number.
+
+## Git Integration
+- *:gstatus*: Shows the output of `git status`.
+- *:gadd <file>*: Stages a file. Use `.` to stage all changes.
+- *:gcommit [msg]*: Runs `git commit`. If a message is provided, uses `-m`.
+- *:gpush*: Runs `git push`.
+- *:gpull*: Runs `git pull`.
+
+## Project Management
+- *:save-project [name]*: Saves the current session (open files, layout).
+- *:load-project <name>*: Loads a named project session.
+- *:list-projects*: Lists all saved project sessions.
+
+## Language & Diagnostics (LSP)
+- *:lsp-status*: Checks the status of the Language Server Protocol server.
+- *:lsp-restart*: Restarts the LSP server.
+- *:lsp-definition*: Jumps to the definition of the symbol under the cursor.
+- *:lsp-references*: Lists all references to a symbol.
+- *:lsp-hover*: Shows information about the symbol under the cursor.
+- *:lsp-symbols*: Lists symbols in the current document.
+- *:lsp-rename <new_name>*: Renames the symbol under the cursor.
+- *:lsp-list*: Shows all current diagnostics in a list view.
+- *:lsp-refresh*: Forces a refresh of LSP diagnostics.
+
+## Other
+- *:! <cmd>*: Executes a shell command and shows the output.
+- *:help*: Shows the main help screen.
+- *:ksc*: Shows the keyboard shortcuts screen.
+- *:theme <name>*: Loads and applies a theme.
+- *:gcc [libs]*: Compiles the current C/C++ file.
+- *:diff <f1> <f2>*: Shows the difference between two files.
+- *:timer*: Shows the work time report.
+- *:set <option>*: Changes a setting (`paste`, `nopaste`, `wrap`, `nowrap`, `bar <0|1>`).
+- *:savemacros*: Saves current macros to `~/.a2_macros`.
+- *:loadmacros*: Loads macros from the file.
+- *:listmacros*: Displays all loaded macros.

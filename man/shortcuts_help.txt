@@ -1,0 +1,67 @@
+# a2 Shortcuts Manual
+
+This page lists the keyboard shortcuts for the `a2` editor.
+
+## Global Shortcuts
+- *Ctrl+]* / *Ctrl+[* : Navigate to the next/previous window (split).
+- *Alt+n* / *Alt+m* : Navigate to the next/previous workspace.
+- *Alt+x* : Close the active window.
+- *Ctrl+w* : Create a new empty workspace.
+- *Alt+Enter* : Create a new vertical split window.
+- *Alt+.* : Cycle through available window layouts.
+- *Alt+r* : Rotate windows within the current layout.
+- *Alt+[1-9]* : Move the active window to the specified workspace.
+
+## Palettes & Finders
+- *Alt+t* : Open the unified Command Palette.
+- *Alt+f* : Open the Fuzzy Finder to search for project files.
+- *Alt+b* : Show a list of recently opened files.
+- *Alt+s* : Start a project-wide content search (grep).
+- *Alt+g, g* : Open the directory navigator.
+
+## Normal Mode
+- *i* : Enter *Insert Mode*.
+- *v* : Enter *Visual Mode*.
+- *:* : Enter *Command Mode*.
+- *h, j, k, l* / *Arrows* : Move the cursor.
+- *g* / *G* : Jump to the start / end of the file.
+- *K* / *Home* : Jump to the start of the line.
+- *Ç* / *End* : Jump to the end of the line.
+- *O* / *L* / *PageUp* / *PageDown* : Page up/down.
+- *Alt+w* / *Alt+b* : Move to the next / previous word.
+- *u* / *U* : Create a new line above/below and enter Insert Mode.
+- *yy* : Yank (copy) the current line to the local register.
+- *p* / *P* : Paste from the local / global register.
+- *m* : Paste from the "move" register (after cutting in Visual Mode).
+- *Ctrl+f* : Find text (supports regular expressions).
+- *Ctrl+d* / *Ctrl+a* : Find the next / previous occurrence.
+- *Ctrl+Del* / *Ctrl+k* : Delete the current line.
+- *q[a-z]* : Start or stop recording a macro.
+- *@[a-z]* : Play back a macro.
+- *@@* : Repeat the last played macro.
+- *Alt+c* : Toggle comment on the current line.
+
+## Insert Mode
+- *Esc* : Return to *Normal Mode*.
+- *Ctrl+o* : Enter Normal Mode for a single command, then return.
+- *Tab* : Indent at the start of a line, otherwise trigger completion.
+- *Shift+Tab* : Un-indent the current line.
+- *(*, *[*, *{*, *"* : Auto-close the pair and place the cursor inside.
+
+## Visual Mode
+- *s* : Start or end a character-wise selection.
+- *y* : Yank (copy) the selection to the local register.
+- *Ctrl+y* : Yank the selection to the global register.
+- *Alt+y* : Copy the selection to the system clipboard.
+- *m* : Cut the selection to the "move" register.
+- *Alt+Tab* / *Shift+Tab* : Indent / un-indent the selected block.
+- *Alt+c* : Toggle comment on the selected lines.
+
+## File Explorer Mode
+- *j, k* / *Arrows* : Navigate up and down.
+- *Enter* : Open a file or enter a directory.
+- *q* : Close the explorer window.
+- *r* : Rename the selected item.
+- *n* / *N* : Create a new file / directory.
+- *c* / *x* / *v* : Copy / Cut / Paste files and directories.
+- *d* : Delete the selected item (with confirmation).
