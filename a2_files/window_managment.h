@@ -49,5 +49,7 @@ void criar_janela_explorer();
 void display_command_palette(EditorState *state);
 void display_content_search(EditorState *state, const char *prefilled_term);
 
+void dispay_help_viewer(const char* filename);
+
 
 #endif // WINDOW_MANAGMENT_H
