@@ -77,9 +77,9 @@ typedef struct {
 typedef enum {
     TIPOJANELA_EDITOR,
     TIPOJANELA_TERMINAL,
-    TIPOJANELA_EXPLORER
+    TIPOJANELA_EXPLORER,
+    TIPOJANELA_HELP
 } TipoJanela;
-
 
 #ifndef EDITORMODE_DEFINED
 #define EDITORMODE_DEFINED
@@ -335,6 +335,22 @@ typedef struct {
 } ExplorerState;
 #endif
 
+#define HELP_HISTORY_SIZE 10
+
+#ifndef HELPVIEWERSTATE_DEFINED
+#define HELPVIEWERSTATE_DEFINED
+
+typedef struct {
+    char **lines;
+    int num_lines;
+    int top_line;
+    int current_line;
+    char current_file[PATH_MAX];
+    char *history[HELP_HISTORY_SIZE];
+    int history_count;
+} HelpViewerState;
+#endif
+
 #ifndef JANELA_EDITOR_DEFINED
 #define JANELA_EDITOR_DEFINED
 typedef struct JanelaEditor {
@@ -344,6 +360,7 @@ typedef struct JanelaEditor {
 
     EditorState *estado; // Usado por TIPOJANELA_EDITOR
     ExplorerState *explorer_state; // Usado por TIPOJANELA_EXPLORER
+    HelpViewerState *help_state;
 
     // Agrupa campos do terminal
     struct {
