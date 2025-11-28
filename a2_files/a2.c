@@ -847,6 +847,11 @@ int main(int argc, char *argv[]) {
                 if (wget_wch(stdscr, &ch) != ERR) {
                      process_editor_input(active_jw->estado, ch, &should_exit);
                 }
+            } else if (active_jw->tipo == TIPOJANELA_HELP) {
+                wint_t ch;
+                if (wget_wch(stdscr, &ch) != ERR) {
+                    help_viewer_process_input(active_jw, ch);
+                }
             } else if (active_jw->tipo == TIPOJANELA_EXPLORER) {
                 wint_t ch;
                 if (wget_wch(stdscr, &ch) != ERR) {
