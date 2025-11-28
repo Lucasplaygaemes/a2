@@ -1098,3 +1098,211 @@ void display_macros_list(EditorState *state) {
     remove(temp_filename);
     free(temp_filename);
 }
+
+static void help_viewer_load_file(HelpViewerState *state, const char *filename)  {
+    // cleans the content before
+    if (state->lines) {
+        for (int i = 0; i < state->num_lines; i++) {
+            free(state->lines[i]);
+        }
+        free(state->lines);
+        state->lines = NULL;
+    }
+    state->num_lines = 0;
+    state->top_line = 0;
+    state->current_line = 0;
+    
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "man/%s", filename);
+        
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        // if not find, create a line of error
+        state->lines = malloc(sizeof(char*));
+        state->lines[0] = strdup("Help file not found.");
+        state->num_lines = 1;
+        return;
+    }
+    
+    char line_buffer[MAX_LINE_LEN];
+    while(fgets(line_buffer, sizeof(line_buffer), f)) {
+        state->num_lines++;
+        state->lines = realloc(state->lines, sizeof(char*) *state->num_lines);
+        line_buffer[strcspn(line_buffer, "\n")] = 0;
+        state->lines[state->num_lines - 1] = strdup(line_buffer);
+    }
+    fclose(f);
+    
+    strncpy(state->current_file, filename, sizeof(state->current_file) - 1);
+}
+
+// function to draw help view
+void help_viewer_redraw(JanelaEditor *jw) {
+    HelpViewerState *state = jw->help_state;
+    werase(jw->win);
+    box(jw->win, 0, 0);
+
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
+
+    mvwprintw(jw->win, 0, 2, " Help: %s ", state->current_file);
+
+    for (int i = 0; i < rows - 2; i++) {
+        int line_idx = state->top_line + i;
+        if (line_idx >= state->num_lines) break;
+
+        char *line = state->lines[line_idx];
+        
+        if (line_idx == state->current_line) {
+            wattron(jw->win, A_REVERSE);
+            for(int k=0; k < cols; k++) mvwaddch(jw->win, i + 1, k, ' ');
+        }
+
+        if (strncmp(line, "# ", 2) == 0) {
+            wattron(jw->win, A_BOLD | COLOR_PAIR(PAIR_KEYWORD));
+            mvwprintw(jw->win, i + 1, 2, "%.*s", cols - 4, line + 2);
+            wattroff(jw->win, A_BOLD | COLOR_PAIR(PAIR_KEYWORD));
+        } else if (strncmp(line, "## ", 3) == 0) {
+            wattron(jw->win, A_BOLD | COLOR_PAIR(PAIR_STD_FUNCTION));
+            mvwprintw(jw->win, i + 1, 2, "%.*s", cols - 4, line + 3);
+            wattroff(jw->win, A_BOLD | COLOR_PAIR(PAIR_STD_FUNCTION));
+        } else {
+            int x = 2;
+            char *ptr = line;
+            while (*ptr) {
+                if (x >= cols - 2) break;
+                
+                if (*ptr == '[' && strchr(ptr, ']')) {
+                    char *end_text = strstr(ptr, "]");
+                    char *start_file = strstr(end_text, "(");
+                    if (start_file && strchr(start_file, ')')) {
+                        char *link_text_ptr = ptr + 1;
+                        while (link_text_ptr < end_text) {
+                            wchar_t link_wc;
+                            int link_bytes = mbtowc(&link_wc, link_text_ptr, MB_CUR_MAX);
+                            if (link_bytes <= 0) { link_text_ptr++; continue; }
+                            
+                            cchar_t link_cc;
+                            setcchar(&link_cc, &link_wc, A_UNDERLINE, PAIR_TYPE, NULL);
+                            mvwadd_wch(jw->win, i + 1, x++, &link_cc);
+                            
+                            link_text_ptr += link_bytes;
+                        }
+                        ptr = strchr(start_file, ')') + 1;
+                        continue;
+                    }
+                }
+                
+                if (*ptr == '*') {
+                    char *end = strchr(ptr + 1, '*');
+                    if (end) {
+                        char* bold_text = ptr + 1;
+                        while(bold_text < end) {
+                            wchar_t bold_wc;
+                            int bold_bytes = mbtowc(&bold_wc, bold_text, MB_CUR_MAX);
+                            if(bold_bytes <= 0) { bold_text++; continue; }
+
+                            cchar_t bold_cc;
+                            setcchar(&bold_cc, &bold_wc, A_BOLD, 0, NULL);
+                            mvwadd_wch(jw->win, i + 1, x++, &bold_cc);
+                            bold_text += bold_bytes;
+                        }
+                        ptr = end + 1;
+                        continue;
+                    }
+                }
+
+                wchar_t wc;
+                int bytes_consumed = mbtowc(&wc, ptr, MB_CUR_MAX);
+                if (bytes_consumed <= 0) { ptr++; continue; }
+
+                cchar_t cc;
+                setcchar(&cc, &wc, A_NORMAL, 0, NULL);
+                mvwadd_wch(jw->win, i + 1, x++, &cc);
+                ptr += bytes_consumed;
+            }
+        }
+
+        if (line_idx == state->current_line) {
+            wattroff(jw->win, A_REVERSE);
+        }
+    }
+
+    wattron(jw->win, A_REVERSE);
+    mvwprintw(jw->win, rows - 1, 1, " (q) Quit | (Enter) Follow Link | (Backspace) Back ");
+    wattroff(jw->win, A_REVERSE);
+
+    wnoutrefresh(jw->win);
+}
+
+void help_viewer_process_input(JanelaEditor *jw, wint_t ch) {
+    HelpViewerState *state = jw->help_state;
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
+    (void)cols;
+
+    switch(ch) {
+        case 'q':
+            fechar_janela_ativa(NULL);
+            break;
+        case KEY_CTRL_RIGHT_BRACKET:
+            proxima_janela();
+            break;
+        case KEY_CTRL_LEFT_BRACKET:
+            janela_anterior();
+            break;
+        case KEY_UP:
+        case 'k':
+            if (state->current_line > 0) state->current_line--;
+            break;
+        case KEY_DOWN:
+        case 'j':
+            if (state->current_line < state->num_lines - 1) state->current_line++;
+            break;
+        case KEY_PPAGE:
+            state->current_line -= (rows - 2);
+            if (state->current_line < 0) state->current_line = 0;
+            break;
+        case KEY_NPAGE:
+            state->current_line += (rows - 2);
+            if (state->current_line >= state->num_lines) state->current_line = state->num_lines - 1;
+            break;
+        case KEY_ENTER:
+        case '\n': {
+            char *line = state->lines[state->current_line];
+            char *start_file = strstr(line, "](");
+            if (start_file) {
+                char *end_file = strchr(start_file, ')');
+                if (end_file) {
+                    char filename[256];
+                    int len = end_file - (start_file + 2);
+                    if (len > 0 && len < 255) {
+                        if (state->history_count < HELP_HISTORY_SIZE) {
+                            state->history[state->history_count++] = strdup(state->current_file);
+                        }
+                        strncpy(filename, start_file + 2, len);
+                        filename[len] = '\0';
+                        help_viewer_load_file(state, filename);
+                    }
+                }
+            }
+            break;
+        }
+        case KEY_BACKSPACE:
+        case 127:
+        case 'b':
+            if (state->history_count > 0) {
+                char *previous_file = state->history[--state->history_count];
+                help_viewer_load_file(state, previous_file);
+                free(previous_file);
+            }
+            break;
+    }
+
+    if (state->current_line < state->top_line) {
+        state->top_line = state->current_line;
+    }
+    if (state->current_line >= state->top_line + (rows - 2)) {
+        state->top_line = state->current_line - (rows - 2) + 1;
+    }
+}
