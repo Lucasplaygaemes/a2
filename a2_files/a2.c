@@ -850,7 +850,7 @@ int main(int argc, char *argv[]) {
             } else if (active_jw->tipo == TIPOJANELA_HELP) {
                 wint_t ch;
                 if (wget_wch(stdscr, &ch) != ERR) {
-                    help_viewer_process_input(active_jw, ch);
+                    help_viewer_process_input(active_jw, ch, &should_exit);
                 }
             } else if (active_jw->tipo == TIPOJANELA_EXPLORER) {
                 wint_t ch;
@@ -900,6 +900,9 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
+
+        // If the input processing resulted in an exit command, skip the rest of the loop.
+        if (should_exit) continue;
 
         // Process terminal and LSP output
         for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {

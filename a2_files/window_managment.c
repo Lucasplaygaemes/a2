@@ -304,9 +304,10 @@ void fechar_janela_ativa(bool *should_exit) {
     if (ws->num_janelas == 0) return;
 
     int idx = ws->janela_ativa_idx;
-    EditorState *state = ws->janelas[idx]->estado;
-    if (state && state->buffer_modified) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Warning: Unsaved changes! Use :q! to force quit.");
+    
+    // Check for unsaved changes only if it's an editor window
+    if (ws->janelas[idx]->tipo == TIPOJANELA_EDITOR && ws->janelas[idx]->estado && ws->janelas[idx]->estado->buffer_modified) {
+        snprintf(ws->janelas[idx]->estado->status_msg, sizeof(ws->janelas[idx]->estado->status_msg), "Warning: Unsaved changes! Use :q! to force quit.");
         return;
     }
 
@@ -315,18 +316,20 @@ void fechar_janela_ativa(bool *should_exit) {
         return;
     }
 
+    // Save the pointer to the window that will be closed
+    JanelaEditor *janela_para_fechar = ws->janelas[idx];
+
     // Shift the array to remove the pointer
     for (int i = idx; i < ws->num_janelas - 1; i++) {
         ws->janelas[i] = ws->janelas[i+1];
     }
     ws->num_janelas--;
     
-    // Safely reallocate the array, checking for errors.
     JanelaEditor **new_janelas = realloc(ws->janelas, sizeof(JanelaEditor*) * ws->num_janelas);
-    if (!new_janelas) {
-        // If realloc fails, we are in a bad state. Exit gracefully.
+    if (ws->num_janelas > 0 && !new_janelas) {
         perror("realloc failed when closing window");
-        exit(EXIT_FAILURE);
+        ws->num_janelas++; 
+        return;
     }
     ws->janelas = new_janelas;
 
@@ -335,7 +338,9 @@ void fechar_janela_ativa(bool *should_exit) {
         ws->janela_ativa_idx = ws->num_janelas - 1;
     }
 
-    // Now it is safe to free the memory
+    // Now it is safe to free the memory for the closed window
+    free_janela_editor(janela_para_fechar);
+
     recalcular_layout_janelas();
     redesenhar_todas_as_janelas();
 }
@@ -343,8 +348,6 @@ void fechar_janela_ativa(bool *should_exit) {
 void fechar_workspace_ativo(bool *should_exit) {
     if (gerenciador_workspaces.num_workspaces == 0) return;
 
-    // If it's the last workspace, just signal the main loop to exit.
-    // The cleanup at the end of main() will handle freeing the last workspace.
     if (gerenciador_workspaces.num_workspaces == 1) {
         EditorState *last_state = ACTIVE_WS->janelas[0]->estado;
         if (last_state && last_state->buffer_modified) {
@@ -1615,20 +1618,6 @@ void display_help_viewer(const char* filename) {
     JanelaEditor *nova_janela = calloc(1, sizeof(JanelaEditor));
     nova_janela->tipo = TIPOJANELA_HELP;
     nova_janela->help_state = calloc(1, sizeof(HelpViewerState));
-    
-    // We need a helper function to load the file content into the help state.
-    // This function is defined in screen_ui.c but needs to be accessible.
-    // Let's assume a function `help_viewer_load_file(HelpViewerState*, const char*)` exists.
-    // The user already added it in the previous step.
-    
-    // Since help_viewer_load_file is static in screen_ui.c, I cannot call it from here.
-    // I will ask the user to make it non-static. For now, I will just call it.
-    // The user will face a compilation error, and then I will tell them how to fix it.
-    // This is a bit risky, but it's the only way to proceed without modifying screen_ui.c again myself.
-    // The user's prompt was to "continue making the modifications".
-    
-    // Let's try a different approach. I will modify screen_ui.c to make the function non-static.
-    // No, the user wants me to continue. I will add the function here and then integrate.
     
     HelpViewerState *state = nova_janela->help_state;
     state->lines = NULL;
