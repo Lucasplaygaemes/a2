@@ -65,3 +65,13 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *n* / *N* : Create a new file / directory.
 - *c* / *x* / *v* : Copy / Cut / Paste files and directories.
 - *d* : Delete the selected item (with confirmation).
+
+## Multi-key Sequences (ALT)
+Press the first key, release, then press the second.
+- *Alt+d, d* : Open a new workspace and start a GDB session.
+- *Alt+d, e* : Open the Fuzzy Finder (same as Alt+f).
+- *Alt+g, a* : Run `git add -u` in a new terminal window.
+- *Alt+g, s* : Run `git status` in a new terminal window.
+- *Alt+p, c* : Paste from the system clipboard.
+- *Alt+p, a* / *Alt+p, u* : Paste the editor's local buffer above/below the current line.
+- *Alt+p, P* / *Alt+p, U* : Paste the editor's global buffer above/below the current line.
