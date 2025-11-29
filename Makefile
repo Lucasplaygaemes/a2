@@ -68,17 +68,12 @@ install: all
 	@echo "Installing a2 executable in /usr/local/bin..."
 	-sudo rm -f /usr/local/bin/$(TARGET)
 	sudo cp $(TARGET) /usr/local/bin/$(TARGET)
-	@echo "Installing man page in /usr/local/share/man/man1/..."
-	sudo mkdir -p /usr/local/share/man/man1
-	sudo cp man/a2.1 /usr/local/share/man/man1/a2.1
-	sudo cp man/a2-commands.1 /usr/local/share/man/man1/a2-commands.1
-	sudo cp man/a2-shortcuts.1 /usr/local/share/man/man1/a2-shortcuts.1
+	@echo "Installing syntaxes and themes..."
+	sudo mkdir -p /usr/local/share/a2/syntaxes
 	sudo cp -r syntaxes/* /usr/local/share/a2/syntaxes/
-	sudo gzip -f /usr/local/share/man/man1/a2.1
-	sudo gzip -f /usr/local/share/man/man1/a2-commands.1
-	sudo gzip -f /usr/local/share/man/man1/a2-shortcuts.1
-	@echo "Updating man database (may be necessary)..."
-	-sudo mandb
+	@echo "Installing help files..."
+	sudo mkdir -p /usr/local/share/a2/man
+	sudo cp man/*.txt /usr/local/share/a2/man/
 	@echo "Installation complete."
     
 # Target to force clean, compile, and install in a single command
