@@ -107,7 +107,7 @@ This guide details all available commands and keybindings.
 | `:lsp-references`| List all references to a symbol. |
 | `:lsp-hover` | Show information about the symbol under the cursor. |
 | `:lsp-symbols` | List symbols in the current document. |
-| `:lsp-rename <n>`| Rename the symbol under the cursor to `<new_name>`. |
+| `:lsp-rename <new_name>`| Rename the symbol under the cursor to `<new_name>`. |
 | `:lsp-list` | Show all current diagnostics in a list view. |
 | `:lsp-refresh` | Force a refresh of LSP diagnostics. |
 
@@ -139,23 +139,18 @@ This guide details all available commands and keybindings.
 ### Global
 | Shortcut | Description |
 |---|---|
-| `Alt+T` | Open the Command Palette. |
-| `Alt+F` / `Alt+D, E` | Open the **Fuzzy Finder**. |
-| `Alt+B` | Open the recent files navigator. |
-| `Alt+D, D` | Open GDB in a new workspace to debug an executable. |
-| `Alt+Z, Z` | Open the directory navigator. |
-| `Alt+Z, S` | Show `git status` in a new window. |
+| `Alt+T` | Open the unified Command Palette. |
+| `Alt+F` | Open the Fuzzy Finder to search for project files. |
+| `Alt+B` | Show a list of recently opened files. |
+| `Alt+S` | Start a project-wide content search (grep). |
 | `Alt+X` | Close the active window. |
-| `Alt+Enter` | Create a new empty window. |
+| `Alt+Enter` | Create a new empty window (vertical split). |
 | `Ctrl+]` / `Ctrl+[` | Navigate to the next/previous window (split). |
 | `Alt+N` / `Alt+M` | Navigate to the next/previous workspace. |
-| `Ctrl+W` | Create a new workspace. |
+| `Ctrl+W` | Create a new empty workspace. |
 | `Alt+[1-9]` | Move the active window to the specified workspace. |
 | `Alt+.` | Cycle through available window layouts. |
 | `Alt+R` | Rotate windows within the current layout. |
-| `Alt+p + Alt+c` | Paste from clipboard. |
-| `Alt+p + Alt+u` | Paste from clipboard below. |
-| `Alt+p + Alt+a` | Paste from clipobad above. |
 
 ### Normal Mode
 | Shortcut | Description |
@@ -167,17 +162,16 @@ This guide details all available commands and keybindings.
 | `g` / `G` | Jump to the start / end of the file. |
 | `K` / `Home` | Jump to the start of the line. |
 | `Ç` / `End` | Jump to the end of the line. |
-| `O` / `PageUp` | Page up. |
-| `L` / `PageDown` | Page down. |
-| `Alt+W` / `Alt+Q` | Move to next / previous word. |
+| `O` / `L` / `PageUp` / `PageDown` | Page up/down. |
+| `Alt+W` / `Alt+B` | Move to next / previous word. |
 | `u` / `U` | Create a new line above/below and enter Insert Mode. |
 | `J` | Join the current line with the line below. |
-| `yy` | Yank (copy) the current line. |
+| `yy` | Yank (copy) the current line to the local register. |
 | `p` / `P` | Paste from local / global register after the cursor. |
 | `m` | Paste from the "move" register (used after cutting in Visual Mode). |
-| `q` | Start or stop recording a macro (`q` + register `a-z`). |
-| `@` | Play back a macro (`@` + register `a-z`). `@@` repeats the last one. |
-| `Ctrl+F` | Start a search. |
+| `q[a-z]` | Start or stop recording a macro. |
+| `@[a-z]` | Play back a macro. `@@` repeats the last one. |
+| `Ctrl+F` | Start a search (supports regular expressions). |
 | `Ctrl+D` / `Ctrl+A` | Find next / previous occurrence of the last search. |
 | `Ctrl+Del` / `Ctrl+K` | Delete the current line. |
 | `Alt+C` | Toggle comment on the current line or visual selection. |
@@ -189,6 +183,7 @@ This guide details all available commands and keybindings.
 | `Ctrl+O` | Enter Normal Mode for a single command, then return to Insert. |
 | `Tab` | Context-aware: Indents if at start of line, otherwise triggers completion. |
 | `Shift+Tab` | Un-indent the current line. |
+| `(`, `[`, `{`, `"` | Auto-close the pair and place the cursor inside. |
 | `Ctrl+P` | Create a new line above the current line. |
 | `Ctrl+L` | Create a new line below the current line. |
 | `Ctrl+U` / `Ctrl+R` | Undo / Redo. |
@@ -198,12 +193,13 @@ This guide details all available commands and keybindings.
 | Shortcut | Description |
 |---|---|
 | `Esc` | Exit Visual Mode and return to Normal Mode. |
-| `s` | Start or end a regular selection. |
+| `s` | Start or end a character-wise selection. |
 | `y` | Yank (copy) the selected text to the local register. |
 | `Ctrl+Y` | Yank the selected text to the global register. |
+| `Alt+Y` | Copy the selection to the system clipboard. |
 | `m` | Cut the selection to the "move" register. |
 | `p` | Paste over the selection. |
-| `Shift+Tab` | Un-indent all lines in the selection. |
+| `Alt+Tab` / `Shift+Tab` | Indent / un-indent the selected block. |
 | `Alt+C` | Toggle comments on all lines in the selection. |
 
 ### File Explorer Mode
@@ -211,6 +207,21 @@ This guide details all available commands and keybindings.
 |---|---|
 | `j`, `k`, Arrow Keys | Navigate up and down. |
 | `Enter` | Open a file or enter a directory. |
+| `r` | Rename the selected item. |
+| `n` / `N` | Create a new file / directory. |
 | `c` / `x` / `v` | Copy / Cut / Paste files and directories. |
 | `d` | Delete the selected item (with confirmation). |
 | `q` | Close the explorer window. |
+
+### Multi-key Sequences
+Press the first key, release, then press the second.
+| Shortcut | Description |
+|---|---|
+| `Alt+d, d` | Open a new workspace and start a GDB session. |
+| `Alt+d, e` | Open the Fuzzy Finder (same as `Alt+f`). |
+| `Alt+g, g` | Open the directory navigator. |
+| `Alt+g, a` | Run `git add -u` in a new terminal window. |
+| `Alt+g, s` | Run `git status` in a new terminal window. |
+| `Alt+p, c` | Paste from the system clipboard. |
+| `Alt+p, a` / `Alt+p, u` | Paste the editor's local buffer above/below the current line. |
+| `Alt+p, P` / `Alt+p, U` | Paste the editor's global buffer above/below the current line. |
