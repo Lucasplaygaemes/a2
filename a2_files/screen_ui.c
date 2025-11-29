@@ -767,74 +767,7 @@ bool is_selected(EditorState *state, int line_idx, int col_idx) {
     return true;
 }
 
-void display_help_screen() {
-    static const CommandInfo commands[] = {
-        { ":w", "Save the current file." },
-        { ":w <name>", "Save with a new name." },
-        { ":q", "Exit the editor." },
-        { ":wq", "Save and exit." },
-        { ":open <name>", "Open a file." },
-        { ":new", "Creates a blank file." },
-        { ":help", "Show this help screen." },
-        { ":gcc [libs]", "Compile the current file (e.g., :gcc -lm)." },
-        { "![cmd]", "Execute a shell command (e.g., !ls -l)." },
-        { ":rc", "Reload the current file." },
-        { ":diff <f1> <f2>", "Show the difference between two files." },
-        { ":set paste", "Enable paste mode (disables auto-indent)." },
-        { ":set nopaste", "Disable paste mode." },
-        { ":timer", "Show the work time report." },
-        { ":lsp-status", "Check the status of the LSP server." },
-        { ":lsp-restart", "Restart the LSP server." },
-        { ":lsp-diag", "Show diagnostics (errors/warnings)." },
-        { ":lsp-definition", "Go to the definition of a symbol." },
-        { ":lsp-hover", "Show information about the symbol under the cursor." },
-        { ":lsp-references", "List all references to a symbol." },
-        { ":lsp-rename <n>", "Rename the symbol under the cursor to <new_name>." },
-        { ":lsp-symbols", "List symbols in the current document." },
-        { ":lsp-refresh", "Force a refresh of LSP diagnostics." },
-        { ":savemacros", "Save current macros to file." },
-        { ":loadmacros", "Load macros from file." },
-        { ":listmacros", "Display all loaded macros." }
-    };
-    int num_commands = sizeof(commands) / sizeof(commands[0]);
 
-    static const CommandInfo visual_commands[] = {
-        { "v", "Enter/Exit visual mode." },
-        { "y", "Yank (copy) selected text." },
-        { "s", "Select text with blue highlight." },
-        { "p", "Paste yanked text." },
-        { "Ctrl+Y", "Yank selection to global register." }
-    };
-    int num_visual_commands = sizeof(visual_commands) / sizeof(visual_commands[0]);
-
-    WINDOW *help_win = newwin(0, 0, 0, 0);
-    wbkgd(help_win, COLOR_PAIR(8));
-
-    wattron(help_win, A_BOLD); mvwprintw(help_win, 2, 2, "--- EDITOR HELP ---"); wattroff(help_win, A_BOLD);
-    
-    for (int i = 0; i < num_commands; i++) {
-        wmove(help_win, 4 + i, 4);
-        wattron(help_win, COLOR_PAIR(3) | A_BOLD);
-        wprintw(help_win, "%-15s", commands[i].command);
-        wattroff(help_win, COLOR_PAIR(3) | A_BOLD);
-        wprintw(help_win, ": %s", commands[i].description);
-    }
-
-    int visual_start_y = 4 + num_commands + 2;
-    wattron(help_win, A_BOLD); mvwprintw(help_win, visual_start_y, 2, "--- VISUAL MODE ---"); wattroff(help_win, A_BOLD);
-
-    for (int i = 0; i < num_visual_commands; i++) {
-        wmove(help_win, visual_start_y + 2 + i, 4);
-        wattron(help_win, COLOR_PAIR(3) | A_BOLD);
-        wprintw(help_win, "%-15s", visual_commands[i].command);
-        wattroff(help_win, COLOR_PAIR(3) | A_BOLD);
-        wprintw(help_win, ": %s", visual_commands[i].description);
-    }
-    
-    wattron(help_win, A_REVERSE); mvwprintw(help_win, visual_start_y + 2 + num_visual_commands + 2, 2, " Press any key to return to the editor "); wattroff(help_win, A_REVERSE);
-    wrefresh(help_win); wgetch(help_win);
-    delwin(help_win);
-}
 
 void display_output_screen(const char *title, const char *filename) {
     FileViewer *viewer = create_file_viewer(filename);
@@ -964,56 +897,7 @@ void display_diagnostics_list(EditorState *state) {
     free(temp_filename);
 }
 
-void display_shortcuts_screen() {
-    char* temp_filename = get_cache_filename("shortcuts.XXXXXX");
-    if (!temp_filename) return;
 
-    int fd = mkstemp(temp_filename);
-    if (fd == -1) { 
-        free(temp_filename);
-        return; 
-    }
-
-    FILE *temp_file = fdopen(fd, "w");
-    if (!temp_file) {
-        close(fd);
-        remove(temp_filename);
-        free(temp_filename);
-        return;
-    }
-
-    fprintf(temp_file, "--- Keyboard Shortcuts ---\n\n");
-
-    fprintf(temp_file, "Comandos Principais:\n");
-    fprintf(temp_file, "    %-20s %s\n", ":help", "Mostra a tela de ajuda de comandos.");
-    fprintf(temp_file, "    %-20s %s\n", ":ksc", "Mostra esta tela de atalhos.");
-    fprintf(temp_file, "    %-20s %s\n", ":explorer", "Abre o explorador de arquivos.");
-    fprintf(temp_file, "    %-20s %s\n", ":s/find/repl/", "Substitui a próxima ocorrência.");
-    fprintf(temp_file, "    %-20s %s\n", ":s/find/repl/N", "Substitui as próximas N ocorrências.");
-    fprintf(temp_file, "    %-20s %s\n", ":s/find/repl/lN", "Substitui tudo na linha N.");
-    fprintf(temp_file, "\n");
-
-    fprintf(temp_file, "Navegação Global:\n");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+t", "Abre a Paleta de Comandos.");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+]", "Próxima janela (split).");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+[", "Janela anterior (split).");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+N / Alt+M", "Próximo/Anterior workspace.");
-    fprintf(temp_file, "\n");
-
-    fprintf(temp_file, "Explorador de Arquivos (quando ativo):\n");
-    fprintf(temp_file, "    %-20s %s\n", "Setas / j, k", "Navega na lista.");
-    fprintf(temp_file, "    %-20s %s\n", "Enter", "Abre arquivo ou entra em diretório.");
-    fprintf(temp_file, "    %-20s %s\n", "q", "Fecha o explorador.");
-    fprintf(temp_file, "\n");
-
-    fprintf(temp_file, "Outros atalhos... (consulte a documentação para mais detalhes)\n");
-    
-    fclose(temp_file);
-
-    display_output_screen("--- Keyboard Shortcuts ---", temp_filename);
-    remove(temp_filename);
-    free(temp_filename);
-}
 
 // Helper function to make macro content readable for display
 void format_macro_for_display(const char* raw_macro, char* display_buf, size_t buf_size) {
@@ -1229,13 +1113,13 @@ void help_viewer_redraw(JanelaEditor *jw) {
     }
 
     wattron(jw->win, A_REVERSE);
-    mvwprintw(jw->win, rows - 1, 1, " (q) Quit | (Enter) Follow Link | (Backspace) Back ");
+    mvwprintw(jw->win, rows - 1, 1, " (q) Quit | (Enter) Follow Link | (r/Backspace) Return ");
     wattroff(jw->win, A_REVERSE);
 
     wnoutrefresh(jw->win);
 }
 
-void help_viewer_process_input(JanelaEditor *jw, wint_t ch) {
+void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
     HelpViewerState *state = jw->help_state;
     int rows, cols;
     getmaxyx(jw->win, rows, cols);
@@ -1243,11 +1127,13 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch) {
 
     switch(ch) {
         case 'q':
-            fechar_janela_ativa(NULL);
+            fechar_janela_ativa(should_exit);
             break;
+        case 'n':
         case KEY_CTRL_RIGHT_BRACKET:
             proxima_janela();
             break;
+        case 'b':
         case KEY_CTRL_LEFT_BRACKET:
             janela_anterior();
             break;
@@ -1290,11 +1176,11 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch) {
         }
         case KEY_BACKSPACE:
         case 127:
-        case 'b':
+        case 'r':
             if (state->history_count > 0) {
                 char *previous_file = state->history[--state->history_count];
                 help_viewer_load_file(state, previous_file);
-                free(previous_file);
+                free(previous_file); // Libera a string do histórico
             }
             break;
     }
