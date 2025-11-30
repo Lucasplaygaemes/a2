@@ -58,7 +58,8 @@ This page details the commands available in Command Mode (activated with *:*).
 - *:gcc [libs]*: Compiles the current C/C++ file.
 - *:diff <f1> <f2>*: Shows the difference between two files.
 - *:timer*: Shows the work time report.
-- *:set <option>*: Changes a setting (`paste`, `nopaste`, `wrap`, `nowrap`, `bar <0|1>`).
+- *:set <option>*: Changes a setting. Options: `paste`, `nopaste`, `wrap`, `nowrap`, `bar <0|1>`, `themedir <path>`.
+- *:toggle_auto_indent*: Toggles auto-indent on new lines.
 - *:savemacros*: Saves current macros to `~/.a2_macros`.
 - *:loadmacros*: Loads macros from the file.
 - *:listmacros*: Displays all loaded macros.
