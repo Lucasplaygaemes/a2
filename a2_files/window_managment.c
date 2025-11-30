@@ -146,6 +146,7 @@ void free_janela_editor(JanelaEditor* jw) {
         for (int i = 0; i < jw->help_state->num_lines; i++) free(jw->help_state->lines[i]);
         for (int i = 0; i < jw->help_state->history_count; i++) free(jw->help_state->history[i]);
         free(jw->help_state->lines);
+        if (jw->help_state->match_lines) free(jw->help_state->match_lines);
         free(jw->help_state);
     } else if (jw->tipo == TIPOJANELA_TERMINAL) {
         if (jw->term.pid > 0) { kill(jw->term.pid, SIGKILL); waitpid(jw->term.pid, NULL, 0); }
@@ -1625,7 +1626,13 @@ void display_help_viewer(const char* filename) {
     state->top_line = 0;
     state->current_line = 0;
     state->history_count = 0;
-
+    
+    state->search_term[0] = '\0';
+    state->search_mode = false;
+    state->match_lines = 0;
+    state->num_matches = 0;
+    state->current_match = -1;
+    
     char path[PATH_MAX];
     snprintf(path, sizeof(path), "man/%s", filename);
 

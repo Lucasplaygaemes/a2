@@ -1020,6 +1020,41 @@ static void help_viewer_load_file(HelpViewerState *state, const char *filename) 
     strncpy(state->current_file, filename, sizeof(state->current_file) - 1);
 }
 
+void help_viewer_perform_search(HelpViewerState *state) {
+    if (state->match_lines) {
+        free(state->match_lines);
+        state->match_lines = NULL;
+    }
+    state->num_matches = 0;
+    state->current_match = -1;
+
+    if (strlen(state->search_term) == 0) {
+        return;
+    }
+
+    for (int i = 0; i < state->num_lines; i++) {
+        if (strstr(state->lines[i], state->search_term)) {
+            state->num_matches++;
+            state->match_lines = realloc(state->match_lines, sizeof(int) * state->num_matches);
+            state->match_lines[state->num_matches - 1] = i;
+        }
+    }
+
+    // Find the first match at or after the current line
+    if (state->num_matches > 0) {
+        for (int i = 0; i < state->num_matches; i++) {
+            if (state->match_lines[i] >= state->current_line) {
+                state->current_match = i;
+                state->current_line = state->match_lines[i];
+                return;
+            }
+        }
+        // If no match found after, wrap around to the first one
+        state->current_match = 0;
+        state->current_line = state->match_lines[0];
+    }
+}
+
 // function to draw help view
 void help_viewer_redraw(JanelaEditor *jw) {
     HelpViewerState *state = jw->help_state;
@@ -1107,14 +1142,34 @@ void help_viewer_redraw(JanelaEditor *jw) {
             }
         }
 
+        // Overlay search highlight
+        if (strlen(state->search_term) > 0) {
+            char *match_ptr = strstr(line, state->search_term);
+            while (match_ptr) {
+                int start_x = 2 + (match_ptr - line);
+                mvwchgat(jw->win, i + 1, start_x, strlen(state->search_term), A_NORMAL, PAIR_WARNING, NULL);
+                match_ptr = strstr(match_ptr + 1, state->search_term);
+            }
+        }
+
         if (line_idx == state->current_line) {
             wattroff(jw->win, A_REVERSE);
         }
     }
 
-    wattron(jw->win, A_REVERSE);
-    mvwprintw(jw->win, rows - 1, 1, " (q) Quit | (Enter) Follow Link | (r/Backspace) Return ");
-    wattroff(jw->win, A_REVERSE);
+    // Status bar and search prompt
+    if (state->search_mode) {
+        wattron(jw->win, A_REVERSE);
+        mvwprintw(jw->win, rows - 1, 1, "/%s", state->search_term);
+        wattroff(jw->win, A_REVERSE);
+        wmove(jw->win, rows - 1, strlen(state->search_term) + 2);
+        curs_set(1);
+    } else {
+        wattron(jw->win, A_REVERSE);
+        mvwprintw(jw->win, rows - 1, 1, " (q) Quit | (/) Search | (n/p) Next/Prev | (r) Back ");
+        wattroff(jw->win, A_REVERSE);
+        curs_set(0);
+    }
 
     wnoutrefresh(jw->win);
 }
@@ -1125,11 +1180,65 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
     getmaxyx(jw->win, rows, cols);
     (void)cols;
 
+    // If in search mode, capture input for the search term
+    if (state->search_mode) {
+        switch (ch) {
+            case KEY_ENTER:
+            case '\n':
+                state->search_mode = false;
+                curs_set(0);
+                help_viewer_perform_search(state);
+                break;
+            case 27: // ESC
+                state->search_mode = false;
+                state->search_term[0] = '\0';
+                curs_set(0);
+                break;
+            case KEY_BACKSPACE:
+            case 127:
+                if (strlen(state->search_term) > 0) {
+                    state->search_term[strlen(state->search_term) - 1] = '\0';
+                }
+                break;
+            default:
+                if (iswprint(ch) && strlen(state->search_term) < sizeof(state->search_term) - 1) {
+                    char mb_char[MB_CUR_MAX + 1];
+                    int len = wctomb(mb_char, ch);
+                    if (len > 0) {
+                        mb_char[len] = '\0';
+                        strcat(state->search_term, mb_char);
+                    }
+                }
+                break;
+        }
+        return; // Return to redraw the prompt
+    }
+
+    // Normal key processing
     switch(ch) {
         case 'q':
             fechar_janela_ativa(should_exit);
             break;
-        case 'n':
+        case '/':
+            state->search_mode = true;
+            state->search_term[0] = '\0';
+            if (state->match_lines) free(state->match_lines);
+            state->match_lines = NULL;
+            state->num_matches = 0;
+            state->current_match = -1;
+            return;
+        case 'n': // Next match
+            if (state->num_matches > 0) {
+                state->current_match = (state->current_match + 1) % state->num_matches;
+                state->current_line = state->match_lines[state->current_match];
+            }
+            break;
+        case 'p': // Previous match
+            if (state->num_matches > 0) {
+                state->current_match = (state->current_match - 1 + state->num_matches) % state->num_matches;
+                state->current_line = state->match_lines[state->current_match];
+            }
+            break;
         case KEY_CTRL_RIGHT_BRACKET:
             proxima_janela();
             break;
@@ -1180,11 +1289,12 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
             if (state->history_count > 0) {
                 char *previous_file = state->history[--state->history_count];
                 help_viewer_load_file(state, previous_file);
-                free(previous_file); // Libera a string do histórico
+                free(previous_file);
             }
             break;
     }
 
+    // Adjust viewport to the current line
     if (state->current_line < state->top_line) {
         state->top_line = state->current_line;
     }
