@@ -799,6 +799,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    redesenhar_todas_as_janelas();
     bool should_exit = false;
     int check_counter = 0;
     while (!should_exit) {
@@ -969,23 +970,25 @@ int main(int argc, char *argv[]) {
             }
         }
                             
-        pthread_mutex_init(&global_grep_state.mutex, NULL);
+        pthread_mutex_lock(&global_grep_state.mutex);
         if (global_grep_state.results_ready) {
             global_grep_state.results_ready = false;
             pthread_mutex_unlock(&global_grep_state.mutex);
             display_grep_results();
         } else {
             pthread_mutex_unlock(&global_grep_state.mutex);
-            }
+        }
         redesenhar_todas_as_janelas();
     }
+    
+    stop_and_log_work();
     
     for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {
         free_workspace(gerenciador_workspaces.workspaces[i]);
     }
     free(gerenciador_workspaces.workspaces);
         
-    stop_and_log_work();
+    pthread_mutex_destroy(&global_grep_state.mutex);
     endwin(); 
     return 0;
 }

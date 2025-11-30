@@ -348,6 +348,12 @@ typedef struct {
     char current_file[PATH_MAX];
     char *history[HELP_HISTORY_SIZE];
     int history_count;
+    
+    char search_term[100];
+    bool search_mode;
+    int *match_lines;
+    int num_matches;
+    int current_match;
 } HelpViewerState;
 #endif
 
