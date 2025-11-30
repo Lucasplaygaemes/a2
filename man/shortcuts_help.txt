@@ -1,0 +1,81 @@
+# a2 Shortcuts Manual
+
+This page lists the keyboard shortcuts for the `a2` editor.
+
+## Global Shortcuts
+- *Alt+T* : Open the unified Command Palette.
+- *Alt+F* : Open the Fuzzy Finder to search for project files.
+- *Alt+B* : Show a list of recently opened files.
+- *Alt+S* : Start a project-wide content search (grep).
+- *Alt+X* : Close the active window.
+- *Alt+Enter* : Create a new empty window (vertical split).
+- *Ctrl+]* / *Ctrl+[* : Navigate to the next/previous window (split).
+- *Alt+N* / *Alt+M* : Navigate to the next/previous workspace.
+- *Ctrl+W* : Create a new empty workspace.
+- *Alt+[1-9]* : Move the active window to the specified workspace.
+- *Alt+.* : Cycle through available window layouts.
+- *Alt+R* : Rotate windows within the current layout.
+
+## Normal Mode
+- *i* : Enter *Insert Mode*.
+- *v* : Enter *Visual Mode*.
+- *:* : Enter *Command Mode*.
+- *h, j, k, l* / *Arrows* : Move cursor left, down, up, right.
+- *g* / *G* : Jump to the start / end of the file.
+- *K* / *Home* : Jump to the start of the line.
+- *Ç* / *End* : Jump to the end of the line.
+- *O* / *L* / *PageUp* / *PageDown* : Page up/down.
+- *Alt+W* / *Alt+B* : Move to next / previous word.
+- *u* / *U* : Create a new line above/below and enter Insert Mode.
+- *J* : Join the current line with the line below.
+- *yy* : Yank (copy) the current line to the local register.
+- *p* / *P* : Paste from local / global register after the cursor.
+- *m* : Paste from the "move" register (used after cutting in Visual Mode).
+- *q[a-z]* : Start or stop recording a macro.
+- *@[a-z]* : Play back a macro. *@@* repeats the last one.
+- *Ctrl+f* : Start a search (supports regular expressions).
+- *Ctrl+d* / *Ctrl+a* : Find next / previous occurrence of the last search.
+- *Ctrl+Del* / *Ctrl+k* : Delete the current line.
+- *Alt+c* : Toggle comment on the current line or visual selection.
+
+## Insert Mode
+- *Esc* : Return to *Normal Mode*.
+- *Ctrl+o* : Enter Normal Mode for a single command, then return to Insert.
+- *Tab* : Context-aware: Indents if at start of line, otherwise trigger completion.
+- *Shift+Tab* : Un-indent the current line.
+- *(*, *[*, *{*, *"* : Auto-close the pair and place the cursor inside.
+- *Ctrl+P* : Create a new line above the current line.
+- *Ctrl+L* : Create a new line below the current line.
+- *Ctrl+U* / *Ctrl+R* : Undo / Redo.
+- *Ctrl+V* : Paste from the local yank register.
+
+## Visual Mode
+- *Esc* : Exit Visual Mode and return to Normal Mode.
+- *s* : Start or end a character-wise selection.
+- *y* : Yank (copy) the selected text to the local register.
+- *Ctrl+y* : Yank the selected text to the global register.
+- *Alt+y* : Copy the selection to the system clipboard.
+- *m* : Cut the selection to the "move" register.
+- *p* : Paste over the selection.
+- *Alt+Tab* / *Shift+Tab* : Indent / un-indent the selected block.
+- *Alt+c* : Toggle comments on all lines in the selection.
+
+## File Explorer Mode
+- *j, k*, *Arrows* : Navigate up and down.
+- *Enter* : Open a file or enter a directory.
+- *r* : Rename the selected item.
+- *n* / *N* : Create a new file / directory.
+- *c* / *x* / *v* : Copy / Cut / Paste files and directories.
+- *d* : Delete the selected item (with confirmation).
+- *q* : Close the explorer window.
+
+## Multi-key Sequences (ALT)
+Press the first key, release, then press the second.
+- *Alt+d, d* : Open a new workspace and start a GDB session.
+- *Alt+d, e* : Open the Fuzzy Finder (same as *Alt+f*).
+- *Alt+g, g* : Open the directory navigator.
+- *Alt+g, a* : Run `git add -u` in a new terminal window.
+- *Alt+g, s* : Run `git status` in a new terminal window.
+- *Alt+p, c* : Paste from the system clipboard.
+- *Alt+p, a* / *Alt+p, u* : Paste the editor's local buffer above/below the current line.
+- *Alt+p, P* / *Alt+p, U* : Paste the editor's global buffer above/below the current line.

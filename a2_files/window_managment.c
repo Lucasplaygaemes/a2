@@ -142,6 +142,12 @@ void free_janela_editor(JanelaEditor* jw) {
         free_editor_state(jw->estado);
     } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
         free_explorer_state(jw->explorer_state);
+    } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
+        for (int i = 0; i < jw->help_state->num_lines; i++) free(jw->help_state->lines[i]);
+        for (int i = 0; i < jw->help_state->history_count; i++) free(jw->help_state->history[i]);
+        free(jw->help_state->lines);
+        if (jw->help_state->match_lines) free(jw->help_state->match_lines);
+        free(jw->help_state);
     } else if (jw->tipo == TIPOJANELA_TERMINAL) {
         if (jw->term.pid > 0) { kill(jw->term.pid, SIGKILL); waitpid(jw->term.pid, NULL, 0); }
         if (jw->term.pty_fd != -1) close(jw->term.pty_fd);
@@ -299,9 +305,10 @@ void fechar_janela_ativa(bool *should_exit) {
     if (ws->num_janelas == 0) return;
 
     int idx = ws->janela_ativa_idx;
-    EditorState *state = ws->janelas[idx]->estado;
-    if (state && state->buffer_modified) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Warning: Unsaved changes! Use :q! to force quit.");
+    
+    // Check for unsaved changes only if it's an editor window
+    if (ws->janelas[idx]->tipo == TIPOJANELA_EDITOR && ws->janelas[idx]->estado && ws->janelas[idx]->estado->buffer_modified) {
+        snprintf(ws->janelas[idx]->estado->status_msg, sizeof(ws->janelas[idx]->estado->status_msg), "Warning: Unsaved changes! Use :q! to force quit.");
         return;
     }
 
@@ -310,18 +317,20 @@ void fechar_janela_ativa(bool *should_exit) {
         return;
     }
 
+    // Save the pointer to the window that will be closed
+    JanelaEditor *janela_para_fechar = ws->janelas[idx];
+
     // Shift the array to remove the pointer
     for (int i = idx; i < ws->num_janelas - 1; i++) {
         ws->janelas[i] = ws->janelas[i+1];
     }
     ws->num_janelas--;
     
-    // Safely reallocate the array, checking for errors.
     JanelaEditor **new_janelas = realloc(ws->janelas, sizeof(JanelaEditor*) * ws->num_janelas);
-    if (!new_janelas) {
-        // If realloc fails, we are in a bad state. Exit gracefully.
+    if (ws->num_janelas > 0 && !new_janelas) {
         perror("realloc failed when closing window");
-        exit(EXIT_FAILURE);
+        ws->num_janelas++; 
+        return;
     }
     ws->janelas = new_janelas;
 
@@ -330,7 +339,9 @@ void fechar_janela_ativa(bool *should_exit) {
         ws->janela_ativa_idx = ws->num_janelas - 1;
     }
 
-    // Now it is safe to free the memory
+    // Now it is safe to free the memory for the closed window
+    free_janela_editor(janela_para_fechar);
+
     recalcular_layout_janelas();
     redesenhar_todas_as_janelas();
 }
@@ -338,8 +349,6 @@ void fechar_janela_ativa(bool *should_exit) {
 void fechar_workspace_ativo(bool *should_exit) {
     if (gerenciador_workspaces.num_workspaces == 0) return;
 
-    // If it's the last workspace, just signal the main loop to exit.
-    // The cleanup at the end of main() will handle freeing the last workspace.
     if (gerenciador_workspaces.num_workspaces == 1) {
         EditorState *last_state = ACTIVE_WS->janelas[0]->estado;
         if (last_state && last_state->buffer_modified) {
@@ -589,6 +598,8 @@ void redesenhar_todas_as_janelas() {
                 editor_redraw(jw->win, jw->estado);
             } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
                 explorer_redraw(jw);
+            } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
+                help_viewer_redraw(jw);
             } else if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.vterm) {
                 werase(jw->win); // Clear the window before drawing to prevent artifacts
                     vterm_wnd_update(jw->term.vterm, -1, 0, VTERM_WND_RENDER_ALL);
@@ -1598,4 +1609,53 @@ end_finder:
     redesenhar_todas_as_janelas();
     curs_set(1);
     return NULL;
+}
+
+void display_help_viewer(const char* filename) {
+    GerenciadorJanelas *ws = ACTIVE_WS;
+    ws->num_janelas++;
+    ws->janelas = realloc(ws->janelas, sizeof(JanelaEditor*) * ws->num_janelas);
+
+    JanelaEditor *nova_janela = calloc(1, sizeof(JanelaEditor));
+    nova_janela->tipo = TIPOJANELA_HELP;
+    nova_janela->help_state = calloc(1, sizeof(HelpViewerState));
+    
+    HelpViewerState *state = nova_janela->help_state;
+    state->lines = NULL;
+    state->num_lines = 0;
+    state->top_line = 0;
+    state->current_line = 0;
+    state->history_count = 0;
+    
+    state->search_term[0] = '\0';
+    state->search_mode = false;
+    state->match_lines = 0;
+    state->num_matches = 0;
+    state->current_match = -1;
+    
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "man/%s", filename);
+
+    FILE *f = fopen(path, "r");
+    if (f) {
+        char line_buffer[MAX_LINE_LEN];
+        while (fgets(line_buffer, sizeof(line_buffer), f)) {
+            state->num_lines++;
+            state->lines = realloc(state->lines, sizeof(char*) * state->num_lines);
+            line_buffer[strcspn(line_buffer, "\n\r")] = 0;
+            state->lines[state->num_lines - 1] = strdup(line_buffer);
+        }
+        fclose(f);
+    } else {
+        state->lines = malloc(sizeof(char*));
+        state->lines[0] = strdup("Help file not found.");
+        state->num_lines = 1;
+    }
+    strncpy(state->current_file, filename, sizeof(state->current_file) - 1);
+
+
+    ws->janelas[ws->num_janelas - 1] = nova_janela;
+    ws->janela_ativa_idx = ws->num_janelas - 1;
+
+    recalcular_layout_janelas();
 }

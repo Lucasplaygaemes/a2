@@ -767,74 +767,7 @@ bool is_selected(EditorState *state, int line_idx, int col_idx) {
     return true;
 }
 
-void display_help_screen() {
-    static const CommandInfo commands[] = {
-        { ":w", "Save the current file." },
-        { ":w <name>", "Save with a new name." },
-        { ":q", "Exit the editor." },
-        { ":wq", "Save and exit." },
-        { ":open <name>", "Open a file." },
-        { ":new", "Creates a blank file." },
-        { ":help", "Show this help screen." },
-        { ":gcc [libs]", "Compile the current file (e.g., :gcc -lm)." },
-        { "![cmd]", "Execute a shell command (e.g., !ls -l)." },
-        { ":rc", "Reload the current file." },
-        { ":diff <f1> <f2>", "Show the difference between two files." },
-        { ":set paste", "Enable paste mode (disables auto-indent)." },
-        { ":set nopaste", "Disable paste mode." },
-        { ":timer", "Show the work time report." },
-        { ":lsp-status", "Check the status of the LSP server." },
-        { ":lsp-restart", "Restart the LSP server." },
-        { ":lsp-diag", "Show diagnostics (errors/warnings)." },
-        { ":lsp-definition", "Go to the definition of a symbol." },
-        { ":lsp-hover", "Show information about the symbol under the cursor." },
-        { ":lsp-references", "List all references to a symbol." },
-        { ":lsp-rename <n>", "Rename the symbol under the cursor to <new_name>." },
-        { ":lsp-symbols", "List symbols in the current document." },
-        { ":lsp-refresh", "Force a refresh of LSP diagnostics." },
-        { ":savemacros", "Save current macros to file." },
-        { ":loadmacros", "Load macros from file." },
-        { ":listmacros", "Display all loaded macros." }
-    };
-    int num_commands = sizeof(commands) / sizeof(commands[0]);
 
-    static const CommandInfo visual_commands[] = {
-        { "v", "Enter/Exit visual mode." },
-        { "y", "Yank (copy) selected text." },
-        { "s", "Select text with blue highlight." },
-        { "p", "Paste yanked text." },
-        { "Ctrl+Y", "Yank selection to global register." }
-    };
-    int num_visual_commands = sizeof(visual_commands) / sizeof(visual_commands[0]);
-
-    WINDOW *help_win = newwin(0, 0, 0, 0);
-    wbkgd(help_win, COLOR_PAIR(8));
-
-    wattron(help_win, A_BOLD); mvwprintw(help_win, 2, 2, "--- EDITOR HELP ---"); wattroff(help_win, A_BOLD);
-    
-    for (int i = 0; i < num_commands; i++) {
-        wmove(help_win, 4 + i, 4);
-        wattron(help_win, COLOR_PAIR(3) | A_BOLD);
-        wprintw(help_win, "%-15s", commands[i].command);
-        wattroff(help_win, COLOR_PAIR(3) | A_BOLD);
-        wprintw(help_win, ": %s", commands[i].description);
-    }
-
-    int visual_start_y = 4 + num_commands + 2;
-    wattron(help_win, A_BOLD); mvwprintw(help_win, visual_start_y, 2, "--- VISUAL MODE ---"); wattroff(help_win, A_BOLD);
-
-    for (int i = 0; i < num_visual_commands; i++) {
-        wmove(help_win, visual_start_y + 2 + i, 4);
-        wattron(help_win, COLOR_PAIR(3) | A_BOLD);
-        wprintw(help_win, "%-15s", visual_commands[i].command);
-        wattroff(help_win, COLOR_PAIR(3) | A_BOLD);
-        wprintw(help_win, ": %s", visual_commands[i].description);
-    }
-    
-    wattron(help_win, A_REVERSE); mvwprintw(help_win, visual_start_y + 2 + num_visual_commands + 2, 2, " Press any key to return to the editor "); wattroff(help_win, A_REVERSE);
-    wrefresh(help_win); wgetch(help_win);
-    delwin(help_win);
-}
 
 void display_output_screen(const char *title, const char *filename) {
     FileViewer *viewer = create_file_viewer(filename);
@@ -964,56 +897,7 @@ void display_diagnostics_list(EditorState *state) {
     free(temp_filename);
 }
 
-void display_shortcuts_screen() {
-    char* temp_filename = get_cache_filename("shortcuts.XXXXXX");
-    if (!temp_filename) return;
 
-    int fd = mkstemp(temp_filename);
-    if (fd == -1) { 
-        free(temp_filename);
-        return; 
-    }
-
-    FILE *temp_file = fdopen(fd, "w");
-    if (!temp_file) {
-        close(fd);
-        remove(temp_filename);
-        free(temp_filename);
-        return;
-    }
-
-    fprintf(temp_file, "--- Keyboard Shortcuts ---\n\n");
-
-    fprintf(temp_file, "Comandos Principais:\n");
-    fprintf(temp_file, "    %-20s %s\n", ":help", "Mostra a tela de ajuda de comandos.");
-    fprintf(temp_file, "    %-20s %s\n", ":ksc", "Mostra esta tela de atalhos.");
-    fprintf(temp_file, "    %-20s %s\n", ":explorer", "Abre o explorador de arquivos.");
-    fprintf(temp_file, "    %-20s %s\n", ":s/find/repl/", "Substitui a próxima ocorrência.");
-    fprintf(temp_file, "    %-20s %s\n", ":s/find/repl/N", "Substitui as próximas N ocorrências.");
-    fprintf(temp_file, "    %-20s %s\n", ":s/find/repl/lN", "Substitui tudo na linha N.");
-    fprintf(temp_file, "\n");
-
-    fprintf(temp_file, "Navegação Global:\n");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+t", "Abre a Paleta de Comandos.");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+]", "Próxima janela (split).");
-    fprintf(temp_file, "    %-20s %s\n", "Ctrl+[", "Janela anterior (split).");
-    fprintf(temp_file, "    %-20s %s\n", "Alt+N / Alt+M", "Próximo/Anterior workspace.");
-    fprintf(temp_file, "\n");
-
-    fprintf(temp_file, "Explorador de Arquivos (quando ativo):\n");
-    fprintf(temp_file, "    %-20s %s\n", "Setas / j, k", "Navega na lista.");
-    fprintf(temp_file, "    %-20s %s\n", "Enter", "Abre arquivo ou entra em diretório.");
-    fprintf(temp_file, "    %-20s %s\n", "q", "Fecha o explorador.");
-    fprintf(temp_file, "\n");
-
-    fprintf(temp_file, "Outros atalhos... (consulte a documentação para mais detalhes)\n");
-    
-    fclose(temp_file);
-
-    display_output_screen("--- Keyboard Shortcuts ---", temp_filename);
-    remove(temp_filename);
-    free(temp_filename);
-}
 
 // Helper function to make macro content readable for display
 void format_macro_for_display(const char* raw_macro, char* display_buf, size_t buf_size) {
@@ -1097,4 +981,324 @@ void display_macros_list(EditorState *state) {
     display_output_screen("--- Macro List ---", temp_filename);
     remove(temp_filename);
     free(temp_filename);
+}
+
+static void help_viewer_load_file(HelpViewerState *state, const char *filename)  {
+    // cleans the content before
+    if (state->lines) {
+        for (int i = 0; i < state->num_lines; i++) {
+            free(state->lines[i]);
+        }
+        free(state->lines);
+        state->lines = NULL;
+    }
+    state->num_lines = 0;
+    state->top_line = 0;
+    state->current_line = 0;
+    
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "man/%s", filename);
+        
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        // if not find, create a line of error
+        state->lines = malloc(sizeof(char*));
+        state->lines[0] = strdup("Help file not found.");
+        state->num_lines = 1;
+        return;
+    }
+    
+    char line_buffer[MAX_LINE_LEN];
+    while(fgets(line_buffer, sizeof(line_buffer), f)) {
+        state->num_lines++;
+        state->lines = realloc(state->lines, sizeof(char*) *state->num_lines);
+        line_buffer[strcspn(line_buffer, "\n")] = 0;
+        state->lines[state->num_lines - 1] = strdup(line_buffer);
+    }
+    fclose(f);
+    
+    strncpy(state->current_file, filename, sizeof(state->current_file) - 1);
+}
+
+void help_viewer_perform_search(HelpViewerState *state) {
+    if (state->match_lines) {
+        free(state->match_lines);
+        state->match_lines = NULL;
+    }
+    state->num_matches = 0;
+    state->current_match = -1;
+
+    if (strlen(state->search_term) == 0) {
+        return;
+    }
+
+    for (int i = 0; i < state->num_lines; i++) {
+        if (strstr(state->lines[i], state->search_term)) {
+            state->num_matches++;
+            state->match_lines = realloc(state->match_lines, sizeof(int) * state->num_matches);
+            state->match_lines[state->num_matches - 1] = i;
+        }
+    }
+
+    // Find the first match at or after the current line
+    if (state->num_matches > 0) {
+        for (int i = 0; i < state->num_matches; i++) {
+            if (state->match_lines[i] >= state->current_line) {
+                state->current_match = i;
+                state->current_line = state->match_lines[i];
+                return;
+            }
+        }
+        // If no match found after, wrap around to the first one
+        state->current_match = 0;
+        state->current_line = state->match_lines[0];
+    }
+}
+
+// function to draw help view
+void help_viewer_redraw(JanelaEditor *jw) {
+    HelpViewerState *state = jw->help_state;
+    werase(jw->win);
+    box(jw->win, 0, 0);
+
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
+
+    mvwprintw(jw->win, 0, 2, " Help: %s ", state->current_file);
+
+    for (int i = 0; i < rows - 2; i++) {
+        int line_idx = state->top_line + i;
+        if (line_idx >= state->num_lines) break;
+
+        char *line = state->lines[line_idx];
+        
+        if (line_idx == state->current_line) {
+            wattron(jw->win, A_REVERSE);
+            for(int k=0; k < cols; k++) mvwaddch(jw->win, i + 1, k, ' ');
+        }
+
+        if (strncmp(line, "# ", 2) == 0) {
+            wattron(jw->win, A_BOLD | COLOR_PAIR(PAIR_KEYWORD));
+            mvwprintw(jw->win, i + 1, 2, "%.*s", cols - 4, line + 2);
+            wattroff(jw->win, A_BOLD | COLOR_PAIR(PAIR_KEYWORD));
+        } else if (strncmp(line, "## ", 3) == 0) {
+            wattron(jw->win, A_BOLD | COLOR_PAIR(PAIR_STD_FUNCTION));
+            mvwprintw(jw->win, i + 1, 2, "%.*s", cols - 4, line + 3);
+            wattroff(jw->win, A_BOLD | COLOR_PAIR(PAIR_STD_FUNCTION));
+        } else {
+            int x = 2;
+            char *ptr = line;
+            while (*ptr) {
+                if (x >= cols - 2) break;
+                
+                if (*ptr == '[' && strchr(ptr, ']')) {
+                    char *end_text = strstr(ptr, "]");
+                    char *start_file = strstr(end_text, "(");
+                    if (start_file && strchr(start_file, ')')) {
+                        char *link_text_ptr = ptr + 1;
+                        while (link_text_ptr < end_text) {
+                            wchar_t link_wc;
+                            int link_bytes = mbtowc(&link_wc, link_text_ptr, MB_CUR_MAX);
+                            if (link_bytes <= 0) { link_text_ptr++; continue; }
+                            
+                            cchar_t link_cc;
+                            setcchar(&link_cc, &link_wc, A_UNDERLINE, PAIR_TYPE, NULL);
+                            mvwadd_wch(jw->win, i + 1, x++, &link_cc);
+                            
+                            link_text_ptr += link_bytes;
+                        }
+                        ptr = strchr(start_file, ')') + 1;
+                        continue;
+                    }
+                }
+                
+                if (*ptr == '*') {
+                    char *end = strchr(ptr + 1, '*');
+                    if (end) {
+                        char* bold_text = ptr + 1;
+                        while(bold_text < end) {
+                            wchar_t bold_wc;
+                            int bold_bytes = mbtowc(&bold_wc, bold_text, MB_CUR_MAX);
+                            if(bold_bytes <= 0) { bold_text++; continue; }
+
+                            cchar_t bold_cc;
+                            setcchar(&bold_cc, &bold_wc, A_BOLD, 0, NULL);
+                            mvwadd_wch(jw->win, i + 1, x++, &bold_cc);
+                            bold_text += bold_bytes;
+                        }
+                        ptr = end + 1;
+                        continue;
+                    }
+                }
+
+                wchar_t wc;
+                int bytes_consumed = mbtowc(&wc, ptr, MB_CUR_MAX);
+                if (bytes_consumed <= 0) { ptr++; continue; }
+
+                cchar_t cc;
+                setcchar(&cc, &wc, A_NORMAL, 0, NULL);
+                mvwadd_wch(jw->win, i + 1, x++, &cc);
+                ptr += bytes_consumed;
+            }
+        }
+
+        // Overlay search highlight
+        if (strlen(state->search_term) > 0) {
+            char *match_ptr = strstr(line, state->search_term);
+            while (match_ptr) {
+                int start_x = 2 + (match_ptr - line);
+                mvwchgat(jw->win, i + 1, start_x, strlen(state->search_term), A_NORMAL, PAIR_WARNING, NULL);
+                match_ptr = strstr(match_ptr + 1, state->search_term);
+            }
+        }
+
+        if (line_idx == state->current_line) {
+            wattroff(jw->win, A_REVERSE);
+        }
+    }
+
+    // Status bar and search prompt
+    if (state->search_mode) {
+        wattron(jw->win, A_REVERSE);
+        mvwprintw(jw->win, rows - 1, 1, "/%s", state->search_term);
+        wattroff(jw->win, A_REVERSE);
+        wmove(jw->win, rows - 1, strlen(state->search_term) + 2);
+        curs_set(1);
+    } else {
+        wattron(jw->win, A_REVERSE);
+        mvwprintw(jw->win, rows - 1, 1, " (q) Quit | (/) Search | (n/p) Next/Prev | (r) Back ");
+        wattroff(jw->win, A_REVERSE);
+        curs_set(0);
+    }
+
+    wnoutrefresh(jw->win);
+}
+
+void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
+    HelpViewerState *state = jw->help_state;
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
+    (void)cols;
+
+    // If in search mode, capture input for the search term
+    if (state->search_mode) {
+        switch (ch) {
+            case KEY_ENTER:
+            case '\n':
+                state->search_mode = false;
+                curs_set(0);
+                help_viewer_perform_search(state);
+                break;
+            case 27: // ESC
+                state->search_mode = false;
+                state->search_term[0] = '\0';
+                curs_set(0);
+                break;
+            case KEY_BACKSPACE:
+            case 127:
+                if (strlen(state->search_term) > 0) {
+                    state->search_term[strlen(state->search_term) - 1] = '\0';
+                }
+                break;
+            default:
+                if (iswprint(ch) && strlen(state->search_term) < sizeof(state->search_term) - 1) {
+                    char mb_char[MB_CUR_MAX + 1];
+                    int len = wctomb(mb_char, ch);
+                    if (len > 0) {
+                        mb_char[len] = '\0';
+                        strcat(state->search_term, mb_char);
+                    }
+                }
+                break;
+        }
+        return; // Return to redraw the prompt
+    }
+
+    // Normal key processing
+    switch(ch) {
+        case 'q':
+            fechar_janela_ativa(should_exit);
+            break;
+        case '/':
+            state->search_mode = true;
+            state->search_term[0] = '\0';
+            if (state->match_lines) free(state->match_lines);
+            state->match_lines = NULL;
+            state->num_matches = 0;
+            state->current_match = -1;
+            return;
+        case 'n': // Next match
+            if (state->num_matches > 0) {
+                state->current_match = (state->current_match + 1) % state->num_matches;
+                state->current_line = state->match_lines[state->current_match];
+            }
+            break;
+        case 'p': // Previous match
+            if (state->num_matches > 0) {
+                state->current_match = (state->current_match - 1 + state->num_matches) % state->num_matches;
+                state->current_line = state->match_lines[state->current_match];
+            }
+            break;
+        case KEY_CTRL_RIGHT_BRACKET:
+            proxima_janela();
+            break;
+        case 'b':
+        case KEY_CTRL_LEFT_BRACKET:
+            janela_anterior();
+            break;
+        case KEY_UP:
+        case 'k':
+            if (state->current_line > 0) state->current_line--;
+            break;
+        case KEY_DOWN:
+        case 'j':
+            if (state->current_line < state->num_lines - 1) state->current_line++;
+            break;
+        case KEY_PPAGE:
+            state->current_line -= (rows - 2);
+            if (state->current_line < 0) state->current_line = 0;
+            break;
+        case KEY_NPAGE:
+            state->current_line += (rows - 2);
+            if (state->current_line >= state->num_lines) state->current_line = state->num_lines - 1;
+            break;
+        case KEY_ENTER:
+        case '\n': {
+            char *line = state->lines[state->current_line];
+            char *start_file = strstr(line, "](");
+            if (start_file) {
+                char *end_file = strchr(start_file, ')');
+                if (end_file) {
+                    char filename[256];
+                    int len = end_file - (start_file + 2);
+                    if (len > 0 && len < 255) {
+                        if (state->history_count < HELP_HISTORY_SIZE) {
+                            state->history[state->history_count++] = strdup(state->current_file);
+                        }
+                        strncpy(filename, start_file + 2, len);
+                        filename[len] = '\0';
+                        help_viewer_load_file(state, filename);
+                    }
+                }
+            }
+            break;
+        }
+        case KEY_BACKSPACE:
+        case 127:
+        case 'r':
+            if (state->history_count > 0) {
+                char *previous_file = state->history[--state->history_count];
+                help_viewer_load_file(state, previous_file);
+                free(previous_file);
+            }
+            break;
+    }
+
+    // Adjust viewport to the current line
+    if (state->current_line < state->top_line) {
+        state->top_line = state->current_line;
+    }
+    if (state->current_line >= state->top_line + (rows - 2)) {
+        state->top_line = state->current_line - (rows - 2) + 1;
+    }
 }

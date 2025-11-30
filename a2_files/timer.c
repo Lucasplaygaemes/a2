@@ -65,13 +65,22 @@ void stop_and_log_work() {
     get_log_file_path(log_path, sizeof(log_path));
     FILE* file = fopen(log_path, "a");
     if (!file) {
-        perror("Could not open the timer log file");
+        // perror("Could not open the timer log file"); // Avoid using perror before endwin()
         return;
     }
 
     char date_str[11]; // Format YYYY-MM-DD
+    struct tm session_tm;
+    struct tm *tm_ptr = localtime_r(&session_end_time, &session_tm);
+
+    if (tm_ptr == NULL) {
+        // Could not get local time, close file and return.
+        fclose(file);
+        return;
+    }
+
     // Standardized to YYYY-MM-DD for consistency and easier parsing
-    strftime(date_str, sizeof(date_str), "%Y-%m-%d", localtime(&session_end_time));
+    strftime(date_str, sizeof(date_str), "%Y-%m-%d", tm_ptr);
 
     fprintf(file, "%s,%ld\n", date_str, duration);
     fclose(file);
@@ -102,7 +111,24 @@ void display_work_summary() {
     long year_total = 0;
 
     time_t now = time(NULL);
-    struct tm* current_time = localtime(&now);
+    struct tm current_tm;
+    struct tm* current_time = localtime_r(&now, &current_tm);
+
+    if (current_time == NULL) {
+        // Handle error: could not get current time
+        fclose(file);
+        char* no_log_file = get_cache_filename("no_log.tmp");
+        if (!no_log_file) return;
+        FILE* f = fopen(no_log_file, "w");
+        if (f) {
+            fprintf(f, "Error getting current time for summary.");
+            fclose(f);
+            display_output_screen("Work Time Report", no_log_file);
+        }
+        remove(no_log_file);
+        free(no_log_file);
+        return;
+    }
 
     char line[256];
     while (fgets(line, sizeof(line), file)) {

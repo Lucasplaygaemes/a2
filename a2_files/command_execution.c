@@ -62,10 +62,9 @@ void process_command(EditorState *state, bool *should_exit) {
             lsp_did_save(state);
             }
     } else if (strcmp(command, "help") == 0) {
-        char *const cmd[] = {"man", "a2", NULL};
-        criar_janela_terminal_generica(cmd);
+        display_help_viewer("a2_help.txt");
     } else if (strcmp(command, "ksc") == 0) {
-        display_shortcuts_screen();
+        display_help_viewer("shortcuts_help.txt");
     } else if (strcmp(command, "gstatus") == 0) {
         char *const cmd[] = {"git", "status", NULL};
         criar_janela_terminal_generica(cmd);

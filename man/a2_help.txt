@@ -1,0 +1,20 @@
+# a2 - A Modal Text Editor
+
+Welcome to `a2`, a lightweight, fast, and configurable text editor inspired by Vim.
+
+## Quick Navigation
+- For help with *commands* (the ':' mode), see the commands manual: [*Commands*](commands_help.txt)
+- For help with *keyboard shortcuts*, see the shortcuts manual: [*Shortcuts*](shortcuts_help.txt)
+
+## Core Features
+
+- *Modal Editing:* Efficiently edit text with Normal, Insert, and Visual modes.
+- *Workspaces & Splits:* Organize your work across multiple workspaces, each with its own layout of split windows.
+- *Fuzzy Finder:* Quickly find and open any file in your project with a fuzzy search (*Alt+F*).
+- *Command Palette:* A searchable command palette (*Alt+T*) for easy access to all editor commands.
+- *File Explorer:* A built-in file explorer (*:explorer*) to navigate and manage files.
+- *LSP Support:* Language Server Protocol integration for real-time diagnostics and code completion.
+- *Macros:* Record and play back sequences of commands (*q* and *@*) to automate repetitive tasks.
+- *Advanced Search & Replace:* A powerful *:s* command that supports regular expressions for text substitutions.
+- *Theming:* Customize the editor's appearance with simple `.theme` files.
+- *Project Management:* Save and load project sessions, including open files, window layouts, and cursor positions.
