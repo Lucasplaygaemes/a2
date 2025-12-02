@@ -1187,6 +1187,7 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
         case CTRL_L:
             state->current_col = strlen(state->lines[state->current_line]);
             editor_handle_enter(state);
+            break;
         case '\t': { // Usando chaves para criar um escopo local
             char *line = state->lines[state->current_line];
             bool should_indent = true;
