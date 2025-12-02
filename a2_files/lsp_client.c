@@ -745,7 +745,7 @@ void get_word_at_cursor(EditorState *state, char *buffer, size_t buffer_size) {
     }
     
     char *line = state->lines[state->current_line];
-    if (!line || state->current_col >= strlen(line)) {
+    if (!line || state->current_col >= (int)strlen(line)) {
         buffer[0] = '\0';
         return;
     }
