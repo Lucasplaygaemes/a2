@@ -102,7 +102,7 @@ void process_command(EditorState *state, bool *should_exit) {
                 apply_theme();
                 redesenhar_todas_as_janelas();
                 save_default_theme(theme_name);
-                snprintf(state->status_msg, sizeof(state->status_msg), "Theme set to %s", args);
+                snprintf(state->status_msg, sizeof(state->status_msg), "Theme set to %.100s", args);
             } else {
                 snprintf(state->status_msg, sizeof(state->status_msg), "Error: Theme '%s' not found.", args);
             }
