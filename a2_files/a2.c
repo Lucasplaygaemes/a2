@@ -339,6 +339,9 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         }
                         break;
                     }
+                    case 'd':
+                        editor_delete_selection(state);
+                        break;
                     case KEY_ENTER:
                     case '\n':
                         push_undo(state);
