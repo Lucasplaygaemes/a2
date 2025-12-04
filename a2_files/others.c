@@ -603,6 +603,75 @@ void editor_delete_line(EditorState *state) {
     }
 }
 
+void editor_delete_selection(EditorState *state) {
+    push_undo(state);
+    clear_redo_stack(state);
+    
+    int start_line, start_col, end_line, end_col;
+    // make sure the start and end are in the correct order
+    if (state->selection_start_line < state->current_line || (state->selection_start_line == state->current_line && state->selection_start_col <= state->current_col)) {
+        start_line = state->selection_start_line;
+        start_col = state->selection_start_col;
+        end_line = state->current_line;
+        end_col = state->current_col;
+        
+    } else {
+        start_line = state->current_line;
+        start_col = state->current_col;
+        end_line = state->selection_start_line;
+        end_col = state->selection_start_col;
+    }
+    
+    if (start_line == end_line) {
+        // case 1: the selection is in only one line
+        char *line = state->lines[start_line];
+        int len = end_col - start_col;
+        if (len > 0) {
+            memmove(&line[start_col], &line[end_col], strlen(line) - end_col + 1);
+            char *resized_line = realloc(line, strlen(line) + 1);
+            if (resized_line) state->lines[start_line] = resized_line;
+        }
+        
+    } else {
+        // case 2: selection of multiple lines
+        char *first_line = state->lines[start_line];
+        char *last_line = state->lines[end_line];
+        
+        char *last_line_suffix = strdup(&last_line[end_col]);
+        
+        char *new_line = realloc(first_line, start_col + strlen(last_line_suffix) + 1);
+        
+        if (!new_line) { free(last_line_suffix); return; }
+        new_line[start_col] = '\0'; //truncate the first line
+        strcat(new_line, last_line_suffix);
+        
+        state->lines[start_line] = new_line;
+        free(last_line_suffix);
+        
+        // free the memory of the lines that were completly selected
+        for (int i = start_line + 1; i <= end_line; i++) {
+            free(state->lines[i]);
+        }
+        // move the rest of the lines up
+        int num_deleted = end_line - start_line;
+        if (state->num_lines > end_line + 1) {
+            memmove(&state->lines[start_line + 1], &state->lines[end_line + 1], (state->num_lines - end_line - 1) * sizeof(char*));
+        }
+        state->num_lines -= num_deleted;
+    }
+    
+    // update the whole editor
+    
+    state->buffer_modified = true;
+    state->current_line = start_line;
+    state->current_col = start_col;
+    state->visual_selection_mode = VISUAL_MODE_NONE;
+    state->mode = NORMAL;
+    if (state->lsp_enabled) {
+        lsp_did_change(state);
+    }
+}
+
 char* trim_whitespace(char *str) {
     char *end;
     while(isspace((unsigned char)*str)) str++;
@@ -1330,62 +1399,6 @@ void handle_command_mode_key(EditorState *state, wint_t ch, bool *should_exit) {
             break;
     }
 }
-void editor_delete_selection(EditorState *state) {
-    push_undo(state);
-    clear_redo_stack(state);
-
-    int start_line, start_col, end_line, end_col;
-    if (state->selection_start_line < state->current_line ||
-        (state->selection_start_line == state->current_line && state->selection_start_col <= state->current_col)) {
-        start_line = state->selection_start_line;
-        start_col = state->selection_start_col;
-        end_line = state->current_line;
-        end_col = state->current_col;
-    } else {
-        start_line = state->current_line;
-        start_col = state->current_col;
-        end_line = state->selection_start_line;
-        end_col = state->selection_start_col;
-    }
-
-    if (start_line == end_line) {
-        char *line = state->lines[start_line];
-        int len = end_col - start_col;
-        if (len > 0) {
-            memmove(&line[start_col], &line[end_col], strlen(line) - end_col + 1);
-            char *resized_line = realloc(line, strlen(line) + 1);
-            if(resized_line) state->lines[start_line] = resized_line;
-        }
-    } else {
-        char *first_line = state->lines[start_line];
-        char *last_line = state->lines[end_line];
-
-        char *last_line_suffix = strdup(&last_line[end_col]);
-
-        char *new_line = realloc(first_line, start_col + strlen(last_line_suffix) + 1);
-        if (!new_line) { free(last_line_suffix); return; }
-        new_line[start_col] = '\0';
-        strcat(new_line, last_line_suffix);
-        state->lines[start_line] = new_line;
-        free(last_line_suffix);
-
-        for (int i = start_line + 1; i <= end_line; i++) {
-            free(state->lines[i]);
-        }
-
-        int num_deleted = end_line - start_line;
-        if (state->num_lines > end_line + 1) {
-            memmove(&state->lines[start_line + 1], &state->lines[end_line + 1], (state->num_lines - end_line - 1) * sizeof(char*));
-        }
-        state->num_lines -= num_deleted;
-    }
-    state->buffer_modified = true;
-    state->current_line = start_line;
-    state->current_col = start_col;
-    state->visual_selection_mode = VISUAL_MODE_NONE;
-    state->mode = NORMAL;
-}
-
 void editor_yank_to_move_register(EditorState *state) {
     if (state->move_register) {
         free(state->move_register);
