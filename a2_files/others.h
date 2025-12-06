@@ -72,6 +72,8 @@ extern const int num_editor_commands;
 
 void editor_do_replace(EditorState *state, const char *find, const char *replace, const char *flags);
 
+void add_to_search_history(EditorState *state, const char *term);
+
 void* background_grep_worker(void* arg);
 
 void make_make_file(EditorState *state, const char *args);
