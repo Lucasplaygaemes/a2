@@ -307,6 +307,9 @@ typedef struct EditorState {
     bool last_search_is_regex;
     regex_t compiled_regex;
     
+    char *search_history[MAX_COMMAND_HISTORY];
+    int search_history_count, search_history_pos;
+    
 } EditorState;
 #endif
 

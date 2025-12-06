@@ -284,7 +284,10 @@ void criar_nova_janela(const char *filename) {
     for (int i = 0; i < 26; i++) {
         state->macro_registers[i] = NULL;
     }
-
+    
+    state->search_history_count = 0;
+    state->search_history_pos = 0;
+    
     ws->janelas[ws->num_janelas - 1] = nova_janela;
     ws->janela_ativa_idx = ws->num_janelas - 1;
 
