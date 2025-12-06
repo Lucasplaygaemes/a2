@@ -203,6 +203,22 @@ bool is_unmatched_bracket(EditorState *state, int line, int col) {
     return false;
 }
 
+
+void add_to_search_history(EditorState *state, const char *term) {
+    if (strlen(term) == 0) return;
+    if (state->search_history_count > 0 && strcmp(state->search_history[state->search_history_count - 1], term) == 0) return;
+    if (state->search_history_count < MAX_COMMAND_HISTORY) {
+        state->search_history[state->search_history_count++] = strdup(term);
+    } else {
+        free(state->search_history[0]);
+        for (int i = 0; i < MAX_COMMAND_HISTORY; i++) {
+            state->search_history[i] = state->search_history[i + 1];
+        }
+        state->search_history[MAX_COMMAND_HISTORY - 1] = strdup(term);
+    }
+}
+
+
 // ===================================================================
 //  Text Editing & Manipulation
 // ===================================================================
@@ -726,6 +742,9 @@ void editor_find(EditorState *state) {
     
     char search_term[100];
     // Start with the previous search term if it exists
+    // prepare the search history
+    state->search_history_pos = state->search_history_count;
+    
     if (state->last_search[0] != '\0') {
         snprintf(state->command_buffer, sizeof(state->command_buffer), "/%s", state->last_search);
         state->command_pos = strlen(state->command_buffer);
@@ -744,63 +763,84 @@ void editor_find(EditorState *state) {
         wattroff(win, COLOR_PAIR(8));
         wmove(win, rows - 1, state->command_pos + 1);
         wrefresh(win);
-        // --- End of direct drawing ---
         
         wint_t ch;
         wget_wch(win, &ch);
         
-        if (ch == KEY_ENTER || ch == '\n') {
-            strncpy(search_term, state->command_buffer + 1, sizeof(search_term) - 1);
-            search_term[sizeof(search_term) - 1] = '\0';
-            break;
-        } else if (ch == 27) { // ESC
-            search_term[0] = '\0';
-            break;
-        } else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
-            if (state->command_pos > 1) {
-                state->command_pos--;
-                state->command_buffer[state->command_pos] = '\0';
-            }
-        } else if (iswprint(ch) && state->command_pos < (int)sizeof(state->command_buffer) - 1) {
-            char mb_char[MB_CUR_MAX + 1];
-            int len = wctomb(mb_char, ch);
-            if (len > 0 && (state->command_pos + len) < (int)sizeof(state->command_buffer) -1) {
-                mb_char[len] = '\0';
-                strcat(state->command_buffer, mb_char);
-                state->command_pos += len;
-            }
+        switch(ch) {
+            case KEY_ENTER:
+            case '\n':
+                strncpy(search_term, state->command_buffer + 1, sizeof(search_term) - 1);
+                search_term[sizeof(search_term) - 1] = '\0';
+                goto end_find_loop;
+                
+            case 27:
+                search_term[0] = '\0';
+                goto end_find_loop;
+            case KEY_UP:
+                if (state->search_history_pos > 0) {
+                    state->search_history_pos--;
+                    snprintf(state->command_buffer, sizeof(state->command_buffer), "/%s", state->search_history[state->search_history_pos]);
+                    state->command_pos = strlen(state->command_buffer);
+                }
+                break;
+            case KEY_DOWN:
+                if (state->search_history_pos < state->search_history_count - 1) {
+                    state->search_history_pos++;
+                    snprintf(state->command_buffer, sizeof(state->command_buffer), "/%s", state->search_history[state->history_pos]);
+                    state->command_pos = strlen(state->command_buffer);
+                } else {
+                    state->search_history_pos = state->search_history_count;
+                    strcpy(state->command_buffer, "/");
+                    state->command_pos = 1;
+                }
+                break;
+            case KEY_BACKSPACE:
+            case 127:
+            case 8:
+                if (state->command_pos > 1) {
+                    state->command_pos--;
+                    state->command_buffer[state->command_pos] = '\0';
+                }
+                break;
+            default:
+                if (iswprint(ch) && state->command_pos < (int)sizeof(state->command_buffer) - 1) {
+                    char mb_char[MB_CUR_MAX + 1];
+                    int len = wctomb(mb_char, ch);
+                    if (len > 0 && (state->command_pos + len) < (int)sizeof(state->command_buffer) - 1) {
+                        mb_char[len] = '\0';
+                        strcat(state->command_buffer, mb_char);
+                        state->command_pos += len;
+                    }
+                }
+                break;
         }
     }
-    
+end_find_loop:
     state->status_msg[0] = '\0';
     state->command_buffer[0] = '\0';
-    redesenhar_todas_as_janelas(); // Redraw all to clear the prompt
+    redesenhar_todas_as_janelas();
     
     if (strlen(search_term) == 0) {
         return;
     }
     
-    // --- SUBSTITUA A LÓGICA DE BUSCA EXISTENTE POR ISTO ---
-
-    // Limpa a regex antiga, se houver
+    add_to_search_history(state, search_term);
+    
     if (state->last_search_is_regex) {
         regfree(&state->compiled_regex);
         state->last_search_is_regex = false;
     }
-
+    
     strncpy(state->last_search, search_term, sizeof(state->last_search) - 1);
-
-    // Tenta compilar a busca como uma expressão regular
+    
     if (regcomp(&state->compiled_regex, search_term, REG_EXTENDED | REG_NEWLINE) == 0) {
         state->last_search_is_regex = true;
         snprintf(state->status_msg, sizeof(state->status_msg), "Regex search: %s", search_term);
     } else {
-        // Se a compilação falhar, trata como busca de texto normal
         state->last_search_is_regex = false;
         snprintf(state->status_msg, sizeof(state->status_msg), "Plain text search: %s", search_term);
-    }
-
-    // Inicia a busca a partir da posição atual
+    }    
     editor_find_next(state);
 }
 
