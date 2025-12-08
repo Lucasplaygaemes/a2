@@ -1622,6 +1622,16 @@ void editor_toggle_comment(EditorState *state) {
     }
 }
 
+bool is_line_blank(const char *line) {
+    if (!line) return true;
+    for (int i = 0; line[i] != '\0'; i++) {
+        if (!isspace((unsigned char)line[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Helper function to replace occurrences in a single line. Static, so it's private to this file.
 static char* replace_in_line_helper(char* line, const char* find, const char* replace, bool replace_all, int start_col, int* replacements_made) {
     char *pos = strstr(line + start_col, find);
@@ -2023,3 +2033,148 @@ void editor_do_regex_replace(EditorState *state, const char *find, const char *r
     // Placeholder implementation
     snprintf(state->status_msg, sizeof(state->status_msg), "Regex replace not yet implemented.");
 }
+
+
+
+// Versão robusta que lida com strings e comentários
+void editor_jump_to_matching_bracket(EditorState *state) {
+    if (state->current_line >= state->num_lines) return;
+    char *line = state->lines[state->current_line];
+    if (state->current_col >= (int)strlen(line)) return;
+
+    char open_char = 0;
+    char close_char = 0;
+    int direction = 0;
+
+    char current_char = line[state->current_col];
+
+    // Determina a direção e os tipos de brackets
+    if (strchr("([{", current_char)) {
+        direction = 1;
+        open_char = current_char;
+        if (current_char == '(') close_char = ')';
+        else if (current_char == '[') close_char = ']';
+        else close_char = '}';
+    } else if (strchr(")]}", current_char)) {
+        direction = -1;
+        close_char = current_char;
+        if (current_char == ')') open_char = '(';
+        else if (current_char == ']') open_char = '[';
+        else open_char = '}';
+    } else {
+        return; // Não está em um bracket
+    }
+
+    int nest_level = 1;
+    int l = state->current_line;
+    int c = state->current_col + direction;
+
+    // Estados para a análise
+    bool in_string = false;
+    char string_delimiter = 0;
+    bool in_multiline_comment = false;
+
+    while (l >= 0 && l < state->num_lines) {
+        char *scan_line = state->lines[l];
+        int line_len = strlen(scan_line);
+
+        while (c >= 0 && c < line_len) {
+            char current = scan_line[c];
+            char prev = (c > 0) ? scan_line[c-1] : '\0';
+            char next = (c + 1 < line_len) ? scan_line[c+1] : '\0';
+
+            // Ignora caracteres de escape
+            if (prev == '\\') {
+                c += direction;
+                continue;
+            }
+
+            // Lógica de estado
+            if (in_multiline_comment) {
+                if (current == '/' && prev == '*') {
+                    in_multiline_comment = false;
+                }
+            } else if (in_string) {
+                if (current == string_delimiter) {
+                    in_string = false;
+                }
+            } else { // Fora de qualquer estado especial
+                if (current == '"' || current == '\'') {
+                    in_string = true;
+                    string_delimiter = current;
+                } else if (current == '/' && next == '*') {
+                    in_multiline_comment = true;
+                    c += direction; // Pula o '*'
+                } else if (current == '/' && next == '/') {
+                    // Comentário de linha única, para de analisar esta linha
+                    if (direction > 0) goto next_line_label;
+                    else goto prev_line_label;
+                } else {
+                    // Processa os brackets apenas se não estiver em nenhum estado
+                    if (current == open_char) {
+                        nest_level += direction;
+                    } else if (current == close_char) {
+                        nest_level -= direction;
+                    }
+                }
+            }
+
+            if (nest_level == 0) {
+                state->current_line = l;
+                state->current_col = c;
+                state->ideal_col = c;
+                return; // Par encontrado
+            }
+
+            c += direction;
+        }
+
+    next_line_label:
+        l += direction;
+        if (l >= 0 && l < state->num_lines) {
+            c = (direction == 1) ? 0 : strlen(state->lines[l]) - 1;
+        }
+    prev_line_label:; // Label para a busca para trás
+    }
+    // Se chegou aqui, nenhum par foi encontrado.
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

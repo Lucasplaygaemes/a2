@@ -26,6 +26,9 @@ void editor_ident_line(EditorState *state, int line_num);
 void editor_unindent_line(EditorState *state, int line_num);
 void editor_delete_selection(EditorState *state);
 
+bool is_line_blank(const char *line);
+void editor_jump_to_matching_bracket(EditorState *state);
+
 // Cursor Movement & Navigation
 void ensure_cursor_in_bounds(EditorState *state);
 void editor_move_to_next_word(EditorState *state);
