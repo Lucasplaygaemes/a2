@@ -21,6 +21,9 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *v* : Enter *Visual Mode*.
 - *:* : Enter *Command Mode*.
 - *h, j, k, l* / *Arrows* : Move cursor left, down, up, right.
+- *{ / }* : Jump to previous / next paragraph (separated by blank lines).
+- *%* : Jump to the matching bracket `()`, `[]`, `{}`.
+- *%* : Jump to the matching bracket `()`, `[]`, `{}`.
 - *g* / *G* : Jump to the start / end of the file.
 - *K* / *Home* : Jump to the start of the line.
 - *Ç* / *End* : Jump to the end of the line.
