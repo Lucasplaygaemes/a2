@@ -22,6 +22,9 @@ A lot of things were added! So, any doubt's of keyboard shortcuts? :ksc show all
 Use the command "help" to see the man pages.
 Now you can run if not any, most of the termial apps and a terminal by it self inside a2!
 
+# Refactoring
+The code has 2 main parts that need to be refactored, the main structure, EditorState and the way that the code handles inputs, isn't the best also, so updates will be made to make it better, but those will take time, and so will delay others things.
+
 # Projects
 Now you can save "projects", the windows, workspaces, and files you open, all of them can be open with just a command!
 More explanation are in the Documentation!
