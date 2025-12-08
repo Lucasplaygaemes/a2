@@ -278,14 +278,6 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 else if (next_ch == 'y' || next_ch == 'Y') { // Changed from 'o' to 'y' for system clipboard copy
                     if (state->mode == VISUAL && state->visual_selection_mode != VISUAL_MODE_NONE) copy_selection_to_clipboard(state);
                 }
-                /*else if (next_ch == 'u' || next_ch == 'U') {
-                    state->current_col = 0;
-                    state->ideal_col = 0;
-                    editor_handle_enter(state);
-                    state->current_line--;
-                    editor_global_paste(state);
-                    state->mode = INSERT;
-                }*/
                 // Removed Alt+k for global paste. Use 'P' in NORMAL mode instead.
                 else if (next_ch == 'j' || next_ch == 'J') {
                     state->current_col = strlen(state->lines[state->current_line]);
@@ -494,6 +486,50 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 
             case NORMAL:
                 switch (ch) {
+                    case '}': { 
+                        bool found_blank = false;
+                        int i = state->current_line + 1;
+                        while (i < state->num_lines) {
+                            if (is_line_blank(state->lines[i])) {
+                                found_blank = true;
+                                break;
+                            }
+                            i++;
+                        }
+                        while (i < state->num_lines) {
+                            if (!is_line_blank(state->lines[i])) {
+                                state->current_line = i;
+                                break;
+                            }
+                            i++;
+                        }
+                        if (!found_blank) state->current_line = state->num_lines - 1;
+                        state->current_col = 0;
+                        state->ideal_col = 0;
+                        break;
+                    }
+                    case '{': {
+                        bool found_blank = false;
+                        int i = state->current_line - 1;
+                        while (i > 0) {
+                            if (is_line_blank(state->lines[i])) {
+                                found_blank = true;
+                                break;
+                            }
+                            i--;
+                        }
+                        while (i > 0) {
+                            if (!is_line_blank(state->lines[i])) {
+                                state->current_line = i;
+                                break;
+                            }
+                            i--;
+                        }
+                        if (!found_blank) state->current_line = 0;
+                        state->current_col = 0;
+                        state->ideal_col = 0;
+                        break;
+                    }
                     case 'y':
                         state->pending_operator = ch;
                         state->mode = OPERATOR_PENDING;
@@ -596,6 +632,9 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         state->current_line = 0;
                         state->current_col = 0;
                         state->ideal_col = 0;
+                        break;
+                    case '%':
+                        editor_jump_to_matching_bracket(state);
                         break;
                     case 'p': // Paste from local register
                         editor_paste(state);
