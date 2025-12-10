@@ -74,6 +74,7 @@ This page lists the keyboard shortcuts for the `a2` editor.
 
 ## Multi-key Sequences (ALT)
 Press the first key, release, then press the second.
+- *Alt+d, f* : Go to the definition of an function with lsp.
 - *Alt+d, d* : Open a new workspace and start a GDB session.
 - *Alt+d, e* : Open the Fuzzy Finder (same as *Alt+f*).
 - *Alt+g, g* : Open the directory navigator.
