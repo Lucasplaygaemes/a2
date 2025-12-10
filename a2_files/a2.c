@@ -175,6 +175,8 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     } else if (next_ch == 'e') {
                         // ACTION for Alt+d, e
                         display_fuzzy_finder(state);
+                    } else if (next_ch == 'f') {
+                        process_lsp_definition(state);
                     } else {
                         snprintf(state->status_msg, sizeof(state->status_msg), "Unknown sequence: Alt+d, %lc", next_ch);
                     }
