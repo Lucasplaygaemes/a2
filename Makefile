@@ -73,7 +73,7 @@ install: all
 	sudo cp -r syntaxes/* /usr/local/share/a2/syntaxes/
 	@echo "Installing help files..."
 	sudo mkdir -p /usr/local/share/a2/man
-	sudo cp man/*.txt /usr/local/share/a2/man/
+	sudo cp -r man/*.txt /usr/local/share/a2/man/
 	@echo "Installation complete."
     
 # Target to force clean, compile, and install in a single command

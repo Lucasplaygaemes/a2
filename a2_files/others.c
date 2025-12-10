@@ -2034,9 +2034,6 @@ void editor_do_regex_replace(EditorState *state, const char *find, const char *r
     snprintf(state->status_msg, sizeof(state->status_msg), "Regex replace not yet implemented.");
 }
 
-
-
-// Versão robusta que lida com strings e comentários
 void editor_jump_to_matching_bracket(EditorState *state) {
     if (state->current_line >= state->num_lines) return;
     char *line = state->lines[state->current_line];
@@ -2138,43 +2135,3 @@ void editor_jump_to_matching_bracket(EditorState *state) {
     }
     // Se chegou aqui, nenhum par foi encontrado.
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
