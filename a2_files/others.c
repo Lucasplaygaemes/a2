@@ -2135,3 +2135,67 @@ void editor_jump_to_matching_bracket(EditorState *state) {
     }
     // Se chegou aqui, nenhum par foi encontrado.
 }
+
+
+void editor_change_inside_quotes(EditorState *state, char quote_char) {
+    if (state->current_line >= state->num_lines) return;
+    
+    char *line = state->lines[state->current_line];
+    int cursor_pos = state->current_col;
+    
+    // find a open quote
+    int start_qoute_pos = -1;
+    for (int i = cursor_pos; i >= 0; i--) {
+        if (line[i] == quote_char) {
+            // ignore qoutes escaped with \
+            if (i > 0 && line[i-1] == '\\') continue;
+            start_qoute_pos = i;
+            break;
+        }
+    }
+    
+    // find the close quotes
+    int end_quote_pos = -1;
+    for (int i = cursor_pos; line[i] != '\0'; i++) {
+        if (line[i] == quote_char) {
+            if (i > 0 && line[i-1] == '\\') continue;
+            end_quote_pos = i;
+            break;
+        }
+    }
+    
+    // validate if we found a valid pair
+    if (start_qoute_pos == -1 || end_quote_pos == -1 || start_qoute_pos >= end_quote_pos) {
+        snprintf(state->status_msg, sizeof(state->status_msg), "Cursor not inside quotes.");
+        return;
+    }
+    
+    push_undo(state);
+    clear_redo_stack(state);
+    
+    // delete the contents
+    
+    int content_start = start_qoute_pos + 1;
+    int content_len = end_quote_pos - content_start;
+    
+    // move the rest of the lines apos the close qoutes to just before the open quoutes
+    memmove(&line[content_start], &line[end_quote_pos], strlen(line) - end_quote_pos + 1);
+    
+    // realocate the line for a smaller size
+    char *resized_line = realloc(line, strlen(line) + 1);
+    if (resized_line) {
+        state->lines[state->current_line] = resized_line;
+    }
+    
+    // adjust the state of the editor
+    
+    state->current_col = content_start;
+    state->ideal_col = state->current_col;
+    state->mode = INSERT;
+    state->buffer_modified = true;
+    if (state->lsp_enabled) {
+        lsp_did_change(state);
+    }
+    
+    snprintf(state->status_msg, sizeof(state->status_msg), "Changed inside '%c'", quote_char);
+}
