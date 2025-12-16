@@ -2199,3 +2199,47 @@ void editor_change_inside_quotes(EditorState *state, char quote_char) {
     
     snprintf(state->status_msg, sizeof(state->status_msg), "Changed inside '%c'", quote_char);
 }
+
+void editor_yank_paragraph(EditorState *state) {
+    if (state->current_line >= state->num_lines) return;
+    
+    // find the start of the paragraph, going up
+    int start_line = state->current_line;
+    // pass for any blank line that the cursor could be
+    while (start_line > 0 && is_line_blank(state->lines[start_line])) {
+        start_line--;
+    }
+    // after it goes up until it find a blank line or the start of the file
+    while (start_line > 0 && !is_line_blank(state->lines[start_line -1])) {
+        start_line--;
+    }
+    
+    // find fot the end of the paragraph, going down
+    
+    int end_line = state->current_line;
+    // firt pass for any non blank line
+    while (end_line < state->num_lines - 1 && !is_line_blank(state->lines[end_line + 1])) {
+        end_line++;
+    }
+    
+    // assembly yhe string and yank
+    
+    size_t total_len = 0;
+    for (int i = start_line; i <= end_line; i++) {
+        total_len += strlen(state->lines[i] + 1);     // +1 for the \n
+    }
+    
+    if (state->yank_register) {
+        free(state->yank_register);
+    }
+    state->yank_register = malloc(total_len + 1);
+    if (!state->yank_register) return;
+    state->yank_register[0] = '\0';
+    
+    for (int i = start_line; i < end_line; i++) {
+        strcat(state->yank_register, state->lines[i]);
+        strcat(state->yank_register, "\n");
+    }
+    snprintf(state->status_msg, sizeof(state->status_msg), "%d lines of a paragraph yanked", end_line - start_line + 1);
+}
+

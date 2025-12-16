@@ -25,6 +25,7 @@ char* trim_whitespace(char *str);
 void editor_ident_line(EditorState *state, int line_num);
 void editor_unindent_line(EditorState *state, int line_num);
 void editor_delete_selection(EditorState *state);
+void editor_yank_paragraph(EditorState *state);
 
 bool is_line_blank(const char *line);
 void editor_jump_to_matching_bracket(EditorState *state);
