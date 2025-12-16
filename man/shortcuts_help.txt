@@ -40,6 +40,7 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *Ctrl+d* / *Ctrl+a* : Find next / previous occurrence of the last search.
 - *Ctrl+Del* / *Ctrl+k* : Delete the current line.
 - *Alt+c* : Toggle comment on the current line or visual selection.
+- *Alt+C* : Change inside current quotes (") and enter Insert Mode.
 
 ## Insert Mode
 - *Esc* : Return to *Normal Mode*.
@@ -83,3 +84,4 @@ Press the first key, release, then press the second.
 - *Alt+p, c* : Paste from the system clipboard.
 - *Alt+p, a* / *Alt+p, u* : Paste the editor's local buffer above/below the current line.
 - *Alt+p, P* / *Alt+p, U* : Paste the editor's global buffer above/below the current line.
+- *Alt+y, p* : Yank (copy) the current paragraph.
