@@ -240,7 +240,8 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 else if (next_ch == 'W') save_file(state);
                 else if (next_ch == '\n' || next_ch == KEY_ENTER) criar_nova_janela(NULL);
                 else if (next_ch == 'x' || next_ch == 'X') fechar_janela_ativa(should_exit);
-                else if (next_ch == 'c' || next_ch == 'C') editor_toggle_comment(state);
+                else if (next_ch == 'c') editor_toggle_comment(state);
+                else if (next_ch == 'C') editor_change_inside_quotes(state, '""');
                 else if (next_ch == 'b' || next_ch == 'B') display_recent_files();
                 // The old 'd' logic is now handled above as a sequence starter
                 else if (next_ch == 'h' || next_ch == 'H') gf2_starter();
