@@ -142,7 +142,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         }
     }
         
-    if (ch == 27 || ch == 31) { // ESC or Alt
+    if (ch == 27 || ch == 31) { // ESC or Altƚƚ
         nodelay(active_win, TRUE);
         wint_t next_ch;
         int get_result = wget_wch(active_win, &next_ch);
@@ -191,7 +191,13 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         prompt_for_directory_change(state);
                     } else {
                         snprintf(state->status_msg, sizeof(state->status_msg), "Unknown sequence: Alt+z, %lc", next_ch);
-                    }       
+                    }
+                } else if (first_key == 'y') {
+                    if (next_ch == 'p') {
+                        editor_yank_paragraph(state);
+                    } else {
+                        snprintf(state->status_msg, sizeof(state->status_msg), "Unknown sequence: Alt+y, %lc", next_ch);
+                    }
                 } else if (first_key == 'p') {
                     if (next_ch == 'c') {
                         paste_from_clipboard(state);
@@ -233,7 +239,11 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 } else if (next_ch == 'p') {
                     state->pending_sequence_key = 'p';
                     snprintf(state->status_msg, sizeof(state->status_msg), "(Alt+p)...");
+                } else if (next_ch == 'y') {
+                    state->pending_sequence_key = 'y';
+                    snprintf(state->status_msg, sizeof(state->status_msg), "(Alt+y)...");
                 }
+                
                 // --- Handle all other single Alt shortcuts ---
                 else if (next_ch == 'n') ciclar_workspaces(-1);
                 else if (next_ch == 'm') ciclar_workspaces(1);
