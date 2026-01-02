@@ -84,15 +84,15 @@ void load_file_core(EditorState *state, const char *filename) {
             state->num_lines++;
         }
         fclose(file);
-        snprintf(state->status_msg, sizeof(state->status_msg), "%s loaded", filename);
+        editor_set_status_msg(state, "%s loaded", filename);
     } else {
         if (errno == ENOENT) {
             state->lines[0] = calloc(1, 1);
             if (!state->lines[0]) return; 
             state->num_lines = 1;
-            snprintf(state->status_msg, sizeof(state->status_msg), "New file: \"%s\"", filename);
+            editor_set_status_msg(state, "New file: \"%s\"", filename);
         } else {
-            snprintf(state->status_msg, sizeof(state->status_msg), "Error opening file: %s", strerror(errno));
+            editor_set_status_msg(state, "Error opening file: %s", strerror(errno));
         }
     }
 
@@ -114,6 +114,7 @@ void load_file_core(EditorState *state, const char *filename) {
     state->buffer_modified = false;
     state->last_file_mod_time = get_file_mod_time(state->filename);
     editor_find_unmatched_brackets(state);
+    mark_all_lines_dirty(state);
 }
 
 void load_file(EditorState *state, const char *filename) {
@@ -157,7 +158,7 @@ void load_file(EditorState *state, const char *filename) {
 
 void save_file(EditorState *state) {
     if (strcmp(state->filename, "[No Name]") == 0) { 
-        strncpy(state->status_msg, "No file name. Use :w <filename>", sizeof(state->status_msg) - 1); 
+        editor_set_status_msg(state, "No file name. Use :w <filename>"); 
         return; 
     } 
     
@@ -177,14 +178,14 @@ void save_file(EditorState *state) {
         char display_filename[40]; 
         strncpy(display_filename, state->filename, sizeof(display_filename) - 1);
         display_filename[sizeof(display_filename) - 1] = '\0';
-        snprintf(state->status_msg, sizeof(state->status_msg), "%s written", display_filename);
+        editor_set_status_msg(state, "%s written", display_filename);
         state->buffer_modified = false;
         state->last_file_mod_time = get_file_mod_time(state->filename);
         if (state->lsp_enabled) {
           lsp_did_save(state);
             }
     } else { 
-        snprintf(state->status_msg, sizeof(state->status_msg), "Error saving: %s", strerror(errno)); 
+        editor_set_status_msg(state, "Error saving: %s", strerror(errno)); 
     } 
 }
 
@@ -234,19 +235,19 @@ void check_external_modification(EditorState *state) {
             load_file_core(state, state->filename);
             const char* syntax_file = get_syntax_file_from_extension(state->filename);
             load_syntax_file(state, syntax_file);
-            snprintf(state->status_msg, sizeof(state->status_msg), "File reloaded from disk.");
+            editor_set_status_msg(state, "File reloaded from disk.");
         } else {
             // If the user chooses "no", we just update the modification time
             // to avoid asking again, keeping the in-memory version.
             state->last_file_mod_time = on_disk_mod_time;
-            snprintf(state->status_msg, sizeof(state->status_msg), "Reload cancelled. In-memory version kept.");
+            editor_set_status_msg(state, "Reload cancelled. In-memory version kept.");
         }
     }
 }
 
 void editor_reload_file(EditorState *state) {
     if (strcmp(state->filename, "[No Name]") == 0) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "No file name to reload.");
+        editor_set_status_msg(state, "No file name to reload.");
         return;
     }
     
@@ -254,14 +255,14 @@ void editor_reload_file(EditorState *state) {
     
     if (state->buffer_modified && on_disk_mod_time != 0 && on_disk_mod_time != state->last_file_mod_time) {
         // Use status message instead of interactive dialog
-        snprintf(state->status_msg, sizeof(state->status_msg), 
+        editor_set_status_msg(state, 
                  "Warning: File changed on disk! Use :rc! to force reload.");
         return;
     }
     
     // Reload the file normally
     load_file(state, state->filename);
-    snprintf(state->status_msg, sizeof(state->status_msg), "File reloaded.");
+    editor_set_status_msg(state, "File reloaded.");
 }
 
 void load_syntax_file(EditorState *state, const char *filename) {
@@ -446,22 +447,22 @@ void handle_file_recovery(EditorState *state, const char *original_filename, con
                 strncpy(state->filename, original_filename, sizeof(state->filename) - 1);
                 state->buffer_modified = true;
                 remove(sv_filename);
-                snprintf(state->status_msg, sizeof(state->status_msg), "Recovered from %s. Save to confirm.", sv_filename);
+                editor_set_status_msg(state, "Recovered from %s. Save to confirm.", sv_filename);
                 return;
 
             case RECOVER_OPEN_ORIGINAL:
                 remove(sv_filename);
                 load_file_core(state, original_filename);
-                snprintf(state->status_msg, sizeof(state->status_msg), "Recovery file ignored and removed.");
+                editor_set_status_msg(state, "Recovery file ignored and removed.");
                 return;
 
             case RECOVER_IGNORE:
                 load_file_core(state, original_filename);
-                snprintf(state->status_msg, sizeof(state->status_msg), "Recovery file kept.");
+                editor_set_status_msg(state, "Recovery file kept.");
                 return;
 
             case RECOVER_ABORT:
-                state->status_msg[0] = '\0';
+                editor_set_status_msg(state, "");
                 state->num_lines = 1;
                 state->lines[0] = calloc(1, 1);
                 strcpy(state->filename, "[No Name]");
@@ -487,7 +488,7 @@ void save_macros(EditorState *state) {
 
     FILE *f = fopen(path, "w");
     if (!f) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Error saving macros: %s", strerror(errno));
+        editor_set_status_msg(state, "Error saving macros: %s", strerror(errno));
         return;
     }
 
@@ -513,7 +514,7 @@ void save_macros(EditorState *state) {
         }
     }
     fclose(f);
-    snprintf(state->status_msg, sizeof(state->status_msg), "Macros saved to %s", path);
+    editor_set_status_msg(state, "Macros saved to %s", path);
 }
 
 void load_macros(EditorState *state) {

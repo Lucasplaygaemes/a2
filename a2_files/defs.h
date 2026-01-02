@@ -309,6 +309,10 @@ typedef struct EditorState {
     
     char *search_history[MAX_COMMAND_HISTORY];
     int search_history_count, search_history_pos;
+
+    bool is_dirty;
+    bool *dirty_lines;
+    int dirty_lines_cap;
     
 } EditorState;
 #endif
@@ -335,6 +339,7 @@ typedef struct {
     ClipboardOperation clipboard_operation;
     
     char status_msg[256];
+    bool is_dirty;
 } ExplorerState;
 #endif
 
@@ -357,6 +362,7 @@ typedef struct {
     int *match_lines;
     int num_matches;
     int current_match;
+    bool is_dirty;
 } HelpViewerState;
 #endif
 

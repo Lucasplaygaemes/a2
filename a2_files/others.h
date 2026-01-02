@@ -4,6 +4,8 @@
 #include "defs.h" // For EditorState, etc.
 
 // Function prototypes for others.c
+void editor_set_status_msg(EditorState *state, const char *format, ...);
+
 // Bracket Matching
 void editor_find_unmatched_brackets(EditorState *state);
 bool is_unmatched_bracket(EditorState *state, int line, int col);
@@ -26,6 +28,10 @@ void editor_ident_line(EditorState *state, int line_num);
 void editor_unindent_line(EditorState *state, int line_num);
 void editor_delete_selection(EditorState *state);
 void editor_yank_paragraph(EditorState *state);
+
+void editor_ensure_dirty_lines_capacity(EditorState *state, int required_capacity);
+void mark_line_as_dirty(EditorState *state, int line_num);
+void mark_all_lines_dirty(EditorState *state);
 
 bool is_line_blank(const char *line);
 void editor_jump_to_matching_bracket(EditorState *state);

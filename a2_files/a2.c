@@ -71,7 +71,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     if (state->mode == INSERT && ch == 15) { // 15 é Ctrl+O
         state->mode = NORMAL;
         state->single_command_mode = true;
-        snprintf(state->status_msg, sizeof(state->status_msg), "-- NORMAL (one command) --");
+        editor_set_status_msg(state, "-- NORMAL (one command) --");
         return; // Sai imediatamente para esperar pelo próximo comando.
     }
 
@@ -152,7 +152,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
             // Cancel any pending multi-key sequence
             if (state->pending_sequence_key != 0) {
                 state->pending_sequence_key = 0;
-                state->status_msg[0] = '\0'; // Clear status message
+                editor_set_status_msg(state, ""); // Clear status message
             } else if (state->mode == INSERT || state->mode == VISUAL) {
                 state->mode = NORMAL;
             }
@@ -161,7 +161,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 state->is_moving = false;
                 free(state->move_register);
                 state->move_register = NULL;
-                snprintf(state->status_msg, sizeof(state->status_msg), "Move cancelled.");
+                editor_set_status_msg(state, "Move cancelled.");
             }
         } else { // Alt sequence or a sequence key
             if (state->pending_sequence_key != 0) {
@@ -178,7 +178,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     } else if (next_ch == 'f') {
                         process_lsp_definition(state);
                     } else {
-                        snprintf(state->status_msg, sizeof(state->status_msg), "Unknown sequence: Alt+d, %lc", next_ch);
+                        editor_set_status_msg(state, "Unknown sequence: Alt+d, %lc", next_ch);
                     }
                 } else if (first_key == 'g') {
                     if (next_ch == 'a') {
@@ -190,13 +190,13 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     } else if (next_ch == 'g') {
                         prompt_for_directory_change(state);
                     } else {
-                        snprintf(state->status_msg, sizeof(state->status_msg), "Unknown sequence: Alt+z, %lc", next_ch);
+                        editor_set_status_msg(state, "Unknown sequence: Alt+z, %lc", next_ch);
                     }
                 } else if (first_key == 'y') {
                     if (next_ch == 'p') {
                         editor_yank_paragraph(state);
                     } else {
-                        snprintf(state->status_msg, sizeof(state->status_msg), "Unknown sequence: Alt+y, %lc", next_ch);
+                        editor_set_status_msg(state, "Unknown sequence: Alt+y, %lc", next_ch);
                     }
                 } else if (first_key == 'p') {
                     if (next_ch == 'c') {
@@ -232,16 +232,16 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 // --- Check for keys that START a sequence ---
                 if (next_ch == 'd') {
                     state->pending_sequence_key = 'd'; // Use lowercase for consistency
-                    snprintf(state->status_msg, sizeof(state->status_msg), "(Alt+d)...");
+                    editor_set_status_msg(state, "(Alt+d)...");
                 } else if (next_ch == 'g') {
                     state->pending_sequence_key = 'g';
-                    snprintf(state->status_msg, sizeof(state->status_msg), "(Alt+g)...");
+                    editor_set_status_msg(state, "(Alt+g)...");
                 } else if (next_ch == 'p') {
                     state->pending_sequence_key = 'p';
-                    snprintf(state->status_msg, sizeof(state->status_msg), "(Alt+p)...");
+                    editor_set_status_msg(state, "(Alt+p)...");
                 } else if (next_ch == 'y') {
                     state->pending_sequence_key = 'y';
-                    snprintf(state->status_msg, sizeof(state->status_msg), "(Alt+y)...");
+                    editor_set_status_msg(state, "(Alt+y)...");
                 }
                 
                 // --- Handle all other single Alt shortcuts ---
@@ -251,7 +251,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 else if (next_ch == '\n' || next_ch == KEY_ENTER) criar_nova_janela(NULL);
                 else if (next_ch == 'x' || next_ch == 'X') fechar_janela_ativa(should_exit);
                 else if (next_ch == 'c') editor_toggle_comment(state);
-                else if (next_ch == 'C') editor_change_inside_quotes(state, '""');
+                else if (next_ch == 'C') editor_change_inside_quotes(state, '"');
                 else if (next_ch == 'b' || next_ch == 'B') display_recent_files();
                 // The old 'd' logic is now handled above as a sequence starter
                 else if (next_ch == 'h' || next_ch == 'H') gf2_starter();
@@ -260,7 +260,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 else if (next_ch == 'b' || next_ch == 'q') editor_move_to_previous_word(state);
                 else if (next_ch == '.' || next_ch == '>') ciclar_layout();
                 else if (next_ch >= '1' && next_ch <= '9') mover_janela_para_workspace(next_ch - '1');
-                else if (strchr("!@#$%^&*(", next_ch)) {
+                else if (strchr("!@#$%^&*( ", next_ch)) {
                     const char* symbols = "!@#$%^&*(";
                     char* p = strchr(symbols, next_ch);
                     if (p) mover_janela_para_posicao(p - symbols);
@@ -270,7 +270,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 else if (next_ch == 's' || next_ch == 'S') {
                     display_content_search(state, NULL);
                 }
-                else if (next_ch == '	') { // Tab
+                else if (next_ch == '\t') { // Tab
                     if (state->mode == VISUAL) {
                         int start_line, end_line;
                         if (state->selection_start_line < state->current_line) {
@@ -358,7 +358,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             state->selection_start_line = state->current_line;
                             state->selection_start_col = state->current_col;
                             state->visual_selection_mode = VISUAL_MODE_YANK;
-                            snprintf(state->status_msg, sizeof(state->status_msg), "Global visual selection started");
+                            editor_set_status_msg(state, "Global visual selection started");
                         } else {
                             editor_global_yank(state);
                             state->visual_selection_mode = VISUAL_MODE_NONE;
@@ -370,7 +370,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             state->selection_start_line = state->current_line;
                             state->selection_start_col = state->current_col;
                             state->visual_selection_mode = VISUAL_MODE_SELECT;
-                            snprintf(state->status_msg, sizeof(state->status_msg), "Visual selection started");
+                            editor_set_status_msg(state, "Visual selection started");
                         } else {
                             state->visual_selection_mode = VISUAL_MODE_NONE;
                         }
@@ -380,23 +380,26 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             state->selection_start_line = state->current_line;
                             state->selection_start_col = state->current_col;
                             state->visual_selection_mode = VISUAL_MODE_YANK;
-                            snprintf(state->status_msg, sizeof(state->status_msg), "Visual selection for yank started");
+                            editor_set_status_msg(state, "Visual selection for yank started");
                         } else {
                             editor_yank_selection(state);
                             state->visual_selection_mode = VISUAL_MODE_NONE;
                         }
+                        state->is_dirty = true;
                         break;
                     case 'm':
                         if (state->visual_selection_mode != VISUAL_MODE_NONE) {
                             editor_yank_to_move_register(state);
                             editor_delete_selection(state);
                             state->is_moving = true;
-                            snprintf(state->status_msg, sizeof(state->status_msg), "Text cut. Press 'm' again to paste.");
+                            editor_set_status_msg(state, "Text cut. Press 'm' again to paste.");
                         }
+                        state->is_dirty = true;
                         break;
                     default: // Fallback to normal mode keys
                         switch (ch) {
                             case 'u':
+                                state->is_dirty = true;
                                 state->current_col = 0;
                                 state->ideal_col = 0;
                                 editor_handle_enter(state);
@@ -404,25 +407,28 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                                 state->mode = INSERT;
                                 break;
                             case 'U':
+                                state->is_dirty = true;
                                 state->current_col = strlen(state->lines[state->current_line]);
                                 editor_handle_enter(state);
                                 state->mode = INSERT;
                                 break;
                             case 'G':
+                                state->is_dirty = true;
                                 state->current_line = state->num_lines - 1;
                                 state->current_col = 0;
                                 state->ideal_col = 0;
                                 break;
                             case 'g':
+                                state->is_dirty = true;
                                 state->current_line = 0;
                                 state->current_col = 0;
                                 state->ideal_col = 0;
                                 break;
-                            case 'v': state->mode = NORMAL; break;
-                            case 'i': state->mode = INSERT; break;
-                            case ':': state->mode = COMMAND; state->history_pos = state->history_count; state->command_buffer[0] = '\0'; state->command_pos = 0; break;
-                            case KEY_CTRL_RIGHT_BRACKET: proxima_janela(); break;
-                            case KEY_CTRL_LEFT_BRACKET: janela_anterior(); break;
+                            case 'v': state->mode = NORMAL; state->is_dirty = true; break;
+                            case 'i': state->mode = INSERT; state->is_dirty = true; break;
+                            case ':': state->mode = COMMAND; state->history_pos = state->history_count; state->command_buffer[0] = '\0'; state->command_pos = 0; state->is_dirty = true; break;
+                            case KEY_CTRL_RIGHT_BRACKET: proxima_janela(); state->is_dirty = true; break;
+                            case KEY_CTRL_LEFT_BRACKET: janela_anterior(); state->is_dirty = true; break;
                             case KEY_CTRL_F: editor_find(state); break;
                             case KEY_CTRL_DEL: editor_delete_line(state); break;
                             case KEY_CTRL_K: editor_delete_line(state); break;
@@ -442,6 +448,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                                         state->current_col = state->ideal_col;
                                     }
                                 }
+                                state->is_dirty = true;
                                 break;
                             case 'l':
                             case KEY_DOWN: {
@@ -449,6 +456,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                                     state->current_line++;
                                     state->current_col = state->ideal_col;
                                 }
+                                state->is_dirty = true;
                                 break;
                             }
                             case 'k':
@@ -460,6 +468,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                                     }
                                 }
                                 state->ideal_col = state->current_col;
+                                state->is_dirty = true;
                                 break;
                             case 231: // ç
                             case KEY_RIGHT: {
@@ -471,15 +480,16 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                                     }
                                 }
                                 state->ideal_col = state->current_col;
+                                state->is_dirty = true;
                                 } break;
                             case 'O':
-                            case KEY_PPAGE: case KEY_SR: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; break;
+                            case KEY_PPAGE: case KEY_SR: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; state->is_dirty = true; break;
                             case 'L':
-                            case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; break;
+                            case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; state->is_dirty = true; break;
                             case 'K':
-                            case KEY_HOME: state->current_col = 0; state->ideal_col = 0; break;
+                            case KEY_HOME: state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
                             case 199: // Ç
-                            case KEY_END: { char* line = state->lines[state->current_line]; if(line) state->current_col = strlen(line); state->ideal_col = state->current_col; } break;
+                            case KEY_END: { char* line = state->lines[state->current_line]; if(line) state->current_col = strlen(line); state->ideal_col = state->current_col; state->is_dirty = true; } break;
                             case KEY_SDC: editor_delete_line(state); break;
                         }
                 }
@@ -493,13 +503,14 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     editor_yank_line(state);
                 }
                 
-                state->status_msg[0] = '\0';
+                // state->status_msg[0] = '\0';
                 break;
             }
                 
             case NORMAL:
                 switch (ch) {
                     case '}': { 
+                        state->is_dirty = true;
                         bool found_blank = false;
                         int i = state->current_line + 1;
                         while (i < state->num_lines) {
@@ -522,6 +533,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         break;
                     }
                     case '{': {
+                        state->is_dirty = true;
                         bool found_blank = false;
                         int i = state->current_line - 1;
                         while (i > 0) {
@@ -544,17 +556,19 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         break;
                     }
                     case 'y':
+                        state->is_dirty = true;
                         state->pending_operator = ch;
                         state->mode = OPERATOR_PENDING;
-                        snprintf(state->status_msg, sizeof(state->status_msg), "%c", ch);
+                        editor_set_status_msg(state, "%c", ch);
                         return;
                     case 'q':
+                        state->is_dirty = true;
                         if (state->is_recording_macro) {
                             state->is_recording_macro = false;
-                            snprintf(state->status_msg, sizeof(state->status_msg), "Recording stopped");
+                            editor_set_status_msg(state, "Recording stopped");
                         } else {
                             
-                            snprintf(state->status_msg, sizeof(state->status_msg), "Recording @");
+                            editor_set_status_msg(state, "Recording @");
                             redesenhar_todas_as_janelas();
                             wint_t reg_ch;
                             wget_wch(active_win, &reg_ch);
@@ -565,14 +579,15 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                                       free(state->macro_registers[state->recording_register_idx]);
                                       state->macro_registers[state->recording_register_idx] = NULL;
                                 }
-                                snprintf(state->status_msg, sizeof(state->status_msg), "recording @%c", (char)reg_ch);
+                                editor_set_status_msg(state, "recording @%c", (char)reg_ch);
                             } else {
-                                snprintf(state->status_msg, sizeof(state->status_msg), "Macro recording cancelled.");
+                                editor_set_status_msg(state, "Macro recording cancelled.");
                             }
                         }
                         break;
                     case '@': {
-                        snprintf(state->status_msg, sizeof(state->status_msg), "@");
+                        state->is_dirty = true;
+                        editor_set_status_msg(state, "@");
                         redesenhar_todas_as_janelas();
                         wint_t reg_ch_play;
                         wget_wch(active_win, &reg_ch_play);
@@ -581,7 +596,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             if (state->last_played_macro_register != 0) {
                                 reg_ch_play = state->last_played_macro_register;
                             } else {
-                                snprintf(state->status_msg, sizeof(state->status_msg), "No previous macro executed.");
+                                editor_set_status_msg(state, "No previous macro executed.");
                                 break; 
                             }
                         }
@@ -589,7 +604,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         if (reg_ch_play >= 'a' && reg_ch_play <= 'z') {
                             char* macro_to_play = state->macro_registers[reg_ch_play - 'a'];
                             if (macro_to_play) {
-                                snprintf(state->status_msg, sizeof(state->status_msg), "playing @%c", (char)reg_ch_play);
+                                editor_set_status_msg(state, "playing @%c", (char)reg_ch_play);
                                 state->last_played_macro_register = reg_ch_play; // Store the executed macro register
                                 bool was_recording = state->is_recording_macro;
                                 state->is_recording_macro = false;
@@ -608,12 +623,12 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                                 }
                                 
                                 state->is_recording_macro = was_recording;
-                                snprintf(state->status_msg, sizeof(state->status_msg), "macro finished");
+                                editor_set_status_msg(state, "macro finished");
                             } else {
-                                snprintf(state->status_msg, sizeof(state->status_msg), "register @%c is empty", (char)reg_ch_play);
+                                editor_set_status_msg(state, "register @%c is empty", (char)reg_ch_play);
                             }
                         } else {
-                            snprintf(state->status_msg, sizeof(state->status_msg), "Invalid register.");
+                            editor_set_status_msg(state, "Invalid register.");
                         }
                         break;
                     }
@@ -637,16 +652,19 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         state->mode = INSERT;
                         break;
                     case 'G':
+                        state->is_dirty = true;
                         state->current_line = state->num_lines - 1;
                         state->current_col = 0;
                         state->ideal_col = 0;
                         break;
                     case 'g':
+                        state->is_dirty = true;
                         state->current_line = 0;
                         state->current_col = 0;
                         state->ideal_col = 0;
                         break;
                     case '%':
+                        state->is_dirty = true;
                         editor_jump_to_matching_bracket(state);
                         break;
                     case 'p': // Paste from local register
@@ -661,14 +679,14 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             state->is_moving = false;
                             free(state->move_register);
                             state->move_register = NULL;
-                            snprintf(state->status_msg, sizeof(state->status_msg), "Text moved.");
+                            editor_set_status_msg(state, "Text moved.");
                         }
                         break;
-                    case 'v': state->mode = VISUAL; break;
-                    case 'i': state->mode = INSERT; break;
-                    case ':': state->mode = COMMAND; state->history_pos = state->history_count; state->command_buffer[0] = '\0'; state->command_pos = 0; break;
-                    case KEY_CTRL_RIGHT_BRACKET: proxima_janela(); break;
-                    case KEY_CTRL_LEFT_BRACKET: janela_anterior(); break;
+                    case 'v': state->mode = VISUAL; state->is_dirty = true; break;
+                    case 'i': state->mode = INSERT; state->is_dirty = true; break;
+                    case ':': state->mode = COMMAND; state->history_pos = state->history_count; state->command_buffer[0] = '\0'; state->command_pos = 0; state->is_dirty = true; break;
+                    case KEY_CTRL_RIGHT_BRACKET: proxima_janela(); state->is_dirty = true; break;
+                    case KEY_CTRL_LEFT_BRACKET: janela_anterior(); state->is_dirty = true; break;
                     case KEY_CTRL_F: editor_find(state); break;
                     case KEY_CTRL_DEL: editor_delete_line(state); break;
                     case KEY_CTRL_K: editor_delete_line(state); break;
@@ -688,6 +706,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                                 state->current_col = state->ideal_col;
                             }
                         }
+                        state->is_dirty = true;
                         break;
                     case 'l':
                     case KEY_DOWN: {
@@ -695,6 +714,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             state->current_line++;
                             state->current_col = state->ideal_col;
                         }
+                        state->is_dirty = true;
                         break;                        
                     }
                     case 'k':
@@ -706,6 +726,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             }
                         }
                         state->ideal_col = state->current_col;
+                        state->is_dirty = true;
                         break;
                     case 231: // ç
                     case KEY_RIGHT: {
@@ -717,15 +738,16 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             }
                         }
                         state->ideal_col = state->current_col;
+                        state->is_dirty = true;
                         } break;
                     case 'O':
-                    case KEY_PPAGE: case KEY_SR: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; break;
+                    case KEY_PPAGE: case KEY_SR: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; state->is_dirty = true; break;
                     case 'L':
-                    case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; break;
+                    case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; state->is_dirty = true; break;
                     case 'K':
-                    case KEY_HOME: state->current_col = 0; state->ideal_col = 0; break;
+                    case KEY_HOME: state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
                     case 199: // Ç
-                    case KEY_END: { char* line = state->lines[state->current_line]; if(line) state->current_col = strlen(line); state->ideal_col = state->current_col; } break;
+                    case KEY_END: { char* line = state->lines[state->current_line]; if(line) state->current_col = strlen(line); state->ideal_col = state->current_col; state->is_dirty = true; } break;
                     case KEY_SDC: editor_delete_line(state); break;
                 }
                 break;
@@ -750,7 +772,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         if (state->mode == NORMAL) {
             state->mode = INSERT;
             state->single_command_mode = false;
-            state->status_msg[0] = '\0';
+            editor_set_status_msg(state, "");
         }
         // If the command switched to another major mode (like COMMAND or VISUAL),
         // respect that new mode and just cancel the single command behavior.
@@ -822,7 +844,7 @@ int main(int argc, char *argv[]) {
     project_startup_check();
 
     if (gerenciador_workspaces.num_workspaces > 0 && ACTIVE_WS->num_janelas > 0 && ACTIVE_WS->janelas[0]->estado) {
-        snprintf(ACTIVE_WS->janelas[0]->estado->status_msg, STATUS_MSG_LEN, "Welcome to a2!");
+        editor_set_status_msg(ACTIVE_WS->janelas[0]->estado, "Welcome to a2!");
     }
 
     // Automatically load macros on startup
