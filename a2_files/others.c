@@ -16,6 +16,16 @@
 #include "screen_ui.h"
 #include <errno.h>
 #include <regex.h>
+#include <stdarg.h>
+
+void editor_set_status_msg(EditorState *state, const char *format, ...) {
+    if (!state) return;
+    va_list args;
+    va_start(args, format);
+    vsnprintf(state->status_msg, sizeof(state->status_msg), format, args);
+    va_end(args);
+    state->is_dirty = true;
+}
 
 #define CTRL_P 16
 #define CTRL_L 12
@@ -218,7 +228,6 @@ void add_to_search_history(EditorState *state, const char *term) {
     }
 }
 
-
 // ===================================================================
 //  Text Editing & Manipulation
 // ===================================================================
@@ -273,7 +282,8 @@ void editor_yank_selection(EditorState *state) {
         strncat(state->yank_register, state->lines[end_line], end_col);
     }
 
-    snprintf(state->status_msg, sizeof(state->status_msg), "%d lines yanked", end_line - start_line + 1);
+    editor_set_status_msg(state, "%d lines yanked", end_line - start_line + 1);
+    state->is_dirty = true;
 }
 
 void editor_global_yank(EditorState *state) {
@@ -323,7 +333,8 @@ void editor_global_yank(EditorState *state) {
         strncat(global_yank_register, state->lines[end_line], end_col);
     }
 
-    snprintf(state->status_msg, sizeof(state->status_msg), "%d lines yanked to global register", end_line - start_line + 1);
+    editor_set_status_msg(state, "%d lines yanked to global register", end_line - start_line + 1);
+    state->is_dirty = true;
 }
 
 void editor_yank_line(EditorState *state) {
@@ -337,13 +348,14 @@ void editor_yank_line(EditorState *state) {
     if (state->yank_register) {
         strcpy(state->yank_register, state->lines[state->current_line]);
         strcat(state->yank_register, "\n"); // Adiciona a quebra de linha como no Vim
-        snprintf(state->status_msg, sizeof(state->status_msg), "1 line yanked");
+        editor_set_status_msg(state, "1 line yanked");
+        state->is_dirty = true;
     }
 }
 
 void editor_global_paste(EditorState *state) {
     if (!global_yank_register || global_yank_register[0] == '\0') {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Global yank register is empty");
+        editor_set_status_msg(state, "Global yank register is empty");
         return;
     }
 
@@ -355,20 +367,54 @@ void editor_global_paste(EditorState *state) {
     // Copy the global register content to the local yank register
     state->yank_register = strdup(global_yank_register);
     if (!state->yank_register) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Error duplicating global register.");
+        editor_set_status_msg(state, "Error duplicating global register.");
         return;
     }
 
     // Call the standard paste function, which uses the local yank register
     editor_paste(state);
     
-    snprintf(state->status_msg, sizeof(state->status_msg), "Pasted from global register.");
+    editor_set_status_msg(state, "Pasted from global register.");
 }
 
+void editor_ensure_dirty_lines_capacity(EditorState *state, int required_capacity) {
+    if (required_capacity > state->dirty_lines_cap) {
+        int old_cap = state->dirty_lines_cap;
+        int new_cap = (state->dirty_lines_cap == 0) ? 128 : state->dirty_lines_cap;
+        while (new_cap < required_capacity) {
+            new_cap *= 2;
+        }
+        state->dirty_lines_cap = new_cap;
+        state->dirty_lines = realloc(state->dirty_lines, sizeof(bool) * state->dirty_lines_cap);
+        // Initialize new memory to true, as it's likely for new/dirty lines
+        for (int i = old_cap; i < state->dirty_lines_cap; i++) {
+            state->dirty_lines[i] = true;
+        }
+    }
+}
+
+void mark_line_as_dirty(EditorState *state, int line_num) {
+    state->is_dirty = true;
+
+    editor_ensure_dirty_lines_capacity(state, line_num + 1);
+
+    if (line_num >= 0 && line_num < state->num_lines) {
+        state->dirty_lines[line_num] = true;
+    }
+}
+
+void mark_all_lines_dirty(EditorState *state) {
+    editor_ensure_dirty_lines_capacity(state, state->num_lines);
+    for (int i = 0; i < state->num_lines; i++) {
+        state->dirty_lines[i] = true;
+    }
+    state->is_dirty = true; // Also ensure the window is marked dirty
+}
 
 void editor_paste(EditorState *state) {
+    state->buffer_modified = true;
     if (!state->yank_register || state->yank_register[0] == '\0') {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Yank register is empty");
+        editor_set_status_msg(state, "Yank register is empty");
         return;
     }
 
@@ -390,6 +436,7 @@ void editor_paste(EditorState *state) {
 
     char *rest_of_line = strdup(state->lines[state->current_line] + state->current_col);
     state->lines[state->current_line][state->current_col] = '\0';
+    mark_line_as_dirty(state, state->current_line);
 
     char *line = strtok(yank_copy, "\n");
 
@@ -443,6 +490,7 @@ void editor_paste(EditorState *state) {
     if (!new_last_line) { free(yank_copy); free(rest_of_line); return; }
     strcat(new_last_line, rest_of_line);
     state->lines[last_line_idx] = new_last_line;
+    mark_line_as_dirty(state, last_line_idx);
 
     state->current_line = last_line_idx;
     state->current_col = old_len;
@@ -450,13 +498,18 @@ void editor_paste(EditorState *state) {
 
     free(rest_of_line);
     free(yank_copy);
-    state->buffer_modified = true;
+    // Mark all affected lines as dirty
+    for (int i = 0; i < state->num_lines; i++) {
+        mark_line_as_dirty(state, i);
+    }
     if (state->lsp_enabled) {
         lsp_did_change(state);
     }
 }
 
+
 void editor_handle_enter(EditorState *state) {
+    state->buffer_modified = true;
     push_undo(state);
     clear_redo_stack(state);
     if (state->num_lines >= MAX_LINES) return;
@@ -506,13 +559,17 @@ void editor_handle_enter(EditorState *state) {
     state->current_line++;
     state->current_col = new_indent_len;
     state->ideal_col = new_indent_len;
-    state->buffer_modified = true;
+
+    mark_line_as_dirty(state, state->current_line - 1);
+    mark_line_as_dirty(state, state->current_line);
+
     if (state->lsp_enabled) {
         lsp_did_change(state);
     }
 }
 
 void editor_handle_backspace(EditorState *state) {
+    state->buffer_modified = true;
     push_undo(state);
     clear_redo_stack(state);
     if (state->current_col == 0 && state->current_line == 0) return;
@@ -532,6 +589,7 @@ void editor_handle_backspace(EditorState *state) {
         
         state->current_col = prev_char_start;
         state->ideal_col = state->current_col;
+        mark_line_as_dirty(state, state->current_line);
     } else { 
         if (state->current_line == 0) return;
         int prev_line_idx = state->current_line - 1;
@@ -558,14 +616,16 @@ void editor_handle_backspace(EditorState *state) {
         state->current_line--; 
         state->current_col = prev_len; 
         state->ideal_col = state->current_col;
+        mark_line_as_dirty(state, state->current_line);
+        mark_line_as_dirty(state, state->current_line + 1);
     }
-    state->buffer_modified = true;
     if (state->lsp_enabled) {
         lsp_did_change(state);
     }
 }
 
 void editor_insert_char(EditorState *state, wint_t ch) {
+    state->buffer_modified = true;
     push_undo(state);
     clear_redo_stack(state);
     if (state->current_line >= state->num_lines) return;
@@ -588,13 +648,14 @@ void editor_insert_char(EditorState *state, wint_t ch) {
     state->current_col += char_len; 
     state->ideal_col = state->current_col;
     new_line[line_len + char_len] = '\0';
-    state->buffer_modified = true;
+    mark_line_as_dirty(state, state->current_line);
     if (state->lsp_enabled) {
         lsp_did_change(state);
     }
 }
 
 void editor_delete_line(EditorState *state) {
+    state->buffer_modified = true;
     push_undo(state);
     clear_redo_stack(state);
     if (state->num_lines <= 1 && state->current_line == 0) {
@@ -613,13 +674,16 @@ void editor_delete_line(EditorState *state) {
         state->current_line = state->num_lines - 1;
     }
     state->current_col = 0; state->ideal_col = 0;
-    state->buffer_modified = true;
+    for (int i = 0; i < state->num_lines; i++) {
+        mark_line_as_dirty(state, i);
+    }
     if (state->lsp_enabled) {
         lsp_did_change(state);
     }
 }
 
 void editor_delete_selection(EditorState *state) {
+    state->buffer_modified = true;
     push_undo(state);
     clear_redo_stack(state);
     
@@ -678,7 +742,9 @@ void editor_delete_selection(EditorState *state) {
     
     // update the whole editor
     
-    state->buffer_modified = true;
+    for (int i = 0; i < state->num_lines; i++) {
+        mark_line_as_dirty(state, i);
+    }
     state->current_line = start_line;
     state->current_col = start_col;
     state->visual_selection_mode = VISUAL_MODE_NONE;
@@ -817,7 +883,7 @@ void editor_find(EditorState *state) {
         }
     }
 end_find_loop:
-    state->status_msg[0] = '\0';
+    editor_set_status_msg(state, "");
     state->command_buffer[0] = '\0';
     redesenhar_todas_as_janelas();
     
@@ -836,17 +902,17 @@ end_find_loop:
     
     if (regcomp(&state->compiled_regex, search_term, REG_EXTENDED | REG_NEWLINE) == 0) {
         state->last_search_is_regex = true;
-        snprintf(state->status_msg, sizeof(state->status_msg), "Regex search: %s", search_term);
+        editor_set_status_msg(state, "Regex search: %s", search_term);
     } else {
         state->last_search_is_regex = false;
-        snprintf(state->status_msg, sizeof(state->status_msg), "Plain text search: %s", search_term);
+        editor_set_status_msg(state, "Plain text search: %s", search_term);
     }    
     editor_find_next(state);
 }
 
 void editor_find_next(EditorState *state) {
     if (state->last_search[0] == '\0') {
-        snprintf(state->status_msg, sizeof(state->status_msg), "No search term. Use Ctrl+F first.");
+        editor_set_status_msg(state, "No search term. Use Ctrl+F first.");
         return;
     }
 
@@ -867,7 +933,7 @@ void editor_find_next(EditorState *state) {
                 // pmatch[0].rm_so é o offset a partir do início da string buscada
                 state->current_col = start_col + pmatch[0].rm_so;
                 state->ideal_col = state->current_col;
-                snprintf(state->status_msg, sizeof(state->status_msg), "Found at L:%d C:%d", state->current_line + 1, state->current_col + 1);
+                editor_set_status_msg(state, "Found at L:%d C:%d", state->current_line + 1, state->current_col + 1);
                 return;
             }
         } else { // Fallback para busca de texto simples
@@ -876,17 +942,17 @@ void editor_find_next(EditorState *state) {
                 state->current_line = line_num;
                 state->current_col = match - line;
                 state->ideal_col = state->current_col;
-                snprintf(state->status_msg, sizeof(state->status_msg), "Found at L:%d C:%d", state->current_line + 1, state->current_col + 1);
+                editor_set_status_msg(state, "Found at L:%d C:%d", state->current_line + 1, state->current_col + 1);
                 return;
             }
         }
     }
-    snprintf(state->status_msg, sizeof(state->status_msg), "No other occurrence of: %s", state->last_search);
+    editor_set_status_msg(state, "No other occurrence of: %s", state->last_search);
 }
 
 void editor_find_previous(EditorState *state) {
     if (state->last_search[0] == '\0') {
-        snprintf(state->status_msg, sizeof(state->status_msg), "No search term. Use Ctrl+F first.");
+        editor_set_status_msg(state, "No search term. Use Ctrl+F first.");
         return;
     }
 
@@ -928,12 +994,12 @@ void editor_find_previous(EditorState *state) {
             state->current_line = line_num;
             state->current_col = last_match_col;
             state->ideal_col = state->current_col;
-            snprintf(state->status_msg, sizeof(state->status_msg), "Found at L:%d C:%d", state->current_line + 1, state->current_col + 1);
+            editor_set_status_msg(state, "Found at L:%d C:%d", state->current_line + 1, state->current_col + 1);
             return;
         }
         start_col = 99999; // Para as linhas anteriores, busca desde o final
     }
-    snprintf(state->status_msg, sizeof(state->status_msg), "No other occurrence of: %s", state->last_search);
+    editor_set_status_msg(state, "No other occurrence of: %s", state->last_search);
 }
 
 // ===================================================================
@@ -1161,6 +1227,7 @@ void editor_apply_completion(EditorState *state) {
 
 
     if (state->completion_mode == COMPLETION_TEXT) {
+        state->buffer_modified = true;
         char* original_line = state->lines[state->current_line];
         char* rest_of_line = original_line + state->current_col;
         int new_len = state->completion_start_col + strlen(selected) + strlen(rest_of_line);
@@ -1175,6 +1242,7 @@ void editor_apply_completion(EditorState *state) {
         state->lines[state->current_line] = new_line;
         state->current_col = state->completion_start_col + strlen(selected);
         state->ideal_col = state->current_col;
+        mark_line_as_dirty(state, state->current_line);
     } else if (state->completion_mode == COMPLETION_COMMAND) {
         strncpy(state->command_buffer, selected, sizeof(state->command_buffer) - 1);
         state->command_buffer[sizeof(state->command_buffer) - 1] = '\0';
@@ -1316,7 +1384,8 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
                 // Comportamento de autocompletar
                 editor_start_completion(state); // Gera sugestões locais primeiro
                 if (state->lsp_enabled) {
-                    lsp_send_completion_request(state); // Pede sugestões ao LSP
+                    state->lsp_completion_pending = true;
+                    clock_gettime(CLOCK_MONOTONIC, &state->lsp_last_keystroke);
                 }
             }
             break;
@@ -1336,6 +1405,7 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
             } else {
                 if (state->current_line > 0) state->current_line--;
             }
+            state->is_dirty = true;
             break;
         }
         case 18:
@@ -1361,20 +1431,21 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
             } else {
                 if (state->current_line < state->num_lines - 1) state->current_line++;
             }
+            state->is_dirty = true;
             break;
         }
-        case KEY_LEFT: if (state->current_col > 0) state->current_col--; state->ideal_col = state->current_col; break;
-        case KEY_RIGHT: { char* line = state->lines[state->current_line]; int line_len = line ? strlen(line) : 0; if (state->current_col < line_len) state->current_col++; state->ideal_col = state->current_col; } break;
-        case KEY_PPAGE: case KEY_SR: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; break;
-        case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; break;
-        case KEY_HOME: state->current_col = 0; state->ideal_col = 0; break;
-        case KEY_END: { char* line = state->lines[state->current_line]; if(line) state->current_col = strlen(line); state->ideal_col = state->current_col; } break;
+        case KEY_LEFT: if (state->current_col > 0) state->current_col--; state->ideal_col = state->current_col; state->is_dirty = true; break;
+        case KEY_RIGHT: { char* line = state->lines[state->current_line]; int line_len = line ? strlen(line) : 0; if (state->current_col < line_len) state->current_col++; state->ideal_col = state->current_col; } state->is_dirty = true; break;
+        case KEY_PPAGE: case KEY_SR: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; state->is_dirty = true; break;
+        case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; state->is_dirty = true; break;
+        case KEY_HOME: state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
+        case KEY_END: { char* line = state->lines[state->current_line]; if(line) state->current_col = strlen(line); state->ideal_col = state->current_col; } state->is_dirty = true; break;
         case KEY_SDC: editor_delete_line(state); break;
-        case '(':
-        case '[':
-        case '{':
-        case '"':
-        case '\'': {
+        case '(': 
+        case '[': 
+        case '{': 
+        case '"': 
+        case '\'': { 
             char close_char = 0;
             if (ch == '(') close_char = ')';
             else if (ch == '[') close_char = ']';
@@ -1388,7 +1459,14 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
             state->ideal_col = state->current_col;
             break;
         }      
-        default: if (iswprint(ch)) { editor_insert_char(state, ch); } break;
+        default: if (iswprint(ch)) { 
+           editor_insert_char(state, ch); 
+           if (state->lsp_enabled) {
+               state->lsp_completion_pending = true;
+               clock_gettime(CLOCK_MONOTONIC, &state->lsp_last_keystroke);
+               }
+           }
+           break;
     }
 }
 
@@ -1402,14 +1480,22 @@ void handle_command_mode_key(EditorState *state, wint_t ch, bool *should_exit) {
             } else {
                 editor_start_command_completion(state);
             }
+            state->is_dirty = true;
             break;
-        case KEY_LEFT: if (state->command_pos > 0) state->command_pos--; break;
-        case KEY_RIGHT: if (state->command_pos < strlen(state->command_buffer)) state->command_pos++; break;
+        case KEY_LEFT: 
+            if (state->command_pos > 0) state->command_pos--; 
+            state->is_dirty = true;
+            break;
+        case KEY_RIGHT: 
+            if (state->command_pos < strlen(state->command_buffer)) state->command_pos++; 
+            state->is_dirty = true;
+            break;
         case KEY_UP:
             if (state->history_pos > 0) {
                 state->history_pos--;
                 strncpy(state->command_buffer, state->command_history[state->history_pos], sizeof(state->command_buffer) - 1);
                 state->command_pos = strlen(state->command_buffer);
+                state->is_dirty = true;
             }
             break;
         case KEY_DOWN:
@@ -1421,13 +1507,18 @@ void handle_command_mode_key(EditorState *state, wint_t ch, bool *should_exit) {
                     strncpy(state->command_buffer, state->command_history[state->history_pos], sizeof(state->command_buffer) - 1);
                 }
                 state->command_pos = strlen(state->command_buffer);
+                state->is_dirty = true;
             }
             break;
-        case KEY_ENTER: case '\n': process_command(state, should_exit); break;
+        case KEY_ENTER: case '\n': 
+            process_command(state, should_exit); 
+            // process_command will handle setting dirty flag
+            break;
         case KEY_BACKSPACE: case 127: case 8:
             if (state->command_pos > 0) {
                 memmove(&state->command_buffer[state->command_pos - 1], &state->command_buffer[state->command_pos], strlen(state->command_buffer) - state->command_pos + 1);
                 state->command_pos--;
+                state->is_dirty = true;
             }
             break;
         default:
@@ -1435,6 +1526,7 @@ void handle_command_mode_key(EditorState *state, wint_t ch, bool *should_exit) {
                 memmove(&state->command_buffer[state->command_pos + 1], &state->command_buffer[state->command_pos], strlen(state->command_buffer) - state->command_pos + 1);
                 state->command_buffer[state->command_pos] = (char)ch;
                 state->command_pos++;
+                state->is_dirty = true;
             }
             break;
     }
@@ -1500,6 +1592,7 @@ void editor_paste_from_move_register(EditorState *state) {
 }
 
 void editor_ident_line(EditorState *state, int line_num) {
+    state->buffer_modified = true;
     char *line = state->lines[line_num];
     if (!line) return;
     
@@ -1515,11 +1608,12 @@ void editor_ident_line(EditorState *state, int line_num) {
     if (line_num == state->current_line) {
         state->current_col += TAB_SIZE;
     }
-    state->buffer_modified = true;
+    mark_line_as_dirty(state, line_num);
     
 }
 
 void editor_unindent_line(EditorState *state, int line_num) {
+    state->buffer_modified = true;
     char *line = state->lines[line_num];
     if (!line) return;
     
@@ -1535,11 +1629,12 @@ void editor_unindent_line(EditorState *state, int line_num) {
             state->current_col -= spaces_to_remove;
             if (state->current_col < 0) state->current_col = 0;
         }
-        state->buffer_modified = true;
+        mark_line_as_dirty(state, line_num);
     }
 }
 
 void editor_toggle_comment(EditorState *state) {
+    state->buffer_modified = true;
     const char *comment_str = "//";
     int comment_len = strlen(comment_str);
     
@@ -1611,7 +1706,9 @@ void editor_toggle_comment(EditorState *state) {
         
         }
     }
-    state->buffer_modified = true;
+    for (int i = start_line; i <= end_line; i++) {
+        mark_line_as_dirty(state, i);
+    }
     if (state->lsp_enabled) {
         lsp_did_change(state);
     }
@@ -1676,8 +1773,9 @@ static char* replace_in_line_helper(char* line, const char* find, const char* re
 }
 
 void editor_do_replace(EditorState *state, const char *find, const char *replace, const char *flags) {
+    state->buffer_modified = true;
     if (strlen(find) == 0) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Search term cannot be empty.");
+        editor_set_status_msg(state, "Search term cannot be empty.");
         return;
     }
 
@@ -1724,10 +1822,12 @@ void editor_do_replace(EditorState *state, const char *find, const char *replace
     }
 
     if (replacements > 0) {
-        state->buffer_modified = true;
-        snprintf(state->status_msg, sizeof(state->status_msg), "%d replacements made.", replacements);
+        for (int i = 0; i < state->num_lines; i++) {
+            mark_line_as_dirty(state, i);
+        }
+        editor_set_status_msg(state, "%d replacements made.", replacements);
     } else {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Pattern not found: %s", find);
+        editor_set_status_msg(state, "Pattern not found: %s", find);
     }
 }
 
@@ -1841,7 +1941,7 @@ void *background_grep_worker(void *arg) {
 void display_grep_results() {
     EditorState *state = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->estado;
     if (global_grep_state.num_results == 0) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Nenhum resultado para '%s'", global_grep_state.search_term);
+        editor_set_status_msg(state, "Nenhum resultado para '%s'", global_grep_state.search_term);
         return;
     }
 
@@ -1994,7 +2094,7 @@ void make_make_file(EditorState *state, const char *args) {
 
     FILE *f = fopen("Makefile", "w");
     if (!f) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Erro ao criar Makefile: %s", strerror(errno));
+        editor_set_status_msg(state, "Erro ao criar Makefile: %s", strerror(errno));
         if (ldflags) free(ldflags);
         return;
     }
@@ -2026,12 +2126,12 @@ void make_make_file(EditorState *state, const char *args) {
 
     char *const cmd[] = {"make", NULL};
     criar_janela_terminal_generica(cmd);
-    snprintf(state->status_msg, sizeof(state->status_msg), "Makefile robusto gerado. Compilando com 'make'...");
+    editor_set_status_msg(state, "Makefile robusto gerado. Compilando com 'make'...");
 }
 
 void editor_do_regex_replace(EditorState *state, const char *find, const char *replace, const char *flags) {
     // Placeholder implementation
-    snprintf(state->status_msg, sizeof(state->status_msg), "Regex replace not yet implemented.");
+    editor_set_status_msg(state, "Regex replace not yet implemented.");
 }
 
 void editor_jump_to_matching_bracket(EditorState *state) {
@@ -2138,6 +2238,7 @@ void editor_jump_to_matching_bracket(EditorState *state) {
 
 
 void editor_change_inside_quotes(EditorState *state, char quote_char) {
+    state->buffer_modified = true;
     if (state->current_line >= state->num_lines) return;
     
     char *line = state->lines[state->current_line];
@@ -2166,7 +2267,7 @@ void editor_change_inside_quotes(EditorState *state, char quote_char) {
     
     // validate if we found a valid pair
     if (start_qoute_pos == -1 || end_quote_pos == -1 || start_qoute_pos >= end_quote_pos) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Cursor not inside quotes.");
+        editor_set_status_msg(state, "Cursor not inside quotes.");
         return;
     }
     
@@ -2197,7 +2298,7 @@ void editor_change_inside_quotes(EditorState *state, char quote_char) {
         lsp_did_change(state);
     }
     
-    snprintf(state->status_msg, sizeof(state->status_msg), "Changed inside '%c'", quote_char);
+    editor_set_status_msg(state, "Changed inside '%c'", quote_char);
 }
 
 void editor_yank_paragraph(EditorState *state) {
@@ -2240,6 +2341,5 @@ void editor_yank_paragraph(EditorState *state) {
         strcat(state->yank_register, state->lines[i]);
         strcat(state->yank_register, "\n");
     }
-    snprintf(state->status_msg, sizeof(state->status_msg), "%d lines of a paragraph yanked", end_line - start_line + 1);
+    editor_set_status_msg(state, "%d lines of a paragraph yanked", end_line - start_line + 1);
 }
-

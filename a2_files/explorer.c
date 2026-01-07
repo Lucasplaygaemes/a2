@@ -234,10 +234,12 @@ void explorer_redraw(JanelaEditor *jw) {
         state->status_msg[0] =  '\0';
     }
     wnoutrefresh(jw->win);
+    state->is_dirty = false;
 }
 
 void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
     ExplorerState *state = jw->explorer_state;
+    state->is_dirty = true;
     int viewable_lines = jw->altura - 2;
     char selected_path[PATH_MAX];
 

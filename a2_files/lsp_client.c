@@ -293,16 +293,16 @@ void lsp_parse_diagnostics(EditorState *state, const char *json_response) {
 
 void process_lsp_status(EditorState *state) {
     if (state->lsp_enabled && state->lsp_client) {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "LSP active for %s (PID: %d)", 
+        editor_set_status_msg(state, "LSP active for %s (PID: %d)", 
                 state->lsp_client->languageId, state->lsp_client->server_pid);
     } else {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "LSP not active");
+        editor_set_status_msg(state, "LSP not active");
     }
 }
 
 void process_lsp_hover(EditorState *state) {
     if (!lsp_is_available(state)) {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "LSP not available");
+        editor_set_status_msg(state, "LSP not available");
         return;
     }
     
@@ -311,15 +311,15 @@ void process_lsp_hover(EditorState *state) {
     
     if (current_word[0] != '\0') {
         // Basic simulation - in practice, it would send a hover request to the LSP
-        snprintf(state->status_msg, STATUS_MSG_LEN, "Information about: %s", current_word);
+        editor_set_status_msg(state, "Information about: %s", current_word);
     } else {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "No symbol under cursor");
+        editor_set_status_msg(state, "No symbol under cursor");
     }
 }
 
 void process_lsp_symbols(EditorState *state) {
     if (!lsp_is_available(state)) {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "LSP not available");
+        editor_set_status_msg(state, "LSP not available");
         return;
     }
     
@@ -346,7 +346,7 @@ void process_lsp_symbols(EditorState *state) {
         }
     }
     
-    snprintf(state->status_msg, STATUS_MSG_LEN, "Symbols: %d functions, %d variables", 
+    editor_set_status_msg(state, "Symbols: %d functions, %d variables", 
             function_count, variable_count);
 }
 
@@ -624,28 +624,28 @@ void process_lsp_restart(EditorState *state) {
     if (state->lsp_enabled) {
         lsp_did_open(state);
     }
-    snprintf(state->status_msg, STATUS_MSG_LEN, "LSP restarted");
+    editor_set_status_msg(state, "LSP restarted");
 }
 
 void process_lsp_diagnostics(EditorState *state) {
     if (!lsp_is_available(state)) {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "LSP not available");
+        editor_set_status_msg(state, "LSP not available");
         return;
     }
     
     if (state->lsp_document && state->lsp_document->diagnostics_count > 0) {
         // Show the first diagnostic as an example
         LspDiagnostic *diag = &state->lsp_document->diagnostics[0];
-        snprintf(state->status_msg, STATUS_MSG_LEN, "Diagnostic: %s (Line %d)", 
+        editor_set_status_msg(state, "Diagnostic: %s (Line %d)", 
                 diag->message, diag->range.start.line + 1);
     } else {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "No diagnostics found");
+        editor_set_status_msg(state, "No diagnostics found");
     }
 }
 
 void process_lsp_definition(EditorState *state) {
     if (!lsp_is_available(state)) {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "LSP not available");
+        editor_set_status_msg(state, "LSP not available");
         return;
     }
 
@@ -670,12 +670,12 @@ void process_lsp_definition(EditorState *state) {
 
     free(json_str);
     lsp_free_message(msg);
-    snprintf(state->status_msg, STATUS_MSG_LEN, "Sent 'go to definition' request...");
+    editor_set_status_msg(state, "Sent 'go to definition' request...");
 }
 
 void process_lsp_references(EditorState *state) {
     if (!lsp_is_available(state)) {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "LSP not available");
+        editor_set_status_msg(state, "LSP not available");
         return;
     }
     
@@ -690,12 +690,12 @@ void process_lsp_references(EditorState *state) {
         }
     }
     
-    snprintf(state->status_msg, STATUS_MSG_LEN, "%d references found for %s", count, current_word);
+    editor_set_status_msg(state, "%d references found for %s", count, current_word);
 }
 
 void process_lsp_rename(EditorState *state, const char *new_name) {
     if (!lsp_is_available(state)) {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "LSP not available");
+        editor_set_status_msg(state, "LSP not available");
         return;
     }
     
@@ -704,7 +704,7 @@ void process_lsp_rename(EditorState *state, const char *new_name) {
     get_word_at_cursor(state, current_word, sizeof(current_word));
     
     if (strlen(new_name) == 0) {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "Invalid name for rename");
+        editor_set_status_msg(state, "Invalid name for rename");
         return;
     }
     
@@ -732,7 +732,7 @@ void process_lsp_rename(EditorState *state, const char *new_name) {
         }
     }
     
-    snprintf(state->status_msg, STATUS_MSG_LEN, "Renamed %s to %s (%d occurrences)", 
+    editor_set_status_msg(state, "Renamed %s to %s (%d occurrences)", 
             current_word, new_name, count);
     state->buffer_modified = true;
 }
@@ -781,7 +781,7 @@ void lsp_initialize(EditorState *state) {
 
     state->lsp_client = malloc(sizeof(LspClient));
     if (!state->lsp_client) {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "Allocation error for LSP");
+        editor_set_status_msg(state, "Allocation error for LSP");
         return;
     }
     memset(state->lsp_client, 0, sizeof(LspClient)); // Initialize with zeros
@@ -805,7 +805,7 @@ void lsp_initialize(EditorState *state) {
     
     // Check if the languageId allocation was successful
     if (!state->lsp_client->languageId) {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "Allocation error for languageId");
+        editor_set_status_msg(state, "Allocation error for languageId");
         free(state->lsp_client);
         state->lsp_client = NULL;
         return;
@@ -824,7 +824,7 @@ void lsp_initialize(EditorState *state) {
     int stdin_pipe[2], stdout_pipe[2], stderr_pipe[2];
     
     if (pipe(stdin_pipe) != 0 || pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0) {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "Error creating pipes for LSP");
+        editor_set_status_msg(state, "Error creating pipes for LSP");
         free(state->lsp_client->languageId);
         free(state->lsp_client);
         state->lsp_client = NULL;
@@ -877,11 +877,11 @@ void lsp_initialize(EditorState *state) {
         lsp_init_document_state(state);
         lsp_send_initialize(state);
         
-        snprintf(state->status_msg, STATUS_MSG_LEN, "LSP initialized for %s", state->lsp_client->languageId);
+        editor_set_status_msg(state, "LSP initialized for %s", state->lsp_client->languageId);
         state->lsp_enabled = true;
         state->lsp_client->initialized = true;
     } else {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "Error starting LSP: %s", strerror(errno));
+        editor_set_status_msg(state, "Error starting LSP: %s", strerror(errno));
         
         // Close pipes and free resources
         close(stdin_pipe[0]);
@@ -1474,7 +1474,7 @@ void lsp_draw_diagnostics(WINDOW *win, EditorState *state) {
                 
                 // Show message in status if the cursor is on the line
                 if (state->current_line == diag->range.start.line) {
-                    snprintf(state->status_msg, STATUS_MSG_LEN, "[%s] %s", 
+                    editor_set_status_msg(state, "[%s] %s", 
                             diag->code, diag->message);
                 }
             }
@@ -1535,7 +1535,7 @@ void lsp_check_and_process_messages(EditorState *state) {
 
 void lsp_handle_definition_response(EditorState *state, json_t *result) {
     if (!json_is_array(result) || json_array_size(result) == 0) {
-        snprintf(state->status_msg, STATUS_MSG_LEN, "Definition not found.");
+        editor_set_status_msg(state, "Definition not found.");
         return;
     }
 
@@ -1560,7 +1560,7 @@ void lsp_handle_definition_response(EditorState *state, json_t *result) {
             ACTIVE_WS->janela_ativa_idx = i;
             jw->estado->current_line = line;
             jw->estado->current_col = character;
-            snprintf(jw->estado->status_msg, STATUS_MSG_LEN, "Jumped to definition.");
+            editor_set_status_msg(jw->estado, "Jumped to definition.");
             return;
         }
     }
@@ -1569,7 +1569,7 @@ void lsp_handle_definition_response(EditorState *state, json_t *result) {
     load_file(state, path);
     state->current_line = line;
     state->current_col = character;
-    snprintf(state->status_msg, STATUS_MSG_LEN, "Jumped to definition.");
+    editor_set_status_msg(state, "Jumped to definition.");
 }
 
 void lsp_request_document_symbols(EditorState *state) {

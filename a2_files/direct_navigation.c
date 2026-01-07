@@ -2,6 +2,7 @@
 #include "defs.h" // For EditorState, etc.
 #include "screen_ui.h" // For redrawing all windows
 #include "window_managment.h" // For redrawing all windows
+#include "others.h" // For editor_set_status_msg
 #include "cache.h"
 #include "git_utils.h"
 
@@ -113,7 +114,7 @@ void save_directory_history(EditorState *state) {
 
     FILE *f = fopen(history_file, "w");
     if (!f) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Error saving dir history: %s", strerror(errno));
+        editor_set_status_msg(state, "Error saving dir history: %s", strerror(errno));
         return;
     }
 
@@ -158,17 +159,17 @@ void change_directory(EditorState *state, const char *new_path) {
         update_directory_access(state, new_path);
         char cwd[1024];
         if (getcwd(cwd, sizeof(cwd)) != NULL) {
-            snprintf(state->status_msg, sizeof(state->status_msg), "Directory changed to: %s", cwd);
+            editor_set_status_msg(state, "Directory changed to: %s", cwd);
         }
     }
     else {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Error changing to: %s", strerror(errno));
+        editor_set_status_msg(state, "Error changing to: %s", strerror(errno));
     }
 }
 
 void display_directory_navigator(EditorState *state) {
     if (state->num_recent_dirs == 0) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "No recent directories available.");
+        editor_set_status_msg(state, "No recent directories available.");
         return;
     }
 
@@ -348,12 +349,12 @@ end_nav:
 
 void prompt_for_directory_change(EditorState *state) {
     if (state->buffer_modified) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Unsaved changes. Proceed with directory change? (y/n)");
+        editor_set_status_msg(state, "Unsaved changes. Proceed with directory change? (y/n)");
         redesenhar_todas_as_janelas();
         wint_t ch;
         wget_wch(ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->win, &ch);
         if (tolower(ch) != 'y') {
-            snprintf(state->status_msg, sizeof(state->status_msg), "Cancelled.");
+            editor_set_status_msg(state, "Cancelled.");
             redesenhar_todas_as_janelas();
             return;
         }
@@ -383,7 +384,7 @@ void prompt_for_directory_change(EditorState *state) {
         change_directory(state, path_buffer);
     }
     else {
-        snprintf(state->status_msg, sizeof(state->status_msg), "No path entered. Cancelled.");
+        editor_set_status_msg(state, "No path entered. Cancelled.");
     }
     
     redesenhar_todas_as_janelas();
@@ -461,7 +462,7 @@ void save_file_history(EditorState *state) {
     
     FILE *f = fopen(history_file, "w");
     if (!f) {
-        snprintf(state->status_msg, sizeof(state->status_msg), "Error saving file history: %s", strerror(errno));
+        editor_set_status_msg(state, "Error saving file history: %s", strerror(errno));
         return;
     }
     

@@ -4,6 +4,7 @@
 #include "command_execution.h"
 #include "fileio.h"
 #include "screen_ui.h"
+#include "others.h"
 #include "jansson.h"
 #include "cache.h"
 #include <sys/stat.h>
@@ -74,7 +75,7 @@ void project_save_session(const char *project_name) {
 
     EditorState *active_state = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->estado;
     if (active_state) {
-        snprintf(active_state->status_msg, sizeof(active_state->status_msg), "Project session '%s' saved.", final_project_name);
+        editor_set_status_msg(active_state, "Project session '%s' saved.", final_project_name);
     }
 }
 
