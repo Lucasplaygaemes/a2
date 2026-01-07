@@ -8,6 +8,7 @@
 
 #define NCURSES_WIDECHAR 1
 #include <limits.h> // For PATH_MAX
+#define LSP_DEBOUNCE_NS 300000000 // 300ms in nanoseconds
 
 #include <ncurses.h>
 #include <stdlib.h>
@@ -313,6 +314,12 @@ typedef struct EditorState {
     bool is_dirty;
     bool *dirty_lines;
     int dirty_lines_cap;
+    
+    // Lsp new flags
+    bool lsp_completion_pending;         // Flag to indicate a requestion is in the line
+   
+    struct timespec lsp_last_keystroke; // Timestamp for the last relevant key
+    
     
 } EditorState;
 #endif

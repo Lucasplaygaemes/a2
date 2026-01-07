@@ -1047,6 +1047,31 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
+        
+        // Debouncer for LSP Autocomplete
+        if (gerenciador_workspaces.num_workspaces > 0 && ACTIVE_WS->num_janelas > 0) {
+            JanelaEditor *active_jw = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx];
+            if (active_jw && active_jw->tipo == TIPOJANELA_EDITOR && active_jw->estado) {
+                EditorState *active_state = active_jw->estado;
+                if (active_state->lsp_completion_pending) {
+                    struct timespec now;
+                    clock_gettime(CLOCK_MONOTONIC, &now);
+
+                    long long elapsed_ns = (now.tv_sec - active_state->lsp_last_keystroke.tv_sec) * 1000000000LL;
+                    elapsed_ns += (now.tv_nsec - active_state->lsp_last_keystroke.tv_nsec);
+
+                    if (elapsed_ns > LSP_DEBOUNCE_NS) {
+                        active_state->lsp_completion_pending = false;
+                        // Run local completion logic first to get the word to complete
+                        editor_start_completion(active_state);
+                        // Only send request if there's something to complete
+                        if(active_state->word_to_complete[0] != '\0') {
+                            lsp_send_completion_request(active_state);
+                        }
+                    }
+                }
+            }
+        }
                             
         pthread_mutex_lock(&global_grep_state.mutex);
         if (global_grep_state.results_ready) {
