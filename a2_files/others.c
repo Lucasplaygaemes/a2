@@ -228,7 +228,6 @@ void add_to_search_history(EditorState *state, const char *term) {
     }
 }
 
-
 // ===================================================================
 //  Text Editing & Manipulation
 // ===================================================================
@@ -1385,7 +1384,8 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
                 // Comportamento de autocompletar
                 editor_start_completion(state); // Gera sugestões locais primeiro
                 if (state->lsp_enabled) {
-                    lsp_send_completion_request(state); // Pede sugestões ao LSP
+                    state->lsp_completion_pending = true;
+                    clock_gettime(CLOCK_MONOTONIC, &state->lsp_last_keystroke);
                 }
             }
             break;
@@ -1459,7 +1459,14 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
             state->ideal_col = state->current_col;
             break;
         }      
-        default: if (iswprint(ch)) { editor_insert_char(state, ch); } break;
+        default: if (iswprint(ch)) { 
+           editor_insert_char(state, ch); 
+           if (state->lsp_enabled) {
+               state->lsp_completion_pending = true;
+               clock_gettime(CLOCK_MONOTONIC, &state->lsp_last_keystroke);
+               }
+           }
+           break;
     }
 }
 
