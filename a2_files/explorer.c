@@ -291,23 +291,27 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
         case 'k':
             if (state->selection > 0) state->selection--;
             if (state->selection < state->scroll_top) state->scroll_top = state->selection;
+            state->is_dirty = true;
             break;
         case KEY_DOWN:
         case 'j':
             if (state->selection < state->num_entries - 1) state->selection++;
             if (state->selection >= state->scroll_top + viewable_lines) state->scroll_top = state->selection - viewable_lines + 1;
+            state->is_dirty = true;
             break;
         case 'c': // Copy
             if (state->num_entries > 0) {
                 snprintf(state->source_path, PATH_MAX, "%s", selected_path);
                 state->clipboard_operation = OP_COPY;
             }
+            state->is_dirty = true;
             break;
         case 'x': // Cut
             if (state->num_entries > 0) {
                 snprintf(state->source_path, PATH_MAX, "%s", selected_path);
                 state->clipboard_operation = OP_CUT;
             }
+            state->is_dirty = true;
             break;
         case 'd': // Delete
             if (state->num_entries > 0) {
@@ -320,6 +324,7 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                     explorer_reload_entries(state);
                 }
             }
+            state->is_dirty = true;
             break;
         case 'r':  // Rename
             if (state->num_entries > 0) {
@@ -336,6 +341,7 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                     }
                 }
             }
+            state->is_dirty = true;
             break;
         case 'n': // New file
             char *file_name = explorer_prompt_for_input("New file name");
@@ -351,6 +357,7 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                     snprintf(state->status_msg, sizeof(state->status_msg), "Error creating the file: %s", strerror(errno));
                 }
             }
+            state->is_dirty = true;
             break;
         case 'N': // New directory
             char *dir_name = explorer_prompt_for_input("New directory name");
