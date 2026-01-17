@@ -507,7 +507,6 @@ void editor_paste(EditorState *state) {
     }
 }
 
-
 void editor_handle_enter(EditorState *state) {
     state->buffer_modified = true;
     push_undo(state);
@@ -1061,6 +1060,7 @@ void do_undo(EditorState *state) {
     EditorSnapshot *undo_snap = state->undo_stack[--state->undo_count];
     restore_from_snapshot(state, undo_snap);
     state->buffer_modified = true;
+    state->is_dirty = true;
     if (state->lsp_enabled) {
         lsp_did_change(state);
     }
@@ -1072,6 +1072,7 @@ void do_redo(EditorState *state) {
     push_undo(state);
     restore_from_snapshot(state, redo_snap);
     state->buffer_modified = true;
+    state->is_dirty = true;
     if (state->lsp_enabled) {
         lsp_did_change(state);
     }
@@ -1410,9 +1411,11 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
         }
         case 18:
             do_redo(state);
+            state->is_dirty = true;
             break;
         case 21:
             do_undo(state);
+            state->is_dirty = true;
             break;
         case KEY_DOWN: {
             if (state->word_wrap_enabled) {
@@ -1461,10 +1464,6 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
         }      
         default: if (iswprint(ch)) { 
            editor_insert_char(state, ch); 
-           if (state->lsp_enabled) {
-               state->lsp_completion_pending = true;
-               clock_gettime(CLOCK_MONOTONIC, &state->lsp_last_keystroke);
-               }
            }
            break;
     }
@@ -1717,6 +1716,7 @@ void editor_toggle_comment(EditorState *state) {
         state->mode = NORMAL;
         state->visual_selection_mode = VISUAL_MODE_NONE;
     }
+    state->is_dirty = true;
 }
 
 bool is_line_blank(const char *line) {
@@ -2011,6 +2011,12 @@ void display_grep_results() {
     }
 
 end_grep_display:
+    for (int i = 0; i < ACTIVE_WS->num_janelas; i++) {
+        JanelaEditor *jw = ACTIVE_WS->janelas[i];
+        if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) jw->estado->is_dirty = true;
+        else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) jw->explorer_state->is_dirty = true;
+        else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) jw->help_state->is_dirty = true;
+    }
     delwin(results_win);
     touchwin(stdscr);
     redesenhar_todas_as_janelas();

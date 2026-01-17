@@ -586,8 +586,6 @@ void editor_redraw(WINDOW *win, EditorState *state) {
     wnoutrefresh(win);
 }
 
-
-
 void adjust_viewport(WINDOW *win, EditorState *state) {
     ensure_cursor_in_bounds(state);
     int rows, cols;
@@ -789,8 +787,6 @@ bool is_selected(EditorState *state, int line_idx, int col_idx) {
     return true;
 }
 
-
-
 void display_output_screen(const char *title, const char *filename) {
     FileViewer *viewer = create_file_viewer(filename);
     if (!viewer) { return; }
@@ -836,6 +832,12 @@ void display_output_screen(const char *title, const char *filename) {
         }
     }
     end_viewer:
+    for (int i = 0; i < ACTIVE_WS->num_janelas; i++) {
+        JanelaEditor *jw = ACTIVE_WS->janelas[i];
+        if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) jw->estado->is_dirty = true;
+        else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) jw->explorer_state->is_dirty = true;
+        else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) jw->help_state->is_dirty = true;
+    }
     delwin(output_win);
     destroy_file_viewer(viewer);
 }
@@ -918,8 +920,6 @@ void display_diagnostics_list(EditorState *state) {
     remove(temp_filename);
     free(temp_filename);
 }
-
-
 
 // Helper function to make macro content readable for display
 void format_macro_for_display(const char* raw_macro, char* display_buf, size_t buf_size) {
@@ -1210,17 +1210,20 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                 state->search_mode = false;
                 curs_set(0);
                 help_viewer_perform_search(state);
+                state->is_dirty = true;
                 break;
             case 27: // ESC
                 state->search_mode = false;
                 state->search_term[0] = '\0';
                 curs_set(0);
+                state->is_dirty = true;
                 break;
             case KEY_BACKSPACE:
             case 127:
                 if (strlen(state->search_term) > 0) {
                     state->search_term[strlen(state->search_term) - 1] = '\0';
                 }
+                state->is_dirty = true;
                 break;
             default:
                 if (iswprint(ch) && strlen(state->search_term) < sizeof(state->search_term) - 1) {
@@ -1231,6 +1234,7 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                         strcat(state->search_term, mb_char);
                     }
                 }
+                state->is_dirty = true;
                 break;
         }
         return; // Return to redraw the prompt
@@ -1240,6 +1244,7 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
     switch(ch) {
         case 'q':
             fechar_janela_ativa(should_exit);
+            state->is_dirty = true;
             break;
         case '/':
             state->search_mode = true;
@@ -1248,18 +1253,22 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
             state->match_lines = NULL;
             state->num_matches = 0;
             state->current_match = -1;
+            state->is_dirty = true;
             return;
         case 'n': // Next match
             if (state->num_matches > 0) {
                 state->current_match = (state->current_match + 1) % state->num_matches;
                 state->current_line = state->match_lines[state->current_match];
             }
+            state->is_dirty = true;
             break;
         case 'p': // Previous match
             if (state->num_matches > 0) {
                 state->current_match = (state->current_match - 1 + state->num_matches) % state->num_matches;
                 state->current_line = state->match_lines[state->current_match];
             }
+            state->is_dirty = true;
+            
             break;
         case KEY_CTRL_RIGHT_BRACKET:
             proxima_janela();
@@ -1271,18 +1280,22 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
         case KEY_UP:
         case 'k':
             if (state->current_line > 0) state->current_line--;
+            state->is_dirty = true;
             break;
         case KEY_DOWN:
         case 'j':
             if (state->current_line < state->num_lines - 1) state->current_line++;
+            state->is_dirty = true;
             break;
         case KEY_PPAGE:
             state->current_line -= (rows - 2);
             if (state->current_line < 0) state->current_line = 0;
+            state->is_dirty = true;
             break;
         case KEY_NPAGE:
             state->current_line += (rows - 2);
             if (state->current_line >= state->num_lines) state->current_line = state->num_lines - 1;
+            state->is_dirty = true;
             break;
         case KEY_ENTER:
         case '\n': {
@@ -1300,6 +1313,7 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                         strncpy(filename, start_file + 2, len);
                         filename[len] = '\0';
                         help_viewer_load_file(state, filename);
+                        state->is_dirty = true;
                     }
                 }
             }
@@ -1312,6 +1326,7 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                 char *previous_file = state->history[--state->history_count];
                 help_viewer_load_file(state, previous_file);
                 free(previous_file);
+                state->is_dirty = true;
             }
             break;
     }
