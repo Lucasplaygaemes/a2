@@ -27,4 +27,12 @@ void get_default_theme_config_path(char *buffer, size_t size);
 void save_default_theme(const char *theme_name);
 char * load_default_theme_name();
 
+
+void asm_convert_file(EditorState *state, const char *filename);
+
+
+
+
+
+
 #endif // FILEIO_H
