@@ -31,4 +31,8 @@ void executar_comando_no_terminal(const char *comando_str);
 
 void project_save_session();
 
+// Assembly
+
+void compile_and_view_assembly(EditorState *c_state);
+
 #endif // COMMAND_EXECUTION_H

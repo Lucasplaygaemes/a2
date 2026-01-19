@@ -632,4 +632,122 @@ void paste_from_clipboard(EditorState *state) {
     editor_set_status_msg(state, "Pasted from clipboard.");
 }
 
-
+void compile_and_view_assembly(EditorState *state) {
+    if (strcmp(state->filename, "[No Name]") == 0) {
+        editor_set_status_msg(state, "Save the file firts");
+        return;        
+    }
+    
+    char source_file[PATH_MAX];
+    char asm_file[PATH_MAX];
+    bool started_from_asm = false;
+    
+    char *dot = strrchr(state->filename, '.');
+    if (dot && strcmp(dot, ".s") == 0) {
+        // case 1, started with assembly
+        started_from_asm = true;
+        strncpy(asm_file, state->filename, PATH_MAX - 1);
+        asm_file[PATH_MAX - 1] = '\0';
+        
+        // discover the name of the file, try .c
+        strncpy(source_file, state->filename, PATH_MAX - 1);
+        
+        source_file[PATH_MAX - 1] = '\0';
+        char *src_dot = strrchr(source_file, '.');
+        if (src_dot) *src_dot = '\0';
+        strcat(source_file, ".c");
+        
+        // verify if the source exist
+        if (access(source_file, F_OK) != 0) {
+            editor_set_status_msg(state, "Could not find the corresponding source file: %s", source_file);
+            return;
+        }
+        
+        // try to finding if the source is open in another window to save it
+        EditorState *source_state = find_source_state_for_assembly(state->filename);
+        if (source_state) {
+            save_file(source_state);
+        }
+    } else {
+        // case 2, started with .c, .cpp etc
+        save_file(state);
+        strncpy(source_file, state->filename, PATH_MAX - 1);
+        
+        source_file[PATH_MAX - 1] = '\0';
+        
+        strncpy(asm_file, state->filename, PATH_MAX -1);
+        asm_file[PATH_MAX - 1] = '\0';
+        char *asm_dot = strrchr(asm_file, '.');
+        if (asm_dot) *asm_dot = '\0';
+        strcat(asm_file, ".s");
+    }
+    
+    // compilation commands
+    // -S: compile only; -g: debug info (.loc); -fverbose-asm : commnets 
+    char cmd[2048];
+    snprintf(cmd, sizeof(cmd), "gcc -S -g -fverbose-asm \"%s\" -o \"%s\"", source_file, asm_file);
+    
+    int ret = system(cmd);
+    if (ret != 0) {
+        editor_set_status_msg(state, "Compilation Failed! Check source."); 
+        return;
+    }
+    
+    // updating the windows
+    if (started_from_asm) {
+        // if we are in the assembly window, just reload
+        load_file(state, asm_file);
+        
+        // we need to count the lines to create the maps
+        int source_lines = 0;
+        EditorState *src_state = find_source_state_for_assembly(asm_file);
+        if (src_state) {
+            // if the source is not open, manually count
+            FILE *f = fopen(source_file, "r");
+            if (f) {
+                int ch;
+                while(!feof(f)) {
+                    ch = fgetc(f);
+                    if(ch == '\n') source_lines++;
+                }
+                fclose(f);
+            }
+        }
+        build_assembly_mappings(state, source_lines);
+        editor_set_status_msg(state, "Assembly updated from source.");
+    } else {
+        // if we are in the source, open/focus in the assembly
+        GerenciadorJanelas *ws = ACTIVE_WS;
+        int target_idx = -1;
+        
+        if (ws->num_janelas == 1) {
+            ws->current_layout = LAYOUT_VERTICAL_SPLIT;
+            criar_nova_janela(NULL);
+            target_idx = 1;
+            ws->janela_ativa_idx = 0; // keep the focus in the source
+        } else {
+            // search for an assembly if is already open
+            for (int i = 0; i < ws->num_janelas; i++) {
+                if (ws->janelas[i]->tipo == TIPOJANELA_EDITOR && strcmp(ws->janelas[i]->estado->filename, asm_file) == 0) {
+                    target_idx = i;
+                    break;
+                }
+            }
+            // if not find, use the next
+            if (target_idx == -1) {
+                target_idx = (ws->janela_ativa_idx + 1) % ws->num_janelas;
+            }
+            
+        }
+        JanelaEditor *jw_asm = ws->janelas[target_idx];
+        if (jw_asm->tipo == TIPOJANELA_EDITOR) {
+            load_file(jw_asm->estado, asm_file);
+            build_assembly_mappings(jw_asm->estado, state->num_lines);
+            editor_set_status_msg(state, "Assembly generated.");
+        }
+        
+    }
+    
+    recalcular_layout_janelas();
+    redesenhar_todas_as_janelas();
+}
