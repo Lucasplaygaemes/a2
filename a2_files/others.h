@@ -90,4 +90,10 @@ void* background_grep_worker(void* arg);
 void make_make_file(EditorState *state, const char *args);
 void display_grep_results();
 
+// Assembly
+void build_assembly_mappings(EditorState *state, int int_source_line);
+
+
+
+
 #endif // OTHERS_H
