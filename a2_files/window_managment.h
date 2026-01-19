@@ -51,5 +51,10 @@ void display_content_search(EditorState *state, const char *prefilled_term);
 
 void display_help_viewer(const char* filename);
 
+// Assembly
+
+EditorState *find_source_state_for_assembly(const char *asm_filename);
+
+EditorState *find_assembly_state_for_source(const char *source_filename);
 
 #endif // WINDOW_MANAGMENT_H
