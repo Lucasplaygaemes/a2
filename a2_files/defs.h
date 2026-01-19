@@ -240,6 +240,24 @@ typedef struct {
 } FileInfo;
 #endif
 
+#ifndef ASM
+#define ASM
+typedef struct {
+    int start_line;     // First line of the .s file
+    int end_line;       // THe last file of the file .s
+    bool active;        // If this C line gerenated any assembly
+} AsmRange;
+
+typedef struct {
+    int *asm_to_source;
+    
+    AsmRange *source_to_asm;
+    
+    int asm_line_count;
+    int source_line_count;
+} AssemblyMapping;
+#endif
+
 #ifndef EDITORSTATE_DEFINED
 #define EDITORSTATE_DEFINED
 typedef struct EditorState {
@@ -320,6 +338,7 @@ typedef struct EditorState {
    
     struct timespec lsp_last_keystroke; // Timestamp for the last relevant key
     
+    AssemblyMapping *mapping;
     
 } EditorState;
 #endif
