@@ -681,7 +681,7 @@ void redesenhar_todas_as_janelas() {
     // 2. Now, draw the diagnostic popup on top of the active window if needed
     if (ws->num_janelas > 0) {
         JanelaEditor *active_jw = ws->janelas[ws->janela_ativa_idx];
-        if (active_jw->tipo == TIPOJANELA_EDITOR && active_jw->estado && active_jw->estado->is_dirty) {
+        if (active_jw->tipo == TIPOJANELA_EDITOR && active_jw->estado) {
             if (active_jw->estado->lsp_enabled) {
                 LspDiagnostic *diag = get_diagnostic_under_cursor(active_jw->estado);
                 if (diag) {
