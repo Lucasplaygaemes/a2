@@ -32,6 +32,10 @@ More explanation are in the Documentation!
 # Themes!
 Now a2 have themes! and they are quite easy to make, Themes will be searched in the default app folder, but, if no found, or if you want to add another folder, you can with the command :set themedir <dir>
 
+# Assembly!
+Becasue i'm learning assembly, a new function was added to the code to help me understand better what C functions turned in what in assembly, i will fix any bugs that i find.
+This is a things that i made mostly of fun and learning experience!
+
 # Multiplatform?
 a2 is not windows compatible without any modifications i think. I don't plan to make it. Not for now at least
 
