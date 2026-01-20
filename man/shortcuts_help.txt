@@ -7,6 +7,7 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *Alt+F* : Open the Fuzzy Finder to search for project files.
 - *Alt+B* : Show a list of recently opened files.
 - *Alt+S* : Start a project-wide content search (grep).
+- *Alt+A* : Compile and view assembly side-by-side with source.
 - *Alt+X* : Close the active window.
 - *Alt+Enter* : Create a new empty window (vertical split).
 - *Ctrl+]* / *Ctrl+[* : Navigate to the next/previous window (split).
@@ -52,6 +53,7 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *Ctrl+L* : Create a new line below the current line.
 - *Ctrl+U* / *Ctrl+R* : Undo / Redo.
 - *Ctrl+V* : Paste from the local yank register.
+- *Alt+S* : (During completion) Expand the selected suggestion as a snippet.
 
 ## Visual Mode
 - *Esc* : Exit Visual Mode and return to Normal Mode.

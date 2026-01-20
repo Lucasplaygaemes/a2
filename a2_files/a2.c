@@ -66,6 +66,7 @@ void inicializar_ncurses() {
     
     bkgd(COLOR_PAIR(8));
 }
+
 void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     // Manipulação especial para Ctrl+O para evitar reversão imediata.
     if (state->mode == INSERT && ch == 15) { // 15 é Ctrl+O
@@ -175,6 +176,8 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     } else if (next_ch == 'e') {
                         // ACTION for Alt+d, e
                         display_fuzzy_finder(state);
+                    } else if (next_ch == 'l') {
+                        asm_convert_file(state, state->filename);
                     } else if (next_ch == 'f') {
                         process_lsp_definition(state);
                     } else {
@@ -260,6 +263,10 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 else if (next_ch == 'b' || next_ch == 'q') editor_move_to_previous_word(state);
                 else if (next_ch == '.' || next_ch == '>') ciclar_layout();
                 else if (next_ch >= '1' && next_ch <= '9') mover_janela_para_workspace(next_ch - '1');
+                else if (next_ch == 'a' || next_ch == 'A') {
+                    compile_and_view_assembly(state);
+                    return;
+                    }
                 else if (strchr("!@#$%^&*( ", next_ch)) {
                     const char* symbols = "!@#$%^&*(";
                     char* p = strchr(symbols, next_ch);

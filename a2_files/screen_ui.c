@@ -252,7 +252,45 @@ void editor_redraw(WINDOW *win, EditorState *state) {
         for (int file_line_idx = 0; file_line_idx < state->num_lines && screen_y < content_height; file_line_idx++) {
             char *line = state->lines[file_line_idx];
             if (!line) continue;
-
+            
+            // logic highlight
+            
+            bool highlight_this_line = false;
+            
+            if (state->mapping) {
+                // case 1, drawing in assembly trying to find in the windown in C
+                EditorState *source = find_source_state_for_assembly(state->filename);
+                if (source) {
+                    int c_cursor = source->current_line;
+                    // verify if the c cursor falls between the assembly line
+                    if (c_cursor < state->mapping->source_line_count) {
+                        AsmRange range = state->mapping->source_to_asm[c_cursor];
+                        // if the current line is inside the range
+                        if (range.active && file_line_idx >= range.start_line && file_line_idx <= range.end_line) {
+                            highlight_this_line = true;
+                        }
+                    }
+                }
+            } else {
+                EditorState *asm_state = find_source_state_for_assembly(state->filename);
+                
+                if (asm_state && asm_state->mapping) {
+                    int asm_cursor = asm_state->current_line;
+                    //verify if the assembly cursor is poiting where wh are
+                    if (asm_cursor < asm_state->mapping->asm_line_count) {
+                        int target_c_line = asm_state->mapping->asm_to_source[asm_cursor];
+                        
+                        if (target_c_line == file_line_idx) {
+                            highlight_this_line = true;
+                        }
+                    }
+                }
+            }
+            
+            if (highlight_this_line) {
+                wattron(win, COLOR_PAIR(2));
+            }
+            
             int line_len = strlen(line);
             if (line_len == 0) {
                 if (visual_line_idx >= state->top_line) {
@@ -395,6 +433,9 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                 line_offset += break_pos;
                 if (line_len == 0) break;
             }
+            if (highlight_this_line) {
+                wattroff(win, COLOR_PAIR(2));
+            }
         }
     } else { // NO WORD WRAP
         for (int i = 0; i < content_height; i++) {
@@ -417,6 +458,21 @@ void editor_redraw(WINDOW *win, EditorState *state) {
 
                 char *line = state->lines[line_idx];
                 if (!line) continue;
+
+                bool highlight_this_line = false;
+                if (state->mapping) {
+                    EditorState *source = find_source_state_for_assembly(state->filename);
+                    if (source) {
+                        int c_cursor = source->current_line;
+                        if (c_cursor < state->mapping->source_line_count) {
+                            AsmRange range = state->mapping->source_to_asm[c_cursor];
+                            if (range.active && line_idx >= range.start_line && line_idx <= range.end_line) {
+                                highlight_this_line = true;
+                            }
+                        }
+                    }
+                }
+                if (highlight_this_line) wattron(win, COLOR_PAIR(2));
 
                 int line_len = strlen(line);
                 int current_col = 0;
@@ -470,6 +526,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     
                     current_col += token_len;
                 }
+                if (highlight_this_line) wattroff(win, COLOR_PAIR(2));
 
                 if (state->lsp_document) {
                     for (int d = 0; d < state->lsp_document->diagnostics_count; d++) {

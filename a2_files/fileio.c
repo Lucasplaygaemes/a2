@@ -6,6 +6,7 @@
 #include "command_execution.h" // For run_and_display_command
 #include "direct_navigation.h"
 #include "git_utils.h"
+#include "window_managment.h"
 
 #include <limits.h> // For PATH_MAX
 #include <errno.h> // For errno, ENOENT
@@ -54,6 +55,26 @@ const char * get_syntax_file_from_extension(const char* filename) {
         return "assembly.syntax";
     
     return NULL; // Default to no syntax highlighting for unknown extensions
+}
+
+void asm_convert_file(EditorState *state, const char *filename) {
+    if (strcmp(state->filename, "[No Name]") == 0) {
+        editor_set_status_msg(state, "No name file. Save with :w <filename>");
+        return;
+    }
+    char output_filename[PATH_MAX];
+    strncpy(output_filename, filename, sizeof(output_filename) -1);
+    output_filename[sizeof(output_filename) -1] = '\0';
+    
+    char *dot = strrchr(output_filename, '.');
+    if (dot && dot != output_filename) {
+        *dot = '\0';
+    }
+    strcat(output_filename, ".s");
+    
+    char *const cmd[] = {"gcc", "-S", (char*)filename, "-o", "-O0", output_filename, NULL};
+    criar_janela_terminal_generica(cmd);
+    
 }
 
 void load_file_core(EditorState *state, const char *filename) {

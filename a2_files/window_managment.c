@@ -99,6 +99,13 @@ void free_editor_state(EditorState* state) {
         lsp_shutdown(state);
     }
 
+    if (state->mapping) { // ADDED
+        free(state->mapping->asm_to_source); // ADDED
+        free(state->mapping->source_to_asm); // ADDED
+        free(state->mapping); // ADDED
+    } // ADDED
+
+
     if (state->filename[0] != '[') {
         save_last_line(state->filename, state->current_line);
     }
@@ -234,6 +241,9 @@ void mover_janela_para_workspace(int target_idx) {
     if (source_ws->janela_ativa_idx >= source_ws->num_janelas) {
         source_ws->janela_ativa_idx = source_ws->num_janelas - 1;
     }
+    
+    // Cleanup logic for state->mapping removed from here, to be placed in free_editor_state
+    
 
     recalcular_layout_janelas();
     redesenhar_todas_as_janelas();
@@ -671,7 +681,7 @@ void redesenhar_todas_as_janelas() {
     // 2. Now, draw the diagnostic popup on top of the active window if needed
     if (ws->num_janelas > 0) {
         JanelaEditor *active_jw = ws->janelas[ws->janela_ativa_idx];
-        if (active_jw->tipo == TIPOJANELA_EDITOR && active_jw->estado && active_jw->estado->is_dirty) {
+        if (active_jw->tipo == TIPOJANELA_EDITOR && active_jw->estado) {
             if (active_jw->estado->lsp_enabled) {
                 LspDiagnostic *diag = get_diagnostic_under_cursor(active_jw->estado);
                 if (diag) {
@@ -1775,4 +1785,134 @@ void display_help_viewer(const char* filename) {
     ws->janela_ativa_idx = ws->num_janelas - 1;
 
     recalcular_layout_janelas();
+}
+
+EditorState *find_source_state_for_assembly(const char *asm_filename) {
+    char source_guess[PATH_MAX];
+    strncpy(source_guess, asm_filename, PATH_MAX - 1);
+    source_guess[PATH_MAX - 1] = '\0';
+    
+    // swap the .s for .c
+    char *dot = strrchr(source_guess, '.');
+    if (dot && strcmp(dot, ".s") == 0) {
+        *dot = '\0';
+        // try the .c, cpp later
+        strcat(source_guess, ".c");
+        
+        // search in the open windwos
+        for (int i = 0; i < gerenciador_workspaces.workspaces[gerenciador_workspaces.workspace_ativo_idx]->num_janelas; i++) {
+            JanelaEditor *jw = gerenciador_workspaces.workspaces[gerenciador_workspaces.workspace_ativo_idx]->janelas[i];
+            if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
+                
+                // TODO
+                // Make this comparison better 
+                
+                if (strcmp(jw->estado->filename, source_guess) == 0) {
+                    return jw->estado;
+                }
+            }
+        }
+    }
+    return NULL;
+}
+
+EditorState *find_assembly_state_for_source(const char *source_filename) {
+    char asm_guess[PATH_MAX];
+    strncpy(asm_guess, source_filename, PATH_MAX - 1);
+    asm_guess[PATH_MAX - 1] = '\0';
+    
+    // try to change the .s extension
+    char *dot = strrchr(asm_guess, '.');
+    if (dot) {
+        *dot = '\0';
+        strcat(asm_guess, ".s");
+        
+        // search for the open windows of the active workspace
+        GerenciadorJanelas *ws = gerenciador_workspaces.workspaces[gerenciador_workspaces.workspace_ativo_idx];
+        for (int i = 0; i < ws->num_janelas; i++) {
+            JanelaEditor *jw = ws->janelas[i];
+            if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
+                if (strcmp(jw->estado->filename, asm_guess) == 0){
+                    return jw->estado;
+                }
+            }
+        }
+         
+    }
+    return NULL;
+}
+
+void sync_scroll(JanelaEditor *active_jw) {
+    if (!active_jw || active_jw->tipo != TIPOJANELA_EDITOR || !active_jw->estado) return;
+    
+    EditorState *active_state = active_jw->estado;
+    JanelaEditor *target_jw = NULL;
+    EditorState *target_state = NULL;
+    int target_line = -1;
+    
+    // cenary 1 assembly -> C
+    if (active_state->mapping) {
+        // Tentar achar C
+        target_state = find_source_state_for_assembly(active_state->filename);
+        if (target_state) {
+            GerenciadorJanelas *ws = ACTIVE_WS;
+            for(int i = 0; i<ws->num_janelas; i++) {
+                if (ws->janelas[i]->estado == target_state) {
+                    target_jw = ws->janelas[i];
+                    break;
+                }
+                if (target_jw) {
+                    // calculate the C line based in assembly
+                    
+                    int asm_cursor = active_state->current_line;
+                    if (asm_cursor < active_state->mapping->asm_line_count) {
+                        target_line = active_state->mapping->asm_to_source[asm_cursor];
+                    }
+                }
+            }
+        }
+        
+        else {
+            target_state = find_assembly_state_for_source(active_state->filename);
+            
+            if (target_state && target_state->mapping) {
+                GerenciadorJanelas *ws = ACTIVE_WS;
+                for (int i = 0; i < ws->num_janelas; i++) {
+                    if (ws->janelas[i]->estado == target_state) {
+                        
+                        target_jw = ws->janelas[i];
+                        break;
+                    }
+                }
+                
+                if (target_jw) {
+                    int c_cursor = active_state->current_line;
+                    if (c_cursor < target_state->mapping->source_line_count) {
+                        AsmRange range = target_state->mapping->source_to_asm[c_cursor];
+                        if (range.active) {
+                            target_line = range.start_line;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // apply the scroll na target window
+        if (target_jw && target_line != -1) {
+            int rows, cols;
+            getmaxyx(target_jw->win, rows, cols);
+            int content_height = rows - (ACTIVE_WS->num_janelas > 1 ? 2 : 0);
+            
+            // If the target line is out of the vision
+            
+            if (target_line < target_state->top_line || target_line >= target_state->top_line + content_height) {
+                target_state->top_line = target_line - (content_height / 2);
+                if (target_state->top_line < 0) {
+                    target_state->top_line = 0;
+                }
+                target_state->is_dirty = true;
+            }
+            
+        }
+    }
 }

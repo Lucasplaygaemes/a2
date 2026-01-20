@@ -2349,3 +2349,61 @@ void editor_yank_paragraph(EditorState *state) {
     }
     editor_set_status_msg(state, "%d lines of a paragraph yanked", end_line - start_line + 1);
 }
+
+void build_assembly_mappings(EditorState *asm_state, int num_source_lines) {
+    if (!asm_state) return;
+    
+    // if a map exist, clean it
+    if (asm_state->mapping) {
+        free(asm_state->mapping->asm_to_source);
+        free(asm_state->mapping->source_to_asm);
+        free(asm_state->mapping);
+    }
+    asm_state->mapping = calloc(1, sizeof(AssemblyMapping));
+    asm_state->mapping->asm_line_count = asm_state->num_lines;
+    asm_state->mapping->source_line_count = num_source_lines;
+    
+    // allocate the vectos
+    
+    asm_state->mapping->asm_to_source = malloc(sizeof(int) * asm_state->num_lines);
+    
+    asm_state->mapping->source_to_asm = malloc(sizeof(AsmRange) * num_source_lines);
+    
+    // initialize the vector C -> ASM
+    for (int i = 0; i < num_source_lines; i++) {
+        asm_state->mapping->source_to_asm[i].start_line = -1;
+        asm_state->mapping->source_to_asm[i].end_line = -1;
+        asm_state->mapping->source_to_asm[i].active = false;
+    }
+    int current_c_line = -1;
+    
+    // goes trough the assembly line by line
+    for (int asm_idx = 0; asm_idx < asm_state->num_lines; asm_idx++) {
+        char *line = asm_state->lines[asm_idx];
+        
+        // search for ".loc file_id line_num"
+        
+        char *loc_ptr = strstr(line, ".loc");
+        if (loc_ptr) {
+            int file_id, line_num;
+            if (sscanf(loc_ptr, ".loc %d %d", &file_id, &line_num) == 2) {
+                // adjuste the base to -0
+                current_c_line = line_num - 1;
+            }
+        }
+        
+        // map 1, assembly -> C
+        asm_state->mapping->asm_to_source[asm_idx] = current_c_line;
+        
+        // map 2 c -> assmebly
+        
+        if (current_c_line >= 0 && current_c_line < num_source_lines) {
+            AsmRange * range = &asm_state->mapping->source_to_asm[current_c_line];
+            if (range->start_line == -1) {
+                range->start_line = asm_idx;
+                range->active = true;
+            }
+            range->end_line = asm_idx;
+        }        
+    }
+}
