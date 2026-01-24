@@ -59,3 +59,10 @@ dkms.conf
 .sv
 .pos
 .a2
+
+# assembly outputs
+.s
+.asm
+.am
+.ss
+.am
