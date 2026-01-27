@@ -1,6 +1,8 @@
 #include <stddef.h>
 #include <wchar.h>
 #include <stdlib.h>
+
+
 #include "window_managment.h"
 #include "defs.h"
 #include "fileio.h"
@@ -10,6 +12,7 @@
 #include "direct_navigation.h"
 #include "explorer.h"
 #include "themes.h"
+
 #include <unistd.h>
 #include <sys/stat.h>
 #include <dirent.h>
@@ -1127,6 +1130,7 @@ end_switcher:
     delwin(switcher_win);
     touchwin(stdscr);
     redesenhar_todas_as_janelas();
+    active_state->is_dirty = true;
 }
 
 void criar_novo_workspace_vazio() {
@@ -1591,12 +1595,14 @@ end_palette:
         free(state->symbols);
         state->symbols = NULL;
         state->num_symbols = 0;
+        state->is_dirty = true;
     }
     for (int i = 0; i < num_all_files; i++) free(all_files[i].path);
     free(all_files);
     free(filtered_items);
     delwin(palette_win);
     touchwin(stdscr);
+    state->is_dirty = true;
     redesenhar_todas_as_janelas();
     curs_set(1);
 }
@@ -1732,6 +1738,7 @@ end_finder:
     free(filtered_results);
     delwin(finder_win);
     touchwin(stdscr);
+    state->is_dirty = true;
     redesenhar_todas_as_janelas();
     curs_set(1);
     return NULL;
