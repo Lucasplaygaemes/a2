@@ -820,11 +820,21 @@ bool handle_global_shortcut(int ch, bool *should_exit) {
 
 int main(int argc, char *argv[]) {
     char exe_path_buf[PATH_MAX];
-    if (realpath(argv[0], exe_path_buf)) {
+    ssize_t len = readlink("/proc/self/exe", exe_path_buf, sizeof(exe_path_buf) - 1);
+    if (len != -1) {
+        exe_path_buf[len] = '\0';
         char* dir = dirname(exe_path_buf);
         if (dir) {
             strncpy(executable_dir, dir, PATH_MAX - 1);
             executable_dir[PATH_MAX - 1] = '\0';
+        }
+    } else {
+        if (realpath(argv[0], exe_path_buf)) {
+            char* dir = dirname(exe_path_buf);
+            if (dir) {
+                strncpy(executable_dir, dir, PATH_MAX - 1);
+                executable_dir[PATH_MAX - 1] = '\0';
+            }
         }
     }
 

@@ -1768,9 +1768,23 @@ void display_help_viewer(const char* filename) {
     state->current_match = -1;
     
     char path[PATH_MAX];
-    snprintf(path, sizeof(path), "man/%s", filename);
-
-    FILE *f = fopen(path, "r");
+    FILE *f = NULL;
+    
+    if (executable_dir[0] != '\0') {
+        snprintf(path, sizeof(path), "%s/man/%s", executable_dir, filename);
+        f = fopen(path, "r");
+    }
+    
+    if (!f) {
+        snprintf(path, sizeof(path), "/usr/local/share/a2/man/%s", filename);
+        f = fopen(path, "r");
+    }
+    
+    if (!f) {
+        snprintf(path, sizeof(path), "man/%s", filename);
+        f = fopen(path, "r");
+    }
+    
     if (f) {
         char line_buffer[MAX_LINE_LEN];
         while (fgets(line_buffer, sizeof(line_buffer), f)) {
@@ -1786,7 +1800,6 @@ void display_help_viewer(const char* filename) {
         state->num_lines = 1;
     }
     strncpy(state->current_file, filename, sizeof(state->current_file) - 1);
-
 
     ws->janelas[ws->num_janelas - 1] = nova_janela;
     ws->janela_ativa_idx = ws->num_janelas - 1;

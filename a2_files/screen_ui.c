@@ -1075,10 +1075,25 @@ static void help_viewer_load_file(HelpViewerState *state, const char *filename) 
     state->top_line = 0;
     state->current_line = 0;
     
-    char path[PATH_MAX];
-    snprintf(path, sizeof(path), "man/%s", filename);
         
-    FILE *f = fopen(path, "r");
+    char path[PATH_MAX];
+    FILE *f = NULL;
+    
+    if (executable_dir[0] != '\0') {
+        snprintf(path, sizeof(path), "%s/man/%s", executable_dir, filename);
+        f = fopen(path, "r");
+    }
+    
+    if (!f) {
+        snprintf(path, sizeof(path), "/usr/local/share/a2/man/%s", filename);
+        f = fopen(path, "r");
+    }
+    
+    if (!f) {
+        snprintf(path, sizeof(path), "man/%s", filename);
+        f = fopen(path, "r");
+    }
+    
     if (!f) {
         // if not find, create a line of error
         state->lines = malloc(sizeof(char*));
