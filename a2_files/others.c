@@ -1355,7 +1355,7 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
         case KEY_CTRL_LEFT_BRACKET: janela_anterior(); break;
         case KEY_REDO: do_redo(state); break;
         case KEY_ENTER: case '\n': editor_handle_enter(state); break;
-        case KEY_BACKSPACE: case 127: case 8: editor_handle_backspace(state); break;
+        case KEY_BACKSPACE: case 127: case 8: editor_handle_backspace(state); state->is_dirty = true; break;
         case CTRL_P:
             state->current_col = 0;
             state->ideal_col = 0;
