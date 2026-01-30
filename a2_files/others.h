@@ -94,6 +94,11 @@ void display_grep_results();
 void build_assembly_mappings(EditorState *state, int int_source_line);
 
 
+void generic_input_msg(EditorState *state, char msg[256]);
+
+
+
+
 
 
 #endif // OTHERS_H

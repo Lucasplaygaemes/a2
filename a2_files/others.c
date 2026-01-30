@@ -1346,7 +1346,7 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
         case KEY_BTAB:
             push_undo(state);
             editor_unindent_line(state, state->current_line); break;
-        case KEY_CTRL_DEL: case KEY_CTRL_K: editor_delete_line(state); break;
+        case KEY_CTRL_DEL: case KEY_CTRL_K: editor_delete_line(state); state->is_dirty = true; break;
         case KEY_CTRL_D: editor_find_next(state); break;
         case KEY_CTRL_A: editor_find_previous(state); break;
         case KEY_CTRL_F: editor_find(state); break;
@@ -2406,4 +2406,27 @@ void build_assembly_mappings(EditorState *asm_state, int num_source_lines) {
             range->end_line = asm_idx;
         }        
     }
+}
+
+void generic_input_msg(EditorState *state, char msg[256]) {
+    
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+    int win_h = 3;
+    int win_w = cols / 2;
+    int win_y = (rows - win_h) / 2;
+    int win_x = (cols - win_w) / 2;
+    WINDOW *input_win = newwin(win_h, win_w, win_y, win_x);
+    keypad(input_win, TRUE);
+    wbkgd(input_win, COLOR_PAIR(9));
+    box(input_win, 0 ,0);
+    mvwprintw(input_win, 1, 2, "%s", msg);
+    wrefresh(input_win);
+    curs_set(1); echo();
+    wgetnstr(input_win, msg, sizeof(msg) - 1);
+    noecho();
+    curs_set(0);
+    touchwin(stdscr);
+    redesenhar_todas_as_janelas();
+
 }
