@@ -9,6 +9,9 @@
 #include "timer.h"
 #include "explorer.h"
 #include "themes.h"
+#include "diff.h"
+
+
 #include <locale.h>
 #include <libgen.h> // For dirname()
 #include <limits.h> // For PATH_MAX
@@ -192,6 +195,8 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         criar_janela_terminal_generica(cmd);
                     } else if (next_ch == 'g') {
                         prompt_for_directory_change(state);
+                    } else if (next_ch == 'd') {
+                        start_interactive_diff(state);
                     } else {
                         editor_set_status_msg(state, "Unknown sequence: Alt+z, %lc", next_ch);
                     }
@@ -226,7 +231,11 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         state->current_col = strlen(state->lines[state->current_line]);
                         editor_handle_enter(state);
                         editor_global_paste(state);
-                        }
+                    } else if (next_ch == 't') {
+                        char *msg = {""};
+                        generic_input_msg(state, (char*)msg);
+                    }
+                        
                 }                
                 
                 // You can add more sequences here, e.g., else if (first_key == 'g') { ... }
@@ -438,7 +447,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             case KEY_CTRL_LEFT_BRACKET: janela_anterior(); state->is_dirty = true; break;
                             case KEY_CTRL_F: editor_find(state); break;
                             case KEY_CTRL_DEL: editor_delete_line(state); break;
-                            case KEY_CTRL_K: editor_delete_line(state); break;
+                            case KEY_CTRL_K: editor_delete_line(state); state->is_dirty = true; break;
                             case KEY_CTRL_D: editor_find_next(state); break;
                             case KEY_CTRL_A: editor_find_previous(state); break;
                             case KEY_CTRL_G: display_directory_navigator(state); break;
@@ -696,7 +705,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     case KEY_CTRL_LEFT_BRACKET: janela_anterior(); state->is_dirty = true; break;
                     case KEY_CTRL_F: editor_find(state); break;
                     case KEY_CTRL_DEL: editor_delete_line(state); break;
-                    case KEY_CTRL_K: editor_delete_line(state); break;
+                    case KEY_CTRL_K: editor_delete_line(state); state->is_dirty = true; break;
                     case KEY_CTRL_D: editor_find_next(state); break;
                     case KEY_CTRL_A: editor_find_previous(state); break;
                     case KEY_CTRL_G: display_directory_navigator(state); break;

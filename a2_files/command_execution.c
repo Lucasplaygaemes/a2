@@ -9,6 +9,7 @@
 #include "timer.h" // For display_work_summary
 #include "cache.h"
 #include "themes.h"
+#include "diff.h"
 
 #include <sys/stat.h>
 #include <ctype.h> // For isspace
@@ -140,7 +141,11 @@ void process_command(EditorState *state, bool *should_exit) {
     } else if (strcmp(command, "timer") == 0) {
         display_work_summary();
     } else if (strcmp(command, "diff") == 0) {
-        diff_command(state, args);
+        if (strlen(args) > 0) {
+            diff_command(state, args);
+        } else {
+            start_interactive_diff(state);
+        }
     } else if (strcmp(command, "set") == 0) {
         char set_cmd[100] = "", set_val[100] = "";
         int items = sscanf(args, "%99s %99s", set_cmd, set_val);
