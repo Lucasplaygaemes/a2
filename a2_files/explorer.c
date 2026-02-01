@@ -151,6 +151,7 @@ char *explorer_prompt_for_input(const char *prompt) {
     wrefresh(input_win);
     
     static char input_buffer[256];
+    input_buffer[0] = '\0'; // clean up the buffer
     echo();
     curs_set(1);
     wgetnstr(input_win, input_buffer, sizeof(input_buffer) - 1);
@@ -161,10 +162,7 @@ char *explorer_prompt_for_input(const char *prompt) {
     touchwin(stdscr);
     redesenhar_todas_as_janelas();
     
-    if (strlen(input_buffer) > 0) {
-        return input_buffer;
-    }
-    return NULL;
+    return input_buffer;
 }
 
 void free_explorer_state(ExplorerState *state) {
@@ -351,8 +349,6 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
         }
         // If it was just a plain ESC, fall through to do nothing.
     }
-
-
     switch(ch) {
         case 'a':     // git add
             if (state->num_entries > 0) {
@@ -372,8 +368,32 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
             break;
         case 'C':     // commit
             {
-                char *msg = explorer_prompt_for_input("Commit Message");
-                if (msg && strlen(msg) > 0) {
+                char *msg = explorer_prompt_for_input("Commit Message (Enter for full editor)");
+                
+                // cenary 3: empty message -> open full editro
+                
+                if (msg == NULL || strlen(msg) == 0) {
+                    char *const cmd[] = {"git", "commit", NULL};
+                    criar_janela_terminal_generica(cmd);
+                    explorer_reload_entries(state);
+                    // update after closing the terminal
+                }
+                
+                // cenary 2: message too long (> 70 chars)
+                else if (strlen(msg) > 70) {
+                    if (confirm_action("Message too long (>70). Open full editor?")) {
+                        char *const cmd[] = {"git", "commit", NULL};
+                        criar_janela_terminal_generica(cmd);
+                        
+                    } else {
+                        char cmd[PATH_MAX + 512]; // incrising buffer
+                        snprintf(cmd, sizeof(cmd), "git commit -m \"%s\"", msg);
+                        run_and_display_command(cmd, "Git Commit Result");
+                    }
+                    explorer_reload_entries(state);
+                }
+                // cenary 1: normal message
+                else {
                     char cmd[PATH_MAX + 256];
                     snprintf(cmd, sizeof(cmd), "git commit -m \"%s\"", msg);
                     run_and_display_command(cmd , "Git Commit Result");
