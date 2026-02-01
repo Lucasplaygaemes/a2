@@ -1,6 +1,7 @@
 #include "explorer.h"
 #include "fileio.h"
 #include "window_managment.h"
+
 #include <dirent.h>
 #include <sys/stat.h>
 #include <string.h>
