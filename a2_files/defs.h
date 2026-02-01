@@ -338,8 +338,9 @@ typedef struct EditorState {
    
     struct timespec lsp_last_keystroke; // Timestamp for the last relevant key
     
+    // Assembly things
     AssemblyMapping *mapping;
-    
+
 } EditorState;
 #endif
 
@@ -399,6 +400,9 @@ typedef struct {
 #define JANELA_EDITOR_DEFINED
 typedef struct JanelaEditor {
     WINDOW *win;
+    
+    WINDOW *content_win; // sub-window for safe content
+    
     int y, x, altura, largura;
     TipoJanela tipo;
 

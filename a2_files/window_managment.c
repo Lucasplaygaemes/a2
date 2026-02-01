@@ -81,16 +81,21 @@ void criar_janela_terminal_generica(char *const argv[]) {
     int rows, cols;
     getmaxyx(jw->win, rows, cols);
     int border_offset = ws->num_janelas > 1 ? 1 : 0;
-
+    
+    // make sure the content_win exist
+    
+    if (!jw->content_win) jw->content_win = jw->win;
+    
     jw->term.vterm = vterm_create(rows - 2 * border_offset, cols - 2 * border_offset, VTERM_FLAG_XTERM_256);
-    vterm_wnd_set(jw->term.vterm, jw->win);
+    
+    vterm_wnd_set(jw->term.vterm, jw->content_win);
+    
     vterm_set_userptr(jw->term.vterm, jw);
 
     vterm_resize(jw->term.vterm, cols - 2 * border_offset, rows - 2 * border_offset);
     atualizar_tamanho_pty(jw);
     redesenhar_todas_as_janelas();
 }
-
 
 void handle_gdb_session(int pty_fd, pid_t child_pid);
 
@@ -167,7 +172,8 @@ void free_janela_editor(JanelaEditor* jw) {
         if (jw->term.pty_fd != -1) close(jw->term.pty_fd);
         if (jw->term.vterm) vterm_destroy(jw->term.vterm);
     }
-
+    
+    if (jw->content_win && jw->content_win != jw->win) delwin(jw->content_win);
     if (jw->win) delwin(jw->win);
     free(jw);
 }
@@ -492,6 +498,60 @@ void recalcular_layout_janelas() {
 
     for (int i = 0; i < ws->num_janelas; i++) {
         JanelaEditor *jw = ws->janelas[i];
+        
+        // 1. safe clean
+        if (jw->content_win && jw->content_win != jw->win) {
+            delwin(jw->content_win);
+            jw->content_win = NULL;
+        }
+        
+        if (jw->win) delwin(jw->win);
+        
+        // 2. creation of the main window (container)
+        jw->win = newwin(jw->altura, jw->largura, jw->y, jw->x);
+        keypad(jw->win, TRUE);
+        scrollok(jw->win, FALSE);
+        
+        // 3. creation of the sub-window of the content (safe area)
+        int border_offset = ws->num_janelas > 1 ? 1 : 0;
+        
+        if (border_offset) {
+            // create a windows derivate that, start in 1,1 and its smaller in then the main
+            jw->content_win = derwin(jw->win, jw->altura - 2, jw->largura - 2, 1, 1);
+        } else {
+            // if dont't have border, the content occupies all
+            jw->content_win = jw->win;
+        }
+        
+        // configure the sub-window too 
+        if (jw->content_win != jw->win) {
+            keypad(jw->content_win, TRUE);
+            scrollok(jw->content_win, FALSE);
+            touchwin(jw->win); // makes the border to be draw
+        }
+        
+        if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
+            jw->estado->is_dirty = true;
+            mark_all_lines_dirty(jw->estado);
+        } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
+            jw->explorer_state->is_dirty = true;
+        } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
+            jw->help_state->is_dirty = true;
+        }
+        
+        // 4. updating the terminal, vterm
+        if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.vterm) {
+            int content_h = jw->altura - (2 * border_offset);
+            int content_w = jw->altura - (2 * border_offset);
+            
+            // pass the content_win to vterm
+            vterm_wnd_set(jw->term.vterm, jw->content_win);
+            vterm_resize(jw->term.vterm, content_h > 0 ? content_h : 1, content_w > 0 ? content_w : 1);
+            atualizar_tamanho_pty(jw);
+        }
+    }
+}        
+/*        
         if (jw->win) {
             delwin(jw->win);
         }
@@ -520,7 +580,7 @@ void recalcular_layout_janelas() {
         }
     }
 }
-
+*/
 
 void executar_comando_no_terminal(const char *comando_str) {
     // If no command is specified, open a default shell
@@ -662,8 +722,12 @@ void redesenhar_todas_as_janelas() {
                 jw->help_state->is_dirty = false; // Reset the flag after drawing
             } else if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.vterm) {
                 // Terminal drawing is special, it's always "dirty" from our perspective
-                werase(jw->win); // Clear the window before drawing to prevent artifacts
+                if (jw->content_win != jw->win) werase(jw->content_win);
+                
+                else werase(jw->win); // Clear the window before drawing to prevent artifacts
+                
                 vterm_wnd_update(jw->term.vterm, -1, 0, VTERM_WND_RENDER_ALL);
+                
                 if (ws->num_janelas > 1) {
                     if (i == ws->janela_ativa_idx) {
                         wattron(jw->win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
@@ -678,6 +742,7 @@ void redesenhar_todas_as_janelas() {
             }
             // Add the window to the redraw "queue"
             wnoutrefresh(jw->win);
+            if (jw->content_win != jw->win) wnoutrefresh(jw->content_win);
         }
     }
 
