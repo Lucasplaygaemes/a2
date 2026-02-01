@@ -182,7 +182,11 @@ void free_explorer_state(ExplorerState *state) {
 }
 
 void explorer_reload_entries(ExplorerState *state) {
-    // Limpa entradas antigas
+    char *selected_name = NULL;
+    if (state->entries && state->num_entries > 0 && state->selection < state->num_entries) {
+        selected_name = strdup(state->entries[state->selection]);
+    }
+
     if (state->entries) {
         for (int i = 0; i < state->num_entries; i++) {
             free(state->entries[i]);
@@ -190,22 +194,22 @@ void explorer_reload_entries(ExplorerState *state) {
         free(state->entries);
         free(state->is_dir);
         if (state->git_status) free(state->git_status);
-        if (state->is_selected) free(state->is_selected); // Free old is_selected
+        if (state->is_selected) free(state->is_selected);
     }
     
     state->entries = NULL;
     state->is_dir = NULL;
-    state->git_status = NULL;
-    state->is_selected = NULL; // Reset pointers to NULL
+    state->git_status = NULL; // reset pointers to null
+    state->is_selected = NULL;
     state->num_entries = 0;
-    state->selection = 0;
-    state->scroll_top = 0;
-    state->num_selected = 0; // Reset selected count
+    state->num_selected = 0;
 
     DIR *d = opendir(state->current_path);
-    if (!d) return;
+    if (!d) {
+        if (selected_name) free(selected_name);
+        return;
+    }
 
-    // First pass to count entries
     int temp_num_entries = 0;
     struct dirent *dir;
     while ((dir = readdir(d)) != NULL) {
@@ -213,27 +217,29 @@ void explorer_reload_entries(ExplorerState *state) {
         if (!state->show_hidden && dir->d_name[0] == '.') continue;
         temp_num_entries++;
     }
-    closedir(d); // Close and reopen for consistent reading
+    closedir(d);
     d = opendir(state->current_path);
-    if (!d) return;
+    if (!d) {
+        if (selected_name) free(selected_name);
+        return;
+    }
 
     state->entries = malloc(sizeof(char*) * temp_num_entries);
     state->is_dir = malloc(sizeof(bool) * temp_num_entries);
     state->git_status = malloc(sizeof(char) * temp_num_entries);
-    state->is_selected = calloc(temp_num_entries, sizeof(bool)); // calloc initializes to 0 (false)
+    state->is_selected = calloc(temp_num_entries, sizeof(bool));
 
     if (!state->entries || !state->is_dir || !state->git_status || !state->is_selected) {
-        // Handle allocation failure
         if (state->entries) { for(int i=0; i<state->num_entries; i++) free(state->entries[i]); free(state->entries); }
         if (state->is_dir) free(state->is_dir);
         if (state->git_status) free(state->git_status);
         if (state->is_selected) free(state->is_selected);
         state->entries = NULL; state->is_dir = NULL; state->git_status = NULL; state->is_selected = NULL;
         state->num_entries = 0;
+        if (selected_name) free(selected_name);
         return;
     }
 
-    // Second pass to fill entries
     state->num_entries = 0;
     while ((dir = readdir(d)) != NULL) {
         if (strcmp(dir->d_name, ".") == 0) continue;
@@ -241,13 +247,12 @@ void explorer_reload_entries(ExplorerState *state) {
         
         state->entries[state->num_entries] = strdup(dir->d_name);
         if (!state->entries[state->num_entries]) {
-            // Handle strdup failure
-            // Free previously allocated strdups
             for(int i=0; i<state->num_entries; i++) free(state->entries[i]);
             free(state->entries); free(state->is_dir); free(state->git_status); free(state->is_selected);
             state->entries = NULL; state->is_dir = NULL; state->git_status = NULL; state->is_selected = NULL;
             state->num_entries = 0;
             closedir(d);
+            if (selected_name) free(selected_name);
             return;
         }
 
@@ -261,7 +266,7 @@ void explorer_reload_entries(ExplorerState *state) {
 
     if (state->num_entries > 0) {
         int *indices = malloc(state->num_entries * sizeof(int));
-        if (!indices) { /* Handle error */ return; } // Added check
+        if (!indices) { if (selected_name) free(selected_name); return; }
         for(int i=0; i<state->num_entries; i++) indices[i] = i;
 
         qsort_state_ptr = state;
@@ -270,37 +275,68 @@ void explorer_reload_entries(ExplorerState *state) {
 
         char **sorted_entries = malloc(sizeof(char*) * state->num_entries);
         bool *sorted_is_dir = malloc(sizeof(bool) * state->num_entries);
-        char *sorted_git_status = malloc(sizeof(char) * state->num_entries); // Sort git_status too
-        bool *sorted_is_selected = calloc(state->num_entries, sizeof(bool)); // Sort is_selected too
+        char *sorted_git_status = malloc(sizeof(char) * state->num_entries);
+        bool *sorted_is_selected = calloc(state->num_entries, sizeof(bool));
 
         if (!sorted_entries || !sorted_is_dir || !sorted_git_status || !sorted_is_selected) {
-            // Handle error, free everything and return
             free(indices); free(sorted_entries); free(sorted_is_dir); free(sorted_git_status); free(sorted_is_selected);
+            if (selected_name) free(selected_name);
             return;
         }
 
         for(int i=0; i<state->num_entries; i++) {
             sorted_entries[i] = state->entries[indices[i]];
             sorted_is_dir[i] = state->is_dir[indices[i]];
-            if (state->git_status) sorted_git_status[i] = state->git_status[indices[i]]; // Copy sorted status
-            if (state->is_selected) sorted_is_selected[i] = state->is_selected[indices[i]]; // Copy sorted selection
+            if (state->git_status) sorted_git_status[i] = state->git_status[indices[i]];
+            if (state->is_selected) sorted_is_selected[i] = state->is_selected[indices[i]];
         }
 
         free(state->entries);
         free(state->is_dir);
         free(state->git_status);
-        free(state->is_selected); // Free original unsorted
+        free(state->is_selected);
 
         state->entries = sorted_entries;
         state->is_dir = sorted_is_dir;
         state->git_status = sorted_git_status;
-        state->is_selected = sorted_is_selected; // Assign sorted
+        state->is_selected = sorted_is_selected;
         
         free(indices);
         
-        memset(state->git_status, ' ', state->num_entries); // Re-init for fresh status
+        memset(state->git_status, ' ', state->num_entries);
         update_git_statuses(state);
+
+        if (selected_name) {
+            bool found = false;
+            for (int i = 0; i < state->num_entries; i++) {
+                if (strcmp(state->entries[i], selected_name) == 0) {
+                    state->selection = i;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                if (state->selection >= state->num_entries) {
+                    state->selection = state->num_entries > 0 ? state->num_entries - 1 : 0;
+                }
+            }
+        } else {
+             state->selection = 0;
+        }
+        
+        if (state->selection < state->scroll_top) {
+            state->scroll_top = state->selection;
+        } else if (state->num_entries > 0 && state->selection >= state->scroll_top + 10) {
+            state->scroll_top = state->selection - 5;
+            if (state->scroll_top < 0) state->scroll_top = 0;
+        }
+
+    } else {
+        state->selection = 0;
+        state->scroll_top = 0;
     }
+    
+    if (selected_name) free(selected_name);
 }
 
 void explorer_redraw(JanelaEditor *jw) {
