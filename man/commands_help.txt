@@ -56,7 +56,7 @@ This page details the commands available in Command Mode (activated with *:*).
 - *:ksc*: Shows the keyboard shortcuts screen.
 - *:theme <name>*: Loads and applies a theme.
 - *:gcc [libs]*: Compiles the current C/C++ file.
-- *:diff <f1> <f2>*: Shows the difference between two files.
+- *:diff [f1] [f2]*: Shows file differences. Runs interactively if args are omitted.
 - *:timer*: Shows the work time report.
 - *:set <option>*: Changes a setting. Options: `paste`, `nopaste`, `wrap`, `nowrap`, `bar <0|1>`, `themedir <path>`.
 - *:toggle_auto_indent*: Toggles auto-indent on new lines.
