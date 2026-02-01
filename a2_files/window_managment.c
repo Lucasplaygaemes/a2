@@ -267,6 +267,7 @@ void criar_janela_explorer() {
     nova_janela->tipo = TIPOJANELA_EXPLORER;
     nova_janela->explorer_state = calloc(1, sizeof(ExplorerState));
     nova_janela->explorer_state->is_dirty = true;
+    nova_janela->explorer_state->show_hidden = false; // for defalut hide the hidden
     
     if (getcwd(nova_janela->explorer_state->current_path, PATH_MAX) == NULL) {
         strcpy(nova_janela->explorer_state->current_path, ".");
