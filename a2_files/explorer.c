@@ -68,6 +68,57 @@ const char* get_icon_for_filename(const char *filename) {
     return "📄"; // Default icon
 }
 
+void update_git_statuses(ExplorerState *state) {
+    // clean last status
+    if (state->git_status) {
+        memset(state->git_status, ' ', state->num_entries);
+    } else {
+        return;
+    }
+    
+    char command[PATH_MAX + 50];
+    snprintf(command, sizeof(command), "git -C \"%s\" status --porcelain -z", state->current_path);
+    
+    FILE *fp = popen(command, "r");
+    if (!fp) return;
+    
+    char status[3];
+    int ch;
+    
+    while((ch = fgetc(fp)) != EOF) {
+        status[0] = (char)ch;
+        status[1] = (char)fgetc(fp);
+        status[2] = '\0';
+        fgetc(fp);
+        
+        
+        char path_buffer[PATH_MAX];
+        int i = 0;
+        while ((ch = fgetc(fp)) != EOF && ch != '\0' && i < PATH_MAX - 1) {
+            path_buffer[i++] = (char)ch;
+        }
+        path_buffer[i] = '\0';
+        
+        char *filename = basename(path_buffer);
+        
+        for (int k = 0; k < state->num_entries; k++) {
+            if (strcmp(state->entries[k], filename) == 0) {
+                // visual priority
+                // ?
+                // M or A firts colunm (staged)
+                // M second colunm staged
+                
+                if (status[0] == '?' && status[1] == '?') state->git_status[k] = '?';
+                else if (status[0] !=  ' ' && status[0] != '?') state->git_status[k] = '+';
+                else if (status[1] != ' ') state->git_status[k] = '*';
+                
+                break;
+            }
+        }
+    }
+    pclose(fp);    
+}
+
 // Variável global temporária para ser usada pelo qsort
 static ExplorerState *qsort_state_ptr;
 
@@ -136,9 +187,13 @@ void explorer_reload_entries(ExplorerState *state) {
         }
         free(state->entries);
         free(state->is_dir);
+        if (state->git_status) free(state->git_status);
+        state->git_status = NULL;
+        
         state->entries = NULL;
         state->is_dir = NULL;
     }
+    
     state->num_entries = 0;
     state->selection = 0;
     state->scroll_top = 0;
@@ -183,6 +238,11 @@ void explorer_reload_entries(ExplorerState *state) {
         state->entries = sorted_entries;
         state->is_dir = sorted_is_dir;
         free(indices);
+        
+        state->git_status = malloc(sizeof(char) * state->num_entries);
+        memset(state->git_status, ' ', state->num_entries);
+        
+        update_git_statuses(state);
     }
 }
 
@@ -203,7 +263,23 @@ void explorer_redraw(JanelaEditor *jw) {
         if (entry_idx == state->selection) wattron(jw->win, A_REVERSE);
         
         const char* icon = state->is_dir[entry_idx] ? "📁" : get_icon_for_filename(state->entries[entry_idx]);
-        mvwprintw(jw->win, i + 1, 2, "%s %s", icon, state->entries[entry_idx]);
+        
+        char git_char = state->git_status[entry_idx];
+        
+        int color = 0;
+        if (git_char == '+') color = 4;       // Green, staged
+        else if (git_char == '*') color = 3;  // Yellow, modified
+        else if (git_char == '?') color = 11; // Red, untracked
+        
+        if (color) wattron(jw->win, COLOR_PAIR(color));
+        
+        if (git_char != ' ') {
+             mvwprintw(jw->win, i + 1, 2, "%c %s %s", git_char, icon, state->entries[entry_idx]);
+        } else {
+             mvwprintw(jw->win, i + 1, 2, "  %s %s", icon, state->entries[entry_idx]);
+        }
+        
+        if (color) wattroff(jw->win, COLOR_PAIR(color));
         
         if (entry_idx == state->selection) wattroff(jw->win, A_REVERSE);
     }
@@ -278,6 +354,36 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
 
 
     switch(ch) {
+        case 'a':     // git add
+            if (state->num_entries > 0) {
+                char cmd[PATH_MAX + 20];
+                snprintf(cmd, sizeof(cmd), "git add \"%s\"", selected_path);
+                system(cmd);
+                explorer_reload_entries(state);
+            }
+            break;
+        case 'u':     // git unstange
+            if (state->num_entries > 0) {
+                char cmd[PATH_MAX + 20];
+                snprintf(cmd, sizeof(cmd), "git restore --staged \"%s\"", selected_path);
+                system(cmd);
+                explorer_reload_entries(state);
+            }
+            break;
+        case 'C':     // commit
+            {
+                char *msg = explorer_prompt_for_input("Commit Message");
+                if (msg && strlen(msg) > 0) {
+                    char cmd[PATH_MAX + 256];
+                    snprintf(cmd, sizeof(cmd), "git commit -m \"%s\"", msg);
+                    run_and_display_command(cmd , "Git Commit Result");
+                    explorer_reload_entries(state);
+                }
+            }
+            break;
+        case 'p':     // push
+            run_and_display_command("git push", "Git Push Result");
+            break;
         case 'q':
             fechar_janela_ativa(should_exit);
             break;

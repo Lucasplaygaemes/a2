@@ -119,7 +119,7 @@ This guide details all available commands and keybindings.
 | `:ksc` | Show the keyboard shortcuts screen. |
 | `:theme <name>` | Load and apply a theme (e.g., `:theme monokai`). Use Tab to autocomplete. |
 | `:gcc [libs]` | Compile the current C/C++ file (e.g., `:gcc -lm`). |
-| `:diff <f1> <f2>`| Show the difference between two files. |
+| `:diff [f1] [f2]`| Show difference. If args omitted, runs interactively. |
 | `:timer` | Show the work time report. |
 | `:set paste` | Enable paste mode (disables auto-indent). |
 | `:set nopaste` | Disable paste mode. |
@@ -211,6 +211,10 @@ This guide details all available commands and keybindings.
 | `n` / `N` | Create a new file / directory. |
 | `c` / `x` / `v` | Copy / Cut / Paste files and directories. |
 | `d` | Delete the selected item (with confirmation). |
+| `a` | Git Add (Stage) the selected file. |
+| `u` | Git Unstage (Restore) the selected file. |
+| `c` | Git Commit (prompts for message). |
+| `p` | Git Push. |
 | `q` | Close the explorer window. |
 
 ### Multi-key Sequences

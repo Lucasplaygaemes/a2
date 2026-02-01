@@ -366,6 +366,9 @@ typedef struct {
     
     char status_msg[256];
     bool is_dirty;
+    
+    char *git_status;
+    
 } ExplorerState;
 #endif
 
