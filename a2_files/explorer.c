@@ -1,6 +1,7 @@
+#include "window_managment.h"
 #include "explorer.h"
 #include "fileio.h"
-#include "window_managment.h"
+#include "themes.h"
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -174,6 +175,8 @@ void free_explorer_state(ExplorerState *state) {
         }
         free(state->entries);
         free(state->is_dir);
+        if (state->git_status) free(state->git_status);
+        if (state->is_selected) free(state->is_selected); // Add this line
     }
     free(state);
 }
@@ -187,38 +190,78 @@ void explorer_reload_entries(ExplorerState *state) {
         free(state->entries);
         free(state->is_dir);
         if (state->git_status) free(state->git_status);
-        state->git_status = NULL;
-        
-        state->entries = NULL;
-        state->is_dir = NULL;
+        if (state->is_selected) free(state->is_selected); // Free old is_selected
     }
     
+    state->entries = NULL;
+    state->is_dir = NULL;
+    state->git_status = NULL;
+    state->is_selected = NULL; // Reset pointers to NULL
     state->num_entries = 0;
     state->selection = 0;
     state->scroll_top = 0;
+    state->num_selected = 0; // Reset selected count
 
     DIR *d = opendir(state->current_path);
     if (!d) return;
 
+    // First pass to count entries
+    int temp_num_entries = 0;
     struct dirent *dir;
     while ((dir = readdir(d)) != NULL) {
         if (strcmp(dir->d_name, ".") == 0) continue;
+        if (!state->show_hidden && dir->d_name[0] == '.') continue;
+        temp_num_entries++;
+    }
+    closedir(d); // Close and reopen for consistent reading
+    d = opendir(state->current_path);
+    if (!d) return;
 
-        state->num_entries++;
-        state->entries = realloc(state->entries, sizeof(char*) * state->num_entries);
-        state->is_dir = realloc(state->is_dir, sizeof(bool) * state->num_entries);
+    state->entries = malloc(sizeof(char*) * temp_num_entries);
+    state->is_dir = malloc(sizeof(bool) * temp_num_entries);
+    state->git_status = malloc(sizeof(char) * temp_num_entries);
+    state->is_selected = calloc(temp_num_entries, sizeof(bool)); // calloc initializes to 0 (false)
+
+    if (!state->entries || !state->is_dir || !state->git_status || !state->is_selected) {
+        // Handle allocation failure
+        if (state->entries) { for(int i=0; i<state->num_entries; i++) free(state->entries[i]); free(state->entries); }
+        if (state->is_dir) free(state->is_dir);
+        if (state->git_status) free(state->git_status);
+        if (state->is_selected) free(state->is_selected);
+        state->entries = NULL; state->is_dir = NULL; state->git_status = NULL; state->is_selected = NULL;
+        state->num_entries = 0;
+        return;
+    }
+
+    // Second pass to fill entries
+    state->num_entries = 0;
+    while ((dir = readdir(d)) != NULL) {
+        if (strcmp(dir->d_name, ".") == 0) continue;
+        if (!state->show_hidden && dir->d_name[0] == '.') continue;
         
-        state->entries[state->num_entries - 1] = strdup(dir->d_name);
+        state->entries[state->num_entries] = strdup(dir->d_name);
+        if (!state->entries[state->num_entries]) {
+            // Handle strdup failure
+            // Free previously allocated strdups
+            for(int i=0; i<state->num_entries; i++) free(state->entries[i]);
+            free(state->entries); free(state->is_dir); free(state->git_status); free(state->is_selected);
+            state->entries = NULL; state->is_dir = NULL; state->git_status = NULL; state->is_selected = NULL;
+            state->num_entries = 0;
+            closedir(d);
+            return;
+        }
 
         char full_path[PATH_MAX];
         snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, dir->d_name);
         struct stat st;
-        state->is_dir[state->num_entries - 1] = (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode));
+        state->is_dir[state->num_entries] = (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode));
+        state->num_entries++;
     }
     closedir(d);
 
     if (state->num_entries > 0) {
         int *indices = malloc(state->num_entries * sizeof(int));
+        if (!indices) { /* Handle error */ return; } // Added check
         for(int i=0; i<state->num_entries; i++) indices[i] = i;
 
         qsort_state_ptr = state;
@@ -227,20 +270,35 @@ void explorer_reload_entries(ExplorerState *state) {
 
         char **sorted_entries = malloc(sizeof(char*) * state->num_entries);
         bool *sorted_is_dir = malloc(sizeof(bool) * state->num_entries);
+        char *sorted_git_status = malloc(sizeof(char) * state->num_entries); // Sort git_status too
+        bool *sorted_is_selected = calloc(state->num_entries, sizeof(bool)); // Sort is_selected too
+
+        if (!sorted_entries || !sorted_is_dir || !sorted_git_status || !sorted_is_selected) {
+            // Handle error, free everything and return
+            free(indices); free(sorted_entries); free(sorted_is_dir); free(sorted_git_status); free(sorted_is_selected);
+            return;
+        }
+
         for(int i=0; i<state->num_entries; i++) {
             sorted_entries[i] = state->entries[indices[i]];
             sorted_is_dir[i] = state->is_dir[indices[i]];
+            if (state->git_status) sorted_git_status[i] = state->git_status[indices[i]]; // Copy sorted status
+            if (state->is_selected) sorted_is_selected[i] = state->is_selected[indices[i]]; // Copy sorted selection
         }
 
         free(state->entries);
         free(state->is_dir);
+        free(state->git_status);
+        free(state->is_selected); // Free original unsorted
+
         state->entries = sorted_entries;
         state->is_dir = sorted_is_dir;
+        state->git_status = sorted_git_status;
+        state->is_selected = sorted_is_selected; // Assign sorted
+        
         free(indices);
         
-        state->git_status = malloc(sizeof(char) * state->num_entries);
-        memset(state->git_status, ' ', state->num_entries);
-        
+        memset(state->git_status, ' ', state->num_entries); // Re-init for fresh status
         update_git_statuses(state);
     }
 }
@@ -263,7 +321,10 @@ void explorer_redraw(JanelaEditor *jw) {
         
         const char* icon = state->is_dir[entry_idx] ? "📁" : get_icon_for_filename(state->entries[entry_idx]);
         
-        char git_char = state->git_status[entry_idx];
+        char git_char = ' '; // Inicializa com espaço
+        if (state->git_status) { // Proteção contra NULL
+            git_char = state->git_status[entry_idx];
+        }
         
         int color = 0;
         if (git_char == '+') color = 4;       // Green, staged
@@ -281,8 +342,19 @@ void explorer_redraw(JanelaEditor *jw) {
         if (color) wattroff(jw->win, COLOR_PAIR(color));
         
         if (entry_idx == state->selection) wattroff(jw->win, A_REVERSE);
+        
+        bool is_marked = false; // Inicializa com false
+        if (state->is_selected) { // Proteção contra NULL
+            is_marked = state->is_selected[entry_idx];
+        }
+        
+        if (is_marked) {
+            wattron(jw->win, COLOR_PAIR(PAIR_WARNING)); // uses yellow or any other color to highlight
+            mvwprintw(jw->win, i + 1, 1, ">"); // visual mark in the border
+        } else {
+            mvwaddch(jw->win, i + 1, 1, ' ');
+        }
     }
-    
     const char *msg_to_show = NULL;
     if (state->status_msg[0] != '\0') {
         msg_to_show = state->status_msg;
@@ -351,6 +423,28 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
         // If it was just a plain ESC, fall through to do nothing.
     }
     switch(ch) {
+        case 27: // clean selection, if theres one or acts like navigation shortcut
+            if (state->num_selected > 0) {
+                memset(state->is_selected, 0, state->num_entries * sizeof(bool));
+                state->num_selected = 0;
+                state->is_dirty = true;
+                return; // return to not close the windown
+            } else {
+                janela_anterior();
+            }
+            break;
+        case ' ': // toggle selection
+            if (state->num_entries > 0) {
+                state->is_selected[state->selection] = !state->is_selected[state->selection];
+                
+                // update the counter                
+                if (state->is_selected[state->selection]) state->num_selected++;
+                else state->num_selected--;
+                
+                // move the cursor automatically down, improve the flux                
+                if (state->selection < state->num_entries -1) state->selection++;
+            }
+            break;
         case 'a':     // git add
             if (state->num_entries > 0) {
                 char cmd[PATH_MAX + 20];
@@ -365,6 +459,40 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                 snprintf(cmd, sizeof(cmd), "git restore --staged \"%s\"", selected_path);
                 system(cmd);
                 explorer_reload_entries(state);
+            }
+            break;
+        case '.':
+        case 'h':
+            state->show_hidden = !state->show_hidden;
+            explorer_reload_entries(state);
+            break;
+            
+        case 'D': // shift d, diff selected files
+            if (state->num_selected == 2) {
+                // case 1: diff between the 2 selected files
+                char *file1 = NULL, *file2 = NULL;
+                
+                // find the 2 files
+                for (int i = 0; i < state->num_entries; i++) {
+                    if (state->is_selected[i]) {
+                        if (!file1) file1 = state->entries[i];
+                        else file2 = state->entries[i];
+                    }
+                }
+                
+                if (file1 && file2) {
+                    char cmd[PATH_MAX * 2 + 50];
+                    // --no-index allows to diff files whom git isn't tracking
+                    snprintf(cmd, sizeof(cmd), "git diff --no-index -- \"%s/%s\" \"%s/%s\"", state->current_path, file1, state->current_path, file2);
+                    run_and_display_command(cmd, "Diff selected files");
+                }
+            }
+            
+            else if (state->num_entries > 0 && !state->is_dir[state->selection]) {
+                    char cmd[PATH_MAX + 50];
+                    // "git diff HEAD -- file"  mostra what have changed in the last commit
+                    snprintf(cmd, sizeof(cmd), "git diff HEAD -- \"%s\"", selected_path);
+                    run_and_display_command(cmd, "File Diff");                   
             }
             break;
         case 'C':     // commit
@@ -410,9 +538,6 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
             break;
         case KEY_CTRL_RIGHT_BRACKET:
             proxima_janela();
-            break;
-        case KEY_CTRL_LEFT_BRACKET:
-            janela_anterior();
             break;
         case KEY_UP:
         case 'k':
@@ -512,6 +637,35 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                 explorer_reload_entries(state);
             }
             break;
+            
+        case 'P': // Preview
+            if (state->num_entries > 0 && !state->is_dir[state->selection]) {
+                char cmd[PATH_MAX + 20];
+                // show the firts 40 lines
+                snprintf(cmd, sizeof(cmd), "head -n 40 \"%s\"", selected_path);
+                run_and_display_command(cmd, "File Preview");
+            }
+            break;
+        case 'b': // git blame
+            if (state->num_entries > 0 && !state->is_dir[state->selection]) {
+                char cmd[PATH_MAX + 50];
+                snprintf(cmd, sizeof(cmd), "git blame \"%s\"", selected_path);
+                run_and_display_command(cmd, "Git Blame");
+            }
+            break;
+        case 'X': // execute
+            if (state->num_entries > 0 && !state->is_dir[state->selection]) {
+            // verify if the files is a executable
+            if (access(selected_path, X_OK) == 0) {
+                char cmd[PATH_MAX + 50];
+                snprintf(cmd, sizeof(cmd), "\"%s\"", selected_path);
+                // run the command in the integrated terminal
+                executar_comando_no_terminal(cmd);
+            } else {
+                snprintf(state->status_msg, sizeof(state->status_msg), "File is not a executable.");
+            }
+        }
+        break;
         case KEY_ENTER:
         case '\n':
             if (state->num_entries == 0) break;

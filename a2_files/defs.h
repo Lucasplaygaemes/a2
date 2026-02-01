@@ -370,6 +370,10 @@ typedef struct {
     
     char *git_status;
     
+    bool show_hidden;
+    
+    bool *is_selected;
+    int num_selected;
 } ExplorerState;
 #endif
 

@@ -257,6 +257,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 }
                 
                 // --- Handle all other single Alt shortcuts ---
+                else if (next_ch == 'e') criar_janela_explorer(state);
                 else if (next_ch == 'n') ciclar_workspaces(-1);
                 else if (next_ch == 'm') ciclar_workspaces(1);
                 else if (next_ch == 'W') save_file(state);
