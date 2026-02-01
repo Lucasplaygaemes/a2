@@ -73,6 +73,12 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *n* / *N* : Create a new file / directory.
 - *c* / *x* / *v* : Copy / Cut / Paste files and directories.
 - *d* : Delete the selected item (with confirmation).
+- *.* / *h* : Toggle hidden files.
+- *Space* : Toggle selection (multiselect).
+- *D* : Diff selected file(s). If 2 files selected, diffs them. If 1, diffs vs HEAD.
+- *P* : Preview file (first 40 lines).
+- *b* : Git Blame the selected file.
+- *x* : Execute file (if executable).
 - *a* : Git Add (Stage) selected file.
 - *u* : Git Unstage (Restore) selected file.
 - *c* : Git Commit (prompts for message).
