@@ -207,10 +207,15 @@ This guide details all available commands and keybindings.
 |---|---|
 | `j`, `k`, Arrow Keys | Navigate up and down. |
 | `Enter` | Open a file or enter a directory. |
+| `d` | Delete the selected item (with confirmation). |
 | `r` | Rename the selected item. |
 | `n` / `N` | Create a new file / directory. |
-| `c` / `x` / `v` | Copy / Cut / Paste files and directories. |
-| `d` | Delete the selected item (with confirmation). |
+| `.` / `h` | Toggle hidden files. |
+| `Space` | Toggle selection (multiselect). |
+| `D` | Diff selected file(s) (smart diff). |
+| `P` | Preview file (first 40 lines). |
+| `b` | Git Blame the selected file. |
+| `X` | Execute file (if executable). |
 | `a` | Git Add (Stage) the selected file. |
 | `u` | Git Unstage (Restore) the selected file. |
 | `c` | Git Commit (prompts for message). |
