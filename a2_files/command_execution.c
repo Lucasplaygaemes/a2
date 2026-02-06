@@ -221,7 +221,9 @@ void process_command(EditorState *state, bool *should_exit) {
                 project_save_session(args);
             } else if (strcmp(command, "load-project") == 0) {
                 if (strlen(args) > 0) {
-                    if (!project_load_session(args)) {
+                    if (project_load_session(args)) {
+                        return;
+                    } else {
                         editor_set_status_msg(state, "Could not load project session '%s'.", args);
                     }
                 } else {

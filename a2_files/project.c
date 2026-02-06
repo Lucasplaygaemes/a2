@@ -149,7 +149,17 @@ bool project_load_session(const char *project_name) {
                 executar_comando_no_terminal("");
             }
         }
-        current_ws->janela_ativa_idx = json_integer_value(json_object_get(ws_value, "active_window_idx"));
+        json_t *active_idx_json = json_object_get(ws_value, "active_window_idx");
+        if (active_idx_json && json_is_integer(active_idx_json)) {
+             int idx = (int)json_integer_value(active_idx_json);
+             if (idx >= 0 && idx < current_ws->num_janelas) {
+                 current_ws->janela_ativa_idx = idx;
+             }
+        }
+    }
+
+    if (gerenciador_workspaces.num_workspaces == 0) {
+        inicializar_workspaces();
     }
 
     json_decref(root);

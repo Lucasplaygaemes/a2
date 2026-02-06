@@ -23,7 +23,6 @@
 #include <pthread.h>
 
 #include "project.h"
-
 void criar_novo_workspace_vazio();
 
 const int ansi_to_ncurses_map[16] = {
@@ -776,9 +775,13 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 break;
         }
         
-    // After processing input, if the window was closed, the state is invalid. Return immediately.
+    // After processing input, validate if the state is still valid.
+    // 1. Check if the window/workspace counts changed (closed window).
+    // 2. Check if the state pointer is still the active one (reloaded project).
     if (gerenciador_workspaces.num_workspaces < initial_num_workspaces ||
-        (initial_num_workspaces > 0 && ACTIVE_WS->num_janelas < initial_num_windows)) {
+        (initial_num_workspaces > 0 && ACTIVE_WS->num_janelas < initial_num_windows) ||
+        (gerenciador_workspaces.num_workspaces > 0 && ACTIVE_WS->num_janelas > 0 && 
+         ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->estado != state)) {
         return;
     }
         
