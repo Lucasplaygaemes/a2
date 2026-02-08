@@ -1446,14 +1446,17 @@ void find_all_project_files_recursive(const char *base_path, FileResult **result
     while ((dir = readdir(d)) != NULL) {
         if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0 ||
             strcmp(dir->d_name, ".git") == 0 || strcmp(dir->d_name, "build") == 0 ||
-            strcmp(dir->d_name, "output") == 0 || strcmp(dir->d_name, ".cache") == 0) {
+            strcmp(dir->d_name, "output") == 0 || strcmp(dir->d_name, ".cache") == 0 ||
+            strcmp(dir->d_name, ".a2") == 0 || strcmp(dir->d_name, "node_modules") == 0) {
             continue;
         }
 
         snprintf(path, sizeof(path), "%s/%s", base_path, dir->d_name);
 
         struct stat st;
-        if (stat(path, &st) == 0) {
+        if (lstat(path, &st) == 0) {
+            if (S_ISLNK(st.st_mode)) continue; // Ignore symlinks to prevent loops
+
             if (S_ISDIR(st.st_mode)) {
                 find_all_project_files_recursive(path, results, count, capacity);
             } else if (S_ISREG(st.st_mode)) {
