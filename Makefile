@@ -4,7 +4,7 @@
 CC = gcc
 # Simplified CFLAGS for the a2 project
 CFLAGS = -g -Wall -Wextra -I. -I./a2_files
-LDFLAGS = -lncursesw -ljansson -lcurl -lpthread -ldl -lssl -lcrypto -lvterm -lm
+LDFLAGS = -lncursesw -ljansson -lcurl -lpthread -ldl -lssl -lcrypto -lvterm -lm -Wl,-rpath=/usr/local/lib
 
 # --- Main Target ---
 TARGET = a2
