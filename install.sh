@@ -64,7 +64,7 @@ install_dependencies() {
         fi
     elif command -v pacman &> /dev/null; then
         info "Detected Pacman package manager (Arch Linux)."
-        REQUIRED_PACKAGES="base-devel ncurses jansson libcurl-openssl openssl git cmake"
+        REQUIRED_PACKAGES="base-devel ncurses jansson curl openssl git cmake"
         PACKAGES_TO_INSTALL=""
         for pkg in $REQUIRED_PACKAGES; do
             if ! pacman -Q "$pkg" &> /dev/null; then
