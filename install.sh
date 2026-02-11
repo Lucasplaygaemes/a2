@@ -92,12 +92,13 @@ install_libvterm_from_source() {
         info "libvterm already seems to be installed. Skipping."
         return
     fi
-    
+
     info "Cloning and installing libvterm from $VTERM_REPO_URL..."
     TMP_DIR=$(mktemp -d)
     git clone "$VTERM_REPO_URL" "$TMP_DIR"
     cd "$TMP_DIR"
-    
+    sudo ln -s /usr/include /usr/include/ncursesw
+
     info "Configuring project with CMake..."
     cmake .
     
