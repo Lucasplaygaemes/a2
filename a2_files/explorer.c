@@ -464,8 +464,8 @@ void explorer_redraw(JanelaEditor *jw) {
         static char clipboard_msg[PATH_MAX + 20];
         char *op_str =  (state->clipboard_operation = OP_COPY) ? "COPIED" : "CUT";
         
-        char *filename = basename(state->source_path);
-        snprintf(clipboard_msg, sizeof(clipboard_msg), "[%s : %s]", op_str, filename);
+        // char *filename = basename(state->source_path);
+        // snprintf(clipboard_msg, sizeof(clipboard_msg), "[%s : %s]", op_str, filename);
         
         msg_to_show = clipboard_msg;
     }
@@ -635,6 +635,7 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
         case 'p':
             state->show_preview = !state->show_preview;
             state->is_dirty = true;
+            break;
         case 'P':     // push
             run_and_display_command("git push", "Git Push Result");
             break;
@@ -656,33 +657,104 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
             if (state->selection >= state->scroll_top + viewable_lines) state->scroll_top = state->selection - viewable_lines + 1;
             state->is_dirty = true;
             break;
-        case 'c': // Copy
+       case 'c': // batch copy
+           // clean the old clipboard
+           if (state->clipboard_paths) {
+               for(int i = 0; i < state->num_clipboard_items; i++) {
+                   free(state->clipboard_paths[i]);
+                   free(state->clipboard_paths);
+                   state->clipboard_paths = NULL;
+               }
+               state->num_clipboard_items = 0;
+               
+               // verify if it's a multiple selection, if not, uses what's below the cursor
+               if (state->num_selected > 0) {
+                   state->clipboard_paths = malloc(sizeof(char*) *state->num_selected);
+                   for (int i = 0; i < state->num_entries; i++) {
+                       if (state->is_selected[i]) {
+                           char full_path[PATH_MAX];
+                           snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[i]);
+                           state->clipboard_paths[state->num_clipboard_items++] = strdup(full_path);
+                       }
+                   }
+               } else if (state->num_entries > 0) {
+                   // copy only the current item
+                   state->clipboard_paths = malloc(sizeof(char*) * 1);
+                   char full_path[PATH_MAX];
+                   snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[state->selection]);
+                   state->clipboard_paths[0] = strdup(full_path);
+                   state->num_clipboard_items = 1;
+           }
+           
+           state->clipboard_operation = OP_COPY;
+           snprintf(state->status_msg, sizeof(state->status_msg), "Copied %d items.", state->num_clipboard_items);
+           }           
+           // clean the visual selection after copying
+           memset(state->is_selected, 0, state->num_entries * sizeof(bool));
+           state->num_selected = 0;
+           state->is_dirty = true;
+           break;
+           
+         case 'v': // batch paste
+             if (state->clipboard_operation != OP_NONE && state->num_clipboard_items > 0) {
+                 char *op_cmd = (state->clipboard_operation == OP_COPY) ? "cp -r" : "mv";
+                 
+                 // iterate over all items in clipboard
+                 for (int i = 0 ; i < state->num_clipboard_items; i++) {
+                     char command[PATH_MAX * 2 + 20];
+                     // the "" are important for the files with spaces with name
+                     snprintf(command, sizeof(command), "%s \"%s\" \"%s/\"", op_cmd, state->clipboard_paths[i], state->current_path);
+                     system(command);
+                 }
+                 
+                 snprintf(state->status_msg, sizeof(state->status_msg), "Pasted %d items.", state->num_clipboard_items);
+                 
+                 if (state->clipboard_operation == OP_CUT) {
+                     // if cutting, clean the keyboard after paste
+                     for (int i = 0; i < state->num_clipboard_items; i++) {
+                         free(state->clipboard_paths);
+                         state->clipboard_paths = NULL;
+                         state->num_clipboard_items = 0;
+                         state->clipboard_operation = OP_NONE;
+                     }
+                     explorer_reload_entries(state);
+                 }
+                 break;
+        case 'd': // batch delete
             if (state->num_entries > 0) {
-                snprintf(state->source_path, PATH_MAX, "%s", selected_path);
-                state->clipboard_operation = OP_COPY;
-            }
-            state->is_dirty = true;
-            break;
-        case 'x': // Cut
-            if (state->num_entries > 0) {
-                snprintf(state->source_path, PATH_MAX, "%s", selected_path);
-                state->clipboard_operation = OP_CUT;
-            }
-            state->is_dirty = true;
-            break;
-        case 'd': // Delete
-            if (state->num_entries > 0) {
-                char prompt[PATH_MAX + 50];
-                snprintf(prompt, sizeof(prompt), "Delete %s?", state->entries[state->selection]);
-                if (confirm_action(prompt)) {
-                    char command[PATH_MAX + 10];
-                    snprintf(command, sizeof(command), "rm -rf \"%s\"", selected_path);
-                    run_and_display_command(command, "Delete Output");
-                    explorer_reload_entries(state);
+                int items_to_delete = (state->num_selected > 0) ? state->num_selected : 1;
+                char prompt[100];
+                snprintf(prompt, sizeof(prompt), "Delete %d item(s)?", items_to_delete);
+                
+                if(confirm_action(prompt)) {
+                    if (state->num_selected > 0) {
+                        // delete all the selected files
+                        for (int i = 0; i < state->num_entries; i++) {
+                            if (state->is_selected[i]) {
+                                char full_path[PATH_MAX];
+                                snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[i]);
+                                char command[PATH_MAX + 20];
+                                snprintf(command, sizeof(command), "rm -rf \"%s\"", full_path);
+                                system(command);
+                            }
+                        }
+                        // clean selection
+                        memset(state->is_selected, 0, state->num_entries * sizeof(bool));
+                        state->num_selected = 0;
+                    } else {
+                        char full_path[PATH_MAX];
+                        snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[state->selection]);
+                        char command[PATH_MAX + 20];
+                        snprintf(command, sizeof(command), "rm -rf \"%s\"", full_path);
+                        system(command);
                 }
+                explorer_reload_entries(state);
             }
-            state->is_dirty = true;
-            break;
+                
+        }
+        state->is_dirty = true;
+        break;
+
         case 'r':  // Rename
             if (state->num_entries > 0) {
                 char *new_name = explorer_prompt_for_input("Rename to");
@@ -729,28 +801,6 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                     }
             }
             break;
-        case 'v': // Paste
-            if (state->clipboard_operation != OP_NONE) {
-                char command[PATH_MAX * 2 + 10];
-                char* op_cmd = (state->clipboard_operation == OP_COPY) ? "cp -r" : "mv";
-                snprintf(command, sizeof(command), "%s \"%s\" \"%s/\"", op_cmd, state->source_path, state->current_path);
-                run_and_display_command(command, "Paste Output");
-                if (state->clipboard_operation == OP_CUT) {
-                    state->clipboard_operation = OP_NONE;
-                    state->source_path[0] = '\0';
-                }
-                explorer_reload_entries(state);
-            }
-            break;
-            
-        // case 'P': // Preview
-            // if (state->num_entries > 0 && !state->is_dir[state->selection]) {
-                // char cmd[PATH_MAX + 20];
-                // show the firts 40 lines
-                // snprintf(cmd, sizeof(cmd), "head -n 40 \"%s\"", selected_path);
-                // run_and_display_command(cmd, "File Preview");
-            // }
-            // break;
         case 'b': // git blame
             if (state->num_entries > 0 && !state->is_dir[state->selection]) {
                 char cmd[PATH_MAX + 50];
@@ -803,4 +853,5 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
             }
             break;
     }
+}
 }
