@@ -362,7 +362,11 @@ typedef struct {
     int scroll_top;
 
     // Clipboard for file operations
-    char source_path[PATH_MAX];
+    // char source_path[PATH_MAX];
+    char **clipboard_paths;
+    int num_clipboard_items;
+    
+    
     ClipboardOperation clipboard_operation;
     
     char status_msg[256];
