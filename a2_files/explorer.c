@@ -339,6 +339,53 @@ void explorer_reload_entries(ExplorerState *state) {
     if (selected_name) free(selected_name);
 }
 
+
+void draw_file_preview(WINDOW *win, const char *filepath, int start_y, int start_x, int height, int width) {
+    // clean the space for the preview
+    for (int i = 0; i < height; i++) {
+        mvwprintw(win, start_y, start_x, "%*s", width, " ");
+    }
+    
+    // draw the vertical border to divide
+    for (int i = 0; i < height; i++) {
+        mvwaddch(win, start_y + i, start_x - 1, ACS_VLINE);
+    }
+    
+    struct stat st;
+    
+    if (stat(filepath, &st) != 0 || S_ISDIR(st.st_mode)) {
+        return; // we don't show the preview of a file or folder that is invalid
+    }
+    
+    FILE *f = fopen(filepath, "r");
+    if (!f) {
+        mvwprintw(win, start_y, start_x + 1, "Unable to read file.");
+        return;
+    }
+    
+    char line[1024];
+    int line_idx = 0;
+    
+    // make the color dim/grey for the preview to differentiate from the editro
+    wattron(win, COLOR_PAIR(8) | A_DIM);
+    
+    while (fgets(line, sizeof(line), f) && line_idx < height) {
+        // remove the end of line for exibition
+        line[strcspn(line, "\n")] = 0;
+        line[strcspn(line, "\r")] = 0;
+        
+        // truncate the line if its wider then the preview
+        if ((int)strlen(line) > width - 2) {
+            line[width - 2] = '\0';
+        }
+        
+        mvwprintw(win, start_y + line_idx, start_x + 1, "%s", line);
+        line_idx++;
+    }
+    wattroff(win, A_DIM);
+    fclose(f);
+}
+
 void explorer_redraw(JanelaEditor *jw) {
     ExplorerState *state = jw->explorer_state;
     werase(jw->win);
@@ -347,8 +394,17 @@ void explorer_redraw(JanelaEditor *jw) {
     char display_path[jw->largura - 4];
     snprintf(display_path, sizeof(display_path), " %s ", state->current_path);
     mvwprintw(jw->win, 0, 2, "%.*s", jw->largura - 4, display_path);
-
+    
+    
+    int list_width = jw->largura - 2; // default width, without preview
+    
+    // only activates if there space
+    if (state->show_preview && jw->largura > 40) {
+        list_width = (jw->largura / 2) - 1;
+    }
+    
     int viewable_lines = jw->altura - 3; // Make space for status line
+
     for (int i = 0; i < viewable_lines; i++) {
         int entry_idx = state->scroll_top + i;
         if (entry_idx >= state->num_entries) break;
@@ -378,6 +434,16 @@ void explorer_redraw(JanelaEditor *jw) {
         if (color) wattroff(jw->win, COLOR_PAIR(color));
         
         if (entry_idx == state->selection) wattroff(jw->win, A_REVERSE);
+        
+        char entry_name[256];
+        snprintf(entry_name, sizeof(entry_name), "%.*s", list_width - 5, state->entries[entry_idx]);
+        
+        if (state->show_preview && jw->largura > 40 && state->num_entries > 0) {
+            char full_path[PATH_MAX];
+            snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[state->selection]);
+            
+            draw_file_preview(jw->win, full_path, 1, list_width + 1, jw->altura - 2, jw->largura - list_width - 2);
+        }
         
         bool is_marked = false; // Inicializa com false
         if (state->is_selected) { // Proteção contra NULL
@@ -566,7 +632,10 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                 }
             }
             break;
-        case 'p':     // push
+        case 'p':
+            state->show_preview = !state->show_preview;
+            state->is_dirty = true;
+        case 'P':     // push
             run_and_display_command("git push", "Git Push Result");
             break;
         case 'q':
@@ -674,14 +743,14 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
             }
             break;
             
-        case 'P': // Preview
-            if (state->num_entries > 0 && !state->is_dir[state->selection]) {
-                char cmd[PATH_MAX + 20];
+        // case 'P': // Preview
+            // if (state->num_entries > 0 && !state->is_dir[state->selection]) {
+                // char cmd[PATH_MAX + 20];
                 // show the firts 40 lines
-                snprintf(cmd, sizeof(cmd), "head -n 40 \"%s\"", selected_path);
-                run_and_display_command(cmd, "File Preview");
-            }
-            break;
+                // snprintf(cmd, sizeof(cmd), "head -n 40 \"%s\"", selected_path);
+                // run_and_display_command(cmd, "File Preview");
+            // }
+            // break;
         case 'b': // git blame
             if (state->num_entries > 0 && !state->is_dir[state->selection]) {
                 char cmd[PATH_MAX + 50];

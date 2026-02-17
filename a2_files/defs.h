@@ -374,6 +374,7 @@ typedef struct {
     
     bool *is_selected;
     int num_selected;
+    bool show_preview;
 } ExplorerState;
 #endif
 
