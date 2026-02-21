@@ -8,6 +8,7 @@ Welcome to `a2`, a lightweight, fast, and configurable text editor inspired by V
 
 ## Core Features
 
+- *Spell Checker:* Real-time spell checking with suggestions (Tab completion) and hover-info for misspelled words.
 - *Modal Editing:* Efficiently edit text with Normal, Insert, and Visual modes.
 - *Workspaces & Splits:* Organize your work across multiple workspaces, each with its own layout of split windows.
 - *Fuzzy Finder:* Quickly find and open any file in your project with a fuzzy search (*Alt+F*).

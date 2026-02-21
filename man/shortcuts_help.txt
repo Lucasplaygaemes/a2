@@ -46,7 +46,7 @@ This page lists the keyboard shortcuts for the `a2` editor.
 ## Insert Mode
 - *Esc* : Return to *Normal Mode*.
 - *Ctrl+o* : Enter Normal Mode for a single command, then return to Insert.
-- *Tab* : Context-aware: Indents if at start of line, otherwise trigger completion.
+- *Tab* : Context-aware: Indents if at start of line, offers spelling suggestions if on a misspelled word, otherwise triggers completion.
 - *Shift+Tab* : Un-indent the current line.
 - *(*, *[*, *{*, *"* : Auto-close the pair and place the cursor inside.
 - *Ctrl+P* : Create a new line above the current line.
