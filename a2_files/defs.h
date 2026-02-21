@@ -18,6 +18,7 @@
 #include <jansson.h>
 #include <vterm.h>
 #include <regex.h>
+#include "spell.h"
 
 #ifndef LSPSYMBOL_DEFINED
 #define LSPSYMBOL_DEFINED
@@ -340,6 +341,14 @@ typedef struct EditorState {
     
     // Assembly things
     AssemblyMapping *mapping;
+
+    SpellChecker spell_checker;
+
+    // Spell checker hover state
+    struct timespec spell_hover_last_move;
+    bool spell_hover_pending;
+    char *spell_hover_message;
+    char spell_hover_word[100];
 
 } EditorState;
 #endif
