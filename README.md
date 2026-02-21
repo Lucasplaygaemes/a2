@@ -20,7 +20,17 @@ Documentation is in - [**Documentation**](./index.md)
 # New Release!
 A lot of things were added! So, any doubt's of keyboard shortcuts? :ksc show all of them.
 Use the command "help" to see the man pages.
-Now you can run if not any, most of the termial apps and a terminal by it self inside a2!
+
+# Spell!
+Now, with a great effort, a new spell checker was added! What kind of text editor don't have a spell checker?
+It's using Hunspell to work! It will be downloaded with the editor, and English will come as default.
+There is a command to use it, and it's in the manual, but, to make this and everything a lot more eaiser, i will add...
+
+# Setting Menu!
+I will add an menu! to help to set configurations in the a2!
+It will contain the things about it, and you will be able to download languages for the spell checker from there!
+It will probably contain too the settings panel for the plugins, that we discuss later.
+
 
 # Refactoring
 The code has 2 main parts that need to be refactored, the main structure, EditorState and the way that the code handles inputs, isn't the best also, so updates will be made to make it better, but those will take time, and so will delay others things.
