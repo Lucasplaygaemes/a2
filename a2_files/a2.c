@@ -10,6 +10,8 @@
 #include "explorer.h"
 #include "themes.h"
 #include "diff.h"
+#include "spell.h"
+#include "lsp_client.h"
 
 
 #include <locale.h>
@@ -70,6 +72,15 @@ void inicializar_ncurses() {
 }
 
 void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
+    // Reset spell hover on any action
+    state->spell_hover_pending = true;
+    clock_gettime(CLOCK_MONOTONIC, &state->spell_hover_last_move);
+    if (state->spell_hover_message) {
+        free(state->spell_hover_message);
+        state->spell_hover_message = NULL;
+        state->is_dirty = true;
+    }
+
     // Manipulação especial para Ctrl+O para evitar reversão imediata.
     if (state->mode == INSERT && ch == 15) { // 15 é Ctrl+O
         state->mode = NORMAL;
@@ -1097,6 +1108,56 @@ int main(int argc, char *argv[]) {
                         // Only send request if there's something to complete
                         if(active_state->word_to_complete[0] != '\0') {
                             lsp_send_completion_request(active_state);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Debouncer for Spell Checker Hover
+        if (gerenciador_workspaces.num_workspaces > 0 && ACTIVE_WS->num_janelas > 0) {
+            JanelaEditor *active_jw = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx];
+            if (active_jw && active_jw->tipo == TIPOJANELA_EDITOR && active_jw->estado) {
+                EditorState *active_state = active_jw->estado;
+                if (active_state->spell_hover_pending && active_state->spell_checker.enabled) {
+                    struct timespec now;
+                    clock_gettime(CLOCK_MONOTONIC, &now);
+
+                    long long elapsed_ns = (now.tv_sec - active_state->spell_hover_last_move.tv_sec) * 1000000000LL;
+                    elapsed_ns += (now.tv_nsec - active_state->spell_hover_last_move.tv_nsec);
+
+                    if (elapsed_ns > 2500000000) { // 250ms debounce
+                        active_state->spell_hover_pending = false;
+                        
+                        char word[100];
+                        get_word_at_cursor(active_state, word, sizeof(word));
+
+                        if (strlen(word) > 0 && !spell_checker_check_word(&active_state->spell_checker, word)) {
+                            // Avoid re-generating message for the same word
+                            if (strcmp(active_state->spell_hover_word, word) != 0) {
+                                int n_sugg = 0;
+                                char** suggestions = spell_checker_suggest(&active_state->spell_checker, word, &n_sugg);
+                                if (n_sugg > 0) {
+                                    char popup_msg[256] = "Did you mean: ";
+                                    for (int i = 0; i < n_sugg && i < 3; i++) {
+                                        strcat(popup_msg, suggestions[i]);
+                                        if (i < n_sugg - 1 && i < 2) strcat(popup_msg, ", ");
+                                    }
+                                    if (active_state->spell_hover_message) free(active_state->spell_hover_message);
+                                    active_state->spell_hover_message = strdup(popup_msg);
+                                    strcpy(active_state->spell_hover_word, word);
+                                    active_state->is_dirty = true;
+                                    spell_checker_free_suggestions(&active_state->spell_checker, suggestions, n_sugg);
+                                }
+                            }
+                        } else {
+                            // Word is correct or empty, clear message
+                            if (active_state->spell_hover_message) {
+                                free(active_state->spell_hover_message);
+                                active_state->spell_hover_message = NULL;
+                                active_state->is_dirty = true;
+                            }
+                            active_state->spell_hover_word[0] = '\0';
                         }
                     }
                 }

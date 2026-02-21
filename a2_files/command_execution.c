@@ -165,6 +165,17 @@ void process_command(EditorState *state, bool *should_exit) {
             } else if (strcmp(set_cmd, "nowrap") == 0) {
                 state->word_wrap_enabled = false;
                 editor_set_status_msg(state, "Word wrap disabled");
+            } else if (strcmp(set_cmd, "spelllang") == 0 && items == 2) {
+                if (spell_checker_load_dict(&state->spell_checker, set_val)) {
+                    editor_set_status_msg(state, "Spell checker language set to: %s", set_val);
+                    mark_all_lines_dirty(state); // Force redraw to apply highlighting
+                } else {
+                    editor_set_status_msg(state, "Error: Could not load dictionary for '%s'", set_val);
+                }
+            } else if (strcmp(set_cmd, "nospell") == 0) {
+                spell_checker_unload_dict(&state->spell_checker);
+                editor_set_status_msg(state, "Spell checker disabled.");
+                mark_all_lines_dirty(state); // Force redraw to remove highlighting
             } else if (strcmp(set_cmd, "bar") == 0 && items == 2) {
                 int mode = atoi(set_val);
                 if (mode == 0 || mode == 1) {

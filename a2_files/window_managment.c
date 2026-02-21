@@ -145,6 +145,8 @@ void free_editor_state(EditorState* state) {
         free(state->dirty_lines);
     }
 
+    spell_checker_destroy(&state->spell_checker);
+
     for (int j = 0; j < state->num_lines; j++) {
         if (state->lines[j]) free(state->lines[j]);
     }
@@ -312,6 +314,8 @@ void criar_nova_janela(const char *filename) {
     for (int i = 0; i < 26; i++) {
         state->macro_registers[i] = NULL;
     }
+    
+    spell_checker_init(&state->spell_checker);
     
     state->search_history_count = 0;
     state->search_history_pos = 0;
@@ -747,14 +751,20 @@ void redesenhar_todas_as_janelas() {
         }
     }
 
-    // 2. Now, draw the diagnostic popup on top of the active window if needed
+    // 2. Draw popups on top of the active window
     if (ws->num_janelas > 0) {
         JanelaEditor *active_jw = ws->janelas[ws->janela_ativa_idx];
         if (active_jw->tipo == TIPOJANELA_EDITOR && active_jw->estado) {
-            if (active_jw->estado->lsp_enabled) {
-                LspDiagnostic *diag = get_diagnostic_under_cursor(active_jw->estado);
+            EditorState *state = active_jw->estado;
+            // Draw spell-checker hover popup
+            if (state->spell_hover_message) {
+                draw_diagnostic_popup(active_jw->win, state, state->spell_hover_message);
+            } 
+            // Draw LSP diagnostic popup
+            else if (state->lsp_enabled) {
+                LspDiagnostic *diag = get_diagnostic_under_cursor(state);
                 if (diag) {
-                    draw_diagnostic_popup(active_jw->win, active_jw->estado, diag->message);
+                    draw_diagnostic_popup(active_jw->win, state, diag->message);
                 }
             }
         }
