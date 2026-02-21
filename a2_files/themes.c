@@ -50,6 +50,7 @@ static void set_default_theme() {
     current_theme.colors[IDX_WARNING]       = (ColorDef){COLOR_YELLOW, COLOR_BLACK};
     current_theme.colors[IDX_BORDER_ACTIVE] = (ColorDef){COLOR_YELLOW, COLOR_BLACK};
     current_theme.colors[IDX_BORDER_INACTIVE] = (ColorDef){COLOR_WHITE, COLOR_BLACK};
+    current_theme.colors[IDX_SPELL_ERROR]   = (ColorDef){COLOR_RED, -1};
 }
 
 bool load_theme(const char* theme_name) {
@@ -142,6 +143,7 @@ bool load_theme(const char* theme_name) {
             else if (strcmp(key, "warning") == 0) current_theme.colors[IDX_WARNING] = (ColorDef){fg, bg};
             else if (strcmp(key, "border_active") == 0) current_theme.colors[IDX_BORDER_ACTIVE] = (ColorDef){fg, bg};
             else if (strcmp(key, "border_inactive") == 0) current_theme.colors[IDX_BORDER_INACTIVE] = (ColorDef){fg, bg};
+            else if (strcmp(key, "spell_error") == 0) current_theme.colors[IDX_SPELL_ERROR] = (ColorDef){fg, bg};
         }
     }
     fclose(f);

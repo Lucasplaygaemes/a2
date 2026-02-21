@@ -19,6 +19,7 @@ typedef enum {
     IDX_WARNING,
     IDX_BORDER_ACTIVE,
     IDX_BORDER_INACTIVE,
+    IDX_SPELL_ERROR,
     THEME_COLOR_COUNT // Keep this last to get the total count
 } ThemeColorIndex;
 
@@ -37,6 +38,7 @@ typedef enum {
 #define PAIR_WARNING       (IDX_WARNING + 1)
 #define PAIR_BORDER_ACTIVE (IDX_BORDER_ACTIVE + 1)
 #define PAIR_BORDER_INACTIVE (IDX_BORDER_INACTIVE + 1)
+#define PAIR_SPELL_ERROR     (IDX_SPELL_ERROR + 1)
 
 
 typedef struct {
