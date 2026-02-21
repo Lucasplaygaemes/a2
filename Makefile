@@ -3,8 +3,8 @@
 # --- Compiler Configuration ---
 CC = gcc
 # Simplified CFLAGS for the a2 project
-CFLAGS = -g -Wall -Wextra -I. -I./a2_files
-LDFLAGS = -lncursesw -ljansson -lcurl -lpthread -ldl -lssl -lcrypto -lvterm -lm -Wl,-rpath=/usr/local/lib
+CFLAGS = -g -Wall -Wextra -I. -I./a2_files $(shell pkg-config --cflags hunspell)
+LDFLAGS = -lncursesw -ljansson -lcurl -lpthread -ldl -lssl -lcrypto -lvterm $(shell pkg-config --libs hunspell) -lm -Wl,-rpath=/usr/local/lib
 
 # --- Main Target ---
 TARGET = a2
@@ -19,7 +19,7 @@ all: $(TARGET)
 # --- Compilation Rules for the 'a2' Editor ---
 
 # Source files for a2
-A2_SOURCES = a2.c command_execution.c defs.c direct_navigation.c fileio.c lsp_client.c others.c screen_ui.c window_managment.c project.c timer.c cache.c explorer.c diff.c themes.c
+A2_SOURCES = a2.c command_execution.c defs.c direct_navigation.c fileio.c lsp_client.c others.c screen_ui.c window_managment.c project.c timer.c cache.c explorer.c diff.c themes.c spell.c
 # Adds the directory prefix to source and object files
 A2_SRCS = $(addprefix $(A2_DIR)/, $(A2_SOURCES))
 A2_OBJS = $(A2_SRCS:.c=.o)
