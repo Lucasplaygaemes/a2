@@ -1366,27 +1366,36 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
             state->current_col = strlen(state->lines[state->current_line]);
             editor_handle_enter(state);
             break;
-        case '\t': { // Usando chaves para criar um escopo local
-            char *line = state->lines[state->current_line];
-            bool should_indent = true;
-
-            // Se o cursor não estiver no início da linha, checa o caracter anterior
-            if (state->current_col > 0) {
-                if (!isspace(line[state->current_col - 1])) {
-                    should_indent = false;
+        case '\t': {
+            char word[100];
+            get_word_at_cursor(state, word, sizeof(word));
+            bool is_misspelled = false;
+            
+            if (strlen(word) > 0 && state->spell_checker.enabled) {
+                if (!spell_checker_check_word(&state->spell_checker, word)) {
+                    is_misspelled = true;
                 }
             }
-
-            if (should_indent) {
-                // Comportamento de indentação
-                push_undo(state);
-                for (int i = 0; i < TAB_SIZE; i++) editor_insert_char(state, ' ');
+            
+            if (is_misspelled) {
+                editor_start_spell_completion(state);
             } else {
-                // Comportamento de autocompletar
-                editor_start_completion(state); // Gera sugestões locais primeiro
-                if (state->lsp_enabled) {
-                    state->lsp_completion_pending = true;
-                    clock_gettime(CLOCK_MONOTONIC, &state->lsp_last_keystroke);
+                char *line = state->lines[state->current_line];
+                bool should_indent = true;
+                if (state->current_col > 0) {
+                    if (!isspace(line[state->current_col - 1])) {
+                        should_indent = false;
+                    }
+                }
+                if (should_indent) {
+                    push_undo(state);
+                    for (int i = 0; i < TAB_SIZE; i++) editor_insert_char(state, ' ');
+                } else {
+                    editor_start_completion(state);
+                    if (state->lsp_enabled) {
+                        state->lsp_completion_pending = true;
+                        clock_gettime(CLOCK_MONOTONIC, &state->lsp_last_keystroke);
+                    }
                 }
             }
             break;
@@ -2428,5 +2437,40 @@ void generic_input_msg(EditorState *state, char msg[256]) {
     curs_set(0);
     touchwin(stdscr);
     redesenhar_todas_as_janelas();
+}
 
+void editor_start_spell_completion(EditorState *state) {
+    char word[100];
+    get_word_at_cursor(state, word, sizeof(word));
+    
+    if (strlen(word) == 0) return;
+    
+    if (state->completion_suggestions) {
+        for (int i = 0; i < state->num_suggestions; i++) free(state->completion_suggestions[i]);
+        state->completion_suggestions = NULL;
+    }
+    state->num_suggestions = 0;
+    
+    int n_sugg = 0;
+    char **suggestions = spell_checker_suggest(&state->spell_checker, word, &n_sugg);
+    
+    if (n_sugg > 0 && suggestions) {
+        for (int i = 0; i < n_sugg; i++) {
+            add_suggestion(state, suggestions[i]);
+        }
+        spell_checker_free_suggestions(&state->spell_checker, suggestions, n_sugg);
+        
+        state->completion_mode = COMPLETION_TEXT;
+        state->selected_suggestion = 0;
+        state->completion_scroll_top = 0;
+        
+        // find the column where the word start
+        
+        int start = state->current_col;
+        char *line = state->lines[state->current_line];
+        while (start > 0 && isalnum(line[start - 1])) {
+            start--;
+        }
+        state->completion_start_col = start;
+    }
 }

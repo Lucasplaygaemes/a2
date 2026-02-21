@@ -96,9 +96,6 @@ void build_assembly_mappings(EditorState *state, int int_source_line);
 
 void generic_input_msg(EditorState *state, char msg[256]);
 
-
-
-
-
+void editor_start_spell_completion(EditorState *state);
 
 #endif // OTHERS_H
