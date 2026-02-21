@@ -5,6 +5,7 @@
 #include "lsp_client.h"
 #include "window_managment.h"
 #include "cache.h"
+#include "spell.h"
 #include <ctype.h>
 #include <unistd.h>
 #include <wctype.h>
@@ -367,21 +368,38 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                             } else if (token_len == 1 && is_unmatched_bracket(state, file_line_idx, token_start_in_line)) {
                                 color_pair = 11; // Red
                             } else if (!strchr(delimiters, *token_ptr)) {
-                                for (int j = 0; j < state->num_syntax_rules; j++) {
-                                    if (strlen(state->syntax_rules[j].word) == (size_t)token_len && strncmp(token_ptr, state->syntax_rules[j].word, token_len) == 0) {
-                                        switch(state->syntax_rules[j].type) {
-                                            case SYNTAX_KEYWORD: color_pair = PAIR_KEYWORD; break;
-                                            case SYNTAX_TYPE: color_pair = PAIR_TYPE; break;
-                                            case SYNTAX_STD_FUNCTION: color_pair = PAIR_STD_FUNCTION; break;
+                                bool is_misspelled = false;
+                                if (state->spell_checker.enabled && !isdigit(token_ptr[0])) {
+                                    char *word_to_check = strndup(token_ptr, token_len);
+                                    if (word_to_check) {
+                                        if (!spell_checker_check_word(&state->spell_checker, word_to_check)) {
+                                            is_misspelled = true;
                                         }
-                                        break;
+                                        free(word_to_check);
+                                    }
+                                }
+
+                                if (is_misspelled) {
+                                    color_pair = PAIR_SPELL_ERROR;
+                                } else {
+                                    for (int j = 0; j < state->num_syntax_rules; j++) {
+                                        if (strlen(state->syntax_rules[j].word) == (size_t)token_len && strncmp(token_ptr, state->syntax_rules[j].word, token_len) == 0) {
+                                            switch(state->syntax_rules[j].type) {
+                                                case SYNTAX_KEYWORD: color_pair = PAIR_KEYWORD; break;
+                                                case SYNTAX_TYPE: color_pair = PAIR_TYPE; break;
+                                                case SYNTAX_STD_FUNCTION: color_pair = PAIR_STD_FUNCTION; break;
+                                            }
+                                            break;
+                                        }
                                     }
                                 }
                             }
                             if (color_pair) wattron(win, COLOR_PAIR(color_pair));
+                            if (color_pair == PAIR_SPELL_ERROR) wattron(win, A_UNDERLINE);
                             int remaining_width = (cols - 1 - border_offset) - getcurx(win);
                             if (token_len > remaining_width) token_len = remaining_width;
                             if (token_len > 0) wprintw(win, "%.*s", token_len, token_ptr);
+                            if (color_pair == PAIR_SPELL_ERROR) wattroff(win, A_UNDERLINE);
                             if (color_pair) wattroff(win, COLOR_PAIR(color_pair));
                         }
                     }
@@ -473,7 +491,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     }
                 }
                 if (highlight_this_line) wattron(win, COLOR_PAIR(2));
-
+                
                 int line_len = strlen(line);
                 int current_col = 0;
 
@@ -505,23 +523,45 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         color_pair = PAIR_COMMENT;
                         token_len = line_len - token_start;
                     } else if (!strchr(delimiters, current_char)) {
-                        for (int j = 0; j < state->num_syntax_rules; j++) {
-                            if (strlen(state->syntax_rules[j].word) == (size_t)token_len && strncmp(token_ptr, state->syntax_rules[j].word, token_len) == 0) {
-                                switch(state->syntax_rules[j].type) {
-                                    case SYNTAX_KEYWORD: color_pair = PAIR_KEYWORD; break;
-                                    case SYNTAX_TYPE: color_pair = PAIR_TYPE; break;
-                                    case SYNTAX_STD_FUNCTION: color_pair = PAIR_STD_FUNCTION; break;
-                                }                            break;
+                        bool is_misspelled = false;
+                        if (state->spell_checker.enabled && !isdigit(token_ptr[0])) {
+                            char *word_to_check = strndup(token_ptr, token_len);
+                            if (word_to_check) {
+                                bool is_correct = spell_checker_check_word(&state->spell_checker, word_to_check);
+                                if (!is_correct) {
+                                    is_misspelled = true;
+                                }
+                                char log_buf[256];
+                                snprintf(log_buf, sizeof(log_buf), "Word: '%s', Correct: %s", word_to_check, is_correct ? "Yes" : "No");
+                                spell_log(log_buf);
+                                free(word_to_check);
+                            }
+                        }
+
+                        if (is_misspelled) {
+                            color_pair = PAIR_SPELL_ERROR;
+                        } else {
+                            for (int j = 0; j < state->num_syntax_rules; j++) {
+                                if (strlen(state->syntax_rules[j].word) == (size_t)token_len && strncmp(token_ptr, state->syntax_rules[j].word, token_len) == 0) {
+                                    switch(state->syntax_rules[j].type) {
+                                        case SYNTAX_KEYWORD: color_pair = PAIR_KEYWORD; break;
+                                        case SYNTAX_TYPE: color_pair = PAIR_TYPE; break;
+                                        case SYNTAX_STD_FUNCTION: color_pair = PAIR_STD_FUNCTION; break;
+                                    }                            
+                                    break;
+                                }
                             }
                         }
                     }
 
                     if (color_pair) wattron(win, COLOR_PAIR(color_pair));
+                    if (color_pair == PAIR_SPELL_ERROR) wattron(win, A_UNDERLINE);
 
                     int remaining_width = (cols - 1 - border_offset) - getcurx(win);
                     if (token_len > remaining_width) token_len = remaining_width;
                     if (token_len > 0) wprintw(win, "%.*s", token_len, token_ptr);
 
+                    if (color_pair == PAIR_SPELL_ERROR) wattroff(win, A_UNDERLINE);
                     if (color_pair) wattroff(win, COLOR_PAIR(color_pair));
                     
                     current_col += token_len;
