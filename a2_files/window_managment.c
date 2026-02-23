@@ -12,6 +12,8 @@
 #include "direct_navigation.h"
 #include "explorer.h"
 #include "themes.h"
+#include "a2_files/settings.h" // Added include
+
 
 #include <unistd.h>
 #include <sys/stat.h>
@@ -169,6 +171,8 @@ void free_janela_editor(JanelaEditor* jw) {
         free(jw->help_state->lines);
         if (jw->help_state->match_lines) free(jw->help_state->match_lines);
         free(jw->help_state);
+    } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+        free_settings_panel_state(jw->settings_state);
     } else if (jw->tipo == TIPOJANELA_TERMINAL) {
         if (jw->term.pid > 0) { kill(jw->term.pid, SIGKILL); waitpid(jw->term.pid, NULL, 0); }
         if (jw->term.pty_fd != -1) close(jw->term.pty_fd);
@@ -680,24 +684,26 @@ void redesenhar_todas_as_janelas() {
     // First, check if anything at all needs to be redrawn.
     for (int i = 0; i < ws->num_janelas; i++) {
         JanelaEditor *jw = ws->janelas[i];
-        if (jw) {
-            if (jw->tipo == TIPOJANELA_TERMINAL) {
-                any_dirty = true;
+        if (!jw) continue;
+
+        switch (jw->tipo) {
+            case TIPOJANELA_EDITOR:
+                if (jw->estado && jw->estado->is_dirty) any_dirty = true;
                 break;
-            }
-            if (jw->tipo == TIPOJANELA_EDITOR && jw->estado && jw->estado->is_dirty) {
-                any_dirty = true;
+            case TIPOJANELA_EXPLORER:
+                if (jw->explorer_state && jw->explorer_state->is_dirty) any_dirty = true;
                 break;
-            }
-            if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state && jw->explorer_state->is_dirty) {
-                any_dirty = true;
+            case TIPOJANELA_HELP:
+                if (jw->help_state && jw->help_state->is_dirty) any_dirty = true;
                 break;
-            }
-            if (jw->tipo == TIPOJANELA_HELP && jw->help_state && jw->help_state->is_dirty) {
-                any_dirty = true;
+            case TIPOJANELA_SETTINGS_PANEL:
+                if (jw->settings_state && jw->settings_state->is_dirty) any_dirty = true;
                 break;
-            }
+            case TIPOJANELA_TERMINAL:
+                any_dirty = true; // Terminals are always considered dirty
+                break;
         }
+        if (any_dirty) break;
     }
 
     // If no windows are dirty, we can often just reposition the cursor and do a minimal update.
@@ -720,11 +726,14 @@ void redesenhar_todas_as_janelas() {
             if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
                 editor_redraw(jw->win, jw->estado);
                 jw->estado->is_dirty = false; // Reset the flag after drawing
-            } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
-                explorer_redraw(jw); // Resets its own flag internally
-            } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
+            } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state && jw->explorer_state->is_dirty) {
+                explorer_redraw(jw); 
+            } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state && jw->help_state->is_dirty) {
                 help_viewer_redraw(jw);
-                jw->help_state->is_dirty = false; // Reset the flag after drawing
+                jw->help_state->is_dirty = false;
+            } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state && jw->settings_state->is_dirty) {
+                settings_panel_redraw(jw);
+                jw->settings_state->is_dirty = false;
             } else if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.vterm) {
                 // Terminal drawing is special, it's always "dirty" from our perspective
                 if (jw->content_win != jw->win) werase(jw->content_win);
@@ -793,6 +802,8 @@ void posicionar_cursor_ativo() {
         curs_set(active_jw->term.pid != -1 ? 1 : 0);
     } else if (active_jw->tipo == TIPOJANELA_EXPLORER) {
         curs_set(0); // The explorer does not need a cursor
+    } else if (active_jw->tipo == TIPOJANELA_SETTINGS_PANEL) {
+        curs_set(0); // The settings panel does not need a cursor
     } 
     // If the window is an editor, we handle the cursor manually.
     else if (active_jw->tipo == TIPOJANELA_EDITOR) {
@@ -2014,4 +2025,22 @@ void sync_scroll(JanelaEditor *active_jw) {
             
         }
     }
+}
+
+
+void criar_janela_settings_panel() {
+    GerenciadorJanelas *ws = ACTIVE_WS;
+    ws->num_janelas++;
+    ws->janelas = realloc(ws->janelas, sizeof(JanelaEditor) * ws->num_janelas);
+    
+    JanelaEditor *nova_janela = calloc(1, sizeof(JanelaEditor));
+        nova_janela->tipo = TIPOJANELA_SETTINGS_PANEL;
+            nova_janela->settings_state = calloc(1, sizeof(SettingsPanelState));
+            nova_janela->settings_state->current_selection = 0;
+            nova_janela->settings_state->scroll_top = 0;
+            nova_janela->settings_state->is_dirty = true;
+            nova_janela->settings_state->current_view = SETTINGS_VIEW_MAIN;
+        
+            ws->janelas[ws->num_janelas - 1] = nova_janela;
+            ws->janela_ativa_idx = ws->num_janelas - 1;    recalcular_layout_janelas();
 }

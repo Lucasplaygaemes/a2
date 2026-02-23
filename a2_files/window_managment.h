@@ -58,4 +58,6 @@ EditorState *find_source_state_for_assembly(const char *asm_filename);
 
 EditorState *find_assembly_state_for_source(const char *source_filename);
 
+void criar_janela_settings_panel();
+
 #endif // WINDOW_MANAGMENT_H
