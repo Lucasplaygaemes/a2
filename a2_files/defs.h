@@ -80,8 +80,47 @@ typedef enum {
     TIPOJANELA_EDITOR,
     TIPOJANELA_TERMINAL,
     TIPOJANELA_EXPLORER,
-    TIPOJANELA_HELP
+    TIPOJANELA_HELP,
+    TIPOJANELA_SETTINGS_PANEL
 } TipoJanela;
+
+#ifndef SETTINGSPANELSTATE_DEFINED
+
+#define SETTINGSPANELSTATE_DEFINED
+
+
+
+typedef enum {
+
+    SETTINGS_VIEW_MAIN,
+
+    SETTINGS_VIEW_EDITOR,
+
+    SETTINGS_VIEW_THEME,
+
+    SETTINGS_VIEW_SPELL,
+
+    SETTINGS_VIEW_LSP
+
+} SettingsPanelView;
+
+
+
+typedef struct {
+
+    int current_selection;
+
+    int scroll_top;
+
+    bool is_dirty;
+
+    SettingsPanelView current_view;
+
+    // more fields will be added later
+
+} SettingsPanelState;
+
+#endif
 
 #ifndef EDITORMODE_DEFINED
 #define EDITORMODE_DEFINED
@@ -427,6 +466,7 @@ typedef struct JanelaEditor {
     EditorState *estado; // Usado por TIPOJANELA_EDITOR
     ExplorerState *explorer_state; // Usado por TIPOJANELA_EXPLORER
     HelpViewerState *help_state;
+    SettingsPanelState *settings_state;
 
     // Agrupa campos do terminal
     struct {
