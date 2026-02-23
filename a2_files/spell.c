@@ -3,6 +3,16 @@
 #include <string.h>
 #include <stdlib.h> // for the free function
 
+#define SPELL_LOG_FILE "/tmp/spell_debug.log"
+
+void spell_log(const char *message) {
+    FILE *log_file = fopen(SPELL_LOG_FILE, "a");
+    if (log_file) {
+        fprintf(log_file, "%s\n", message);
+        fclose(log_file);
+    }
+}
+
 const char *dict_paths[] = {
     "/usr/share/hunspell/",
     "/usr/share/myspell/",
@@ -28,7 +38,6 @@ void spell_checker_destroy(SpellChecker *sc) {
 
 void spell_checker_unload_dict(SpellChecker *sc) {
     if (!sc) return;
-    spell_log("Unloading dictionary.");
     spell_checker_destroy(sc);
     sc->current_lang[0] = '\0';
     sc->enabled = false;
@@ -37,43 +46,33 @@ void spell_checker_unload_dict(SpellChecker *sc) {
 bool spell_checker_load_dict(SpellChecker *sc, const char *lang) {
     if (!sc || !lang) return false;
 
-    char log_msg[2048];
-    sprintf(log_msg, "Attempting to load dictionary for lang: '%s'", lang);
-    spell_log(log_msg);
-
     if (sc->hunspell_handle) {
         spell_checker_unload_dict(sc);
     }
-    
     char aff_path[1024];
     char dic_path[1024];
     bool found = false;
 
     for (int i = 0; dict_paths[i] != NULL; i++) {
-        sprintf(log_msg, "Checking path: %s", dict_paths[i]);
-
         snprintf(aff_path, sizeof(aff_path), "%s%s.aff", dict_paths[i], lang);
         snprintf(dic_path, sizeof(dic_path), "%s%s.dic", dict_paths[i], lang);
         
         FILE *aff_file = fopen(aff_path, "r");
         if (aff_file) {
             fclose(aff_file);
-            sprintf(log_msg, "Found .aff file: %s", aff_path);
-
             FILE *dic_file = fopen(dic_path, "r");
             if (dic_file) {
                 fclose(dic_file);
-                sprintf(log_msg, "Found .dic file: %s", dic_path);
                 found = true;
                 break;
             } else {
-                sprintf(log_msg, ".dic file not found at: %s", dic_path);
+                break;
+                
             }
         }
     }
 
     if (!found) {
-        spell_log("Dictionary files not found in any path.");
         return false;
     }
 
@@ -81,7 +80,6 @@ bool spell_checker_load_dict(SpellChecker *sc, const char *lang) {
     if (sc->hunspell_handle) {
         strncpy(sc->current_lang, lang, sizeof(sc->current_lang) - 1);
         sc->enabled = true;
-        spell_log("Hunspell handle created successfully. Spell checker enabled.");
         return true;
     }
     return false;
@@ -93,11 +91,6 @@ bool spell_checker_check_word(SpellChecker *sc, const char *word) {
     }
     
     int result = Hunspell_spell(sc->hunspell_handle, word);
-    
-    // Log para depuração
-    char log_msg[256];
-    sprintf(log_msg, "Checking word: '%s' -> %s", word, result != 0 ? "Correct" : "INCORRECT");
-    spell_log(log_msg);
     
     return result != 0;
 }
