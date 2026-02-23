@@ -140,6 +140,8 @@ void process_command(EditorState *state, bool *should_exit) {
         editor_set_status_msg(state, "New file opened.");
     } else if (strcmp(command, "timer") == 0) {
         display_work_summary();
+    } else if (strcmp(command, "settings") == 0) {
+        criar_janela_settings_panel();
     } else if (strcmp(command, "diff") == 0) {
         if (strlen(args) > 0) {
             diff_command(state, args);

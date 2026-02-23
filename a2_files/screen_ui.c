@@ -531,9 +531,6 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                                 if (!is_correct) {
                                     is_misspelled = true;
                                 }
-                                char log_buf[256];
-                                snprintf(log_buf, sizeof(log_buf), "Word: '%s', Correct: %s", word_to_check, is_correct ? "Yes" : "No");
-                                spell_log(log_buf);
                                 free(word_to_check);
                             }
                         }

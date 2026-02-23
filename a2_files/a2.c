@@ -12,6 +12,7 @@
 #include "diff.h"
 #include "spell.h"
 #include "lsp_client.h"
+#include "a2_files/settings.h" // Corrected path
 
 
 #include <locale.h>
@@ -242,8 +243,8 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         editor_handle_enter(state);
                         editor_global_paste(state);
                     } else if (next_ch == 't') {
-                        char *msg = {""};
-                        generic_input_msg(state, (char*)msg);
+                        char msg_buffer[256] = ""; // Use a mutable buffer
+                        generic_input_msg(state, msg_buffer);
                     }
                         
                 }                
@@ -972,6 +973,11 @@ int main(int argc, char *argv[]) {
                 if (wget_wch(stdscr, &ch) != ERR) {
                     help_viewer_process_input(active_jw, ch, &should_exit);
                 }
+            } else if (active_jw->tipo == TIPOJANELA_SETTINGS_PANEL) {
+                wint_t ch;
+                if (wget_wch(stdscr, &ch) != ERR) {
+                    settings_panel_process_input(active_jw, ch, &should_exit);
+                }
             } else if (active_jw->tipo == TIPOJANELA_EXPLORER) {
                 wint_t ch;
                 if (wget_wch(stdscr, &ch) != ERR) {
@@ -1126,7 +1132,7 @@ int main(int argc, char *argv[]) {
                     long long elapsed_ns = (now.tv_sec - active_state->spell_hover_last_move.tv_sec) * 1000000000LL;
                     elapsed_ns += (now.tv_nsec - active_state->spell_hover_last_move.tv_nsec);
 
-                    if (elapsed_ns > 2500000000) { // 250ms debounce
+                    if (elapsed_ns > 250000000) { // 250ms debounce
                         active_state->spell_hover_pending = false;
                         
                         char word[100];
