@@ -4,6 +4,10 @@
 #include <ncurses.h>
 #include <stdlib.h>
 
+#include "defs.h"
+
+// #define KEY_CTRL_RIGHT_BRACKET 29
+// #define KEY_CTRL_LEFT_BRACKET 27
 
 const char *main_menu_items[] = {
     "Editor",
@@ -188,9 +192,10 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
         case SETTINGS_VIEW_MAIN:
             switch(ch) {
                 case 'q':
-                case 27: // ESC
+                case 27: // ESC / Ctrl+[
                     fechar_janela_ativa(should_exit);
                     break;
+                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; proxima_janela(); break;
                 case 'j':
                 case KEY_DOWN:
                     if (state->current_selection < num_main_menu_items - 1) {
