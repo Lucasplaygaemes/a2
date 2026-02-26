@@ -21,8 +21,7 @@ void display_macros_list(EditorState *state);
 void search_in_file(const char *file_path, const char *pattern, ContentSearchResult **results, int *count, int *capacity);
 void recursive_content_search(const char *base_path, const char *pattern, ContentSearchResult **results, int *count, int *capacity);
 
-// Adicione no final de screen_ui.h
-    void help_viewer_redraw(JanelaEditor *jw);
-    void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit);
+void help_viewer_redraw(JanelaEditor *jw);
+void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit);
 
 #endif // SCREEN_UI_H
