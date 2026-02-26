@@ -332,7 +332,6 @@ void process_command(EditorState *state, bool *should_exit) {
         if (find) { // `replace` can be empty
             bool is_regex = (flags && strchr(flags, 'r'));
             if (is_regex) {
-                // Você precisará criar esta nova função em others.c
                 editor_do_regex_replace(state, find, replace ? replace : "", flags);
             } else {
                 editor_do_replace(state, find, replace ? replace : "", flags);
