@@ -50,5 +50,8 @@ This is a things that i made mostly of fun and learning experience!
 a2 isn't compatible with windows, and problably not with mac too.
 I haven't tested a2 in a lot of distros yet, but it does work in Debian and distros based in him, and in fedora, if possible the next target is arch.
 
+# TODO
+My next thing in my TODO list is add a sudo support to a2, making it a more flexable editor.
+
 # Contribuiting
 I would be really gratefull if you want to improve the code, it's always open to commits. and if you want you can contact me via my email. My email is lucasplaygaemes@gmail.com, we can chat by email.
