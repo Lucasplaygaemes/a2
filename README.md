@@ -18,8 +18,8 @@ Then, install the dependencys and run Make with
 Documentation is in - [**Documentation**](./index.md)
 
 # New Release!
-A lot of things were added! So, any doubt's of keyboard shortcuts? :ksc show all of them.
-Use the command "help" to see the man pages.
+I'm being slow making any new releases, i have been really occupied so i don't have a lot of time to spend on here.
+But i will keep try my best to fix and add things!
 
 # Spell!
 Now, with a great effort, a new spell checker was added! What kind of text editor don't have a spell checker?
