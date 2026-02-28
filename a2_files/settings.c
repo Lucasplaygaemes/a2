@@ -299,30 +299,34 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                 case KEY_ENTER:
                 case '\n':
                     {
-                        const char* lang_code = spell_languages[state->current_selection].lang_code;
-                        char command[2048];
-                        const char* base_url = "https://cgit.freedesktop.org/libreoffice/dictionaries/plain";
+                        if (system("which curl > /dev/null 2>&1") != 0) {
+                            char *const err_cmd[] = {"/bin/sh", "-c", "echo 'Error: the curl command isn't installed, install it to download the dictionarys.'; read -n 1 - r - p 'Press any key to continue...'", NULL};
+                            criar_janela_terminal_generica(err_cmd);
+                            break;
+                        }
                         
-                        // IMPORTANT: This uses `~/.config` which is not guaranteed. A more robust solution
-                        // would use `getenv("XDG_CONFIG_HOME")` or `getenv("HOME")`.
+                        // makes the donwload command
+                        const char *lang_code = spell_languages[state->current_selection].lang_code;
+                        char command[2048];
+                        const char *base_url = "https://cgit.freedesktop.org/libreoffice/dictionaries/plain";
                         char download_dir[1024];
                         snprintf(download_dir, sizeof(download_dir), "%s/.config/a2/hunspell", getenv("HOME"));
-
-                        snprintf(command, sizeof(command), 
-                            "mkdir -p %s && "
-                            "echo 'Downloading %s.aff...' && "
-                            "curl -L '%s/%s/%s.aff' -o '%s/%s.aff' && "
-                            "echo 'Downloading %s.dic...' && "
-                            "curl -L '%s/%s/%s.dic' -o '%s/%s.dic' && "
-                            "echo 'Download complete for %s. You can now use `:set spelllang %s`' && "
-                            "read -n 1 -s -r -p 'Press any key to close...'",
-                            download_dir,
-                            lang_code, base_url, lang_code, lang_code, download_dir, lang_code,
-                            lang_code, base_url, lang_code, lang_code, download_dir, lang_code,
-                            lang_code, lang_code
+                        
+                        // the new shell command, better
+                        snprintf(command, sizeof(command),
+                        "set -e; " // ends if any command fails
+                        "mkdir -p %s; "
+                        "echo 'Downloading %s.aff...'; "
+                        "curl --fail -L '%s/%s/%s.aff' -o '%s/%s.aff' || { echo 'Fail downloading the .aff'; exit 1; }; "
+                        "echo 'Downloading %s.dic...'; "
+                        "curl --fail -L '%s/%s/%s.dic' -o '%s/%s.dic' || { echo 'Fail donwloading the .dic'; exit 1; }; "
+                        "echo ''; "
+                        "echo 'Sucess! The dictonary for %s is donwloaded.' ; "
+                        "echo 'You can already use it with the command: set spelllang %s'; ",
+                        download_dir, lang_code, base_url, lang_code, lang_code, download_dir, lang_code, lang_code, base_url, lang_code, lang_code, download_dir, lang_code, lang_code, lang_code
                         );
-
-                        char* const shell_cmd[] = {"/bin/sh", "-c", command, NULL};
+                        // execute the command in a new shell
+                        char *const shell_cmd[] = {"/bin/sh/", "-c", command, NULL};
                         criar_janela_terminal_generica(shell_cmd);
                     }
                     break;
