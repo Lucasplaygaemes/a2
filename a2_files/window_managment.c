@@ -855,6 +855,8 @@ void proxima_janela() {
                 jw->explorer_state->is_dirty = true;
             } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
                 jw->help_state->is_dirty = true;
+            } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+                jw->settings_state->is_dirty = true;
             } else if (jw->tipo == TIPOJANELA_TERMINAL) {
                 // For terminals, always ensure a full redraw if switched to.
                 // This will trigger a vterm_wnd_update in redesenhar_todas_as_janelas.
@@ -880,6 +882,8 @@ void janela_anterior() {
                 jw->explorer_state->is_dirty = true;
             } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
                 jw->help_state->is_dirty = true;
+            } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+                jw->settings_state->is_dirty = true;
             } else if (jw->tipo == TIPOJANELA_TERMINAL) {
                 // For terminals, always ensure a full redraw if switched to.
                 // This will trigger a vterm_wnd_update in redesenhar_todas_as_janelas.
@@ -944,6 +948,8 @@ void rotacionar_janelas() {
                 jw->explorer_state->is_dirty = true;
             } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
                 jw->help_state->is_dirty = true;
+            } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+                jw->settings_state->is_dirty = true;
             } else if (jw->tipo == TIPOJANELA_TERMINAL) {
                 // Terminals should always be fully redrawn on major layout changes.
             }
@@ -972,6 +978,8 @@ void mover_janela_para_posicao(int target_idx) {
                 jw->explorer_state->is_dirty = true;
             } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
                 jw->help_state->is_dirty = true;
+            } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+                jw->settings_state->is_dirty = true;
             } else if (jw->tipo == TIPOJANELA_TERMINAL) {
                 // Terminals should always be fully redrawn on major layout changes.
             }
