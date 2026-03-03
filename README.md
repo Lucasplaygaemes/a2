@@ -23,6 +23,7 @@ But i will keep try my best to fix and add things!
 
 # Important Updates
 Before keeping updating the spell or the settings menu, i have noticed that, the editor has a line limit! I will try to update it to make it variable.
+It will not be a easy to do though, i will need to update every single function that uses the *lines.
 
 # Spell!
 Now, with a great effort, a new spell checker was added! What kind of text editor don't have a spell checker?
