@@ -21,6 +21,9 @@ Documentation is in - [**Documentation**](./index.md)
 I'm being slow making any new releases, i have been really occupied so i don't have a lot of time to spend on here.
 But i will keep try my best to fix and add things!
 
+# Important Updates
+Before keeping updating the spell or the settings menu, i have noticed that, the editor has a line limit! I will try to update it to make it variable.
+
 # Spell!
 Now, with a great effort, a new spell checker was added! What kind of text editor don't have a spell checker?
 It's using Hunspell to work! It will be downloaded with the editor, and English will come as default.
