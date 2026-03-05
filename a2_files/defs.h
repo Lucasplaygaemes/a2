@@ -91,31 +91,18 @@ typedef enum {
 
 
 typedef enum {
-
     SETTINGS_VIEW_MAIN,
-
     SETTINGS_VIEW_EDITOR,
-
     SETTINGS_VIEW_THEME,
-
     SETTINGS_VIEW_SPELL,
-
     SETTINGS_VIEW_LSP
-
 } SettingsPanelView;
 
-
-
 typedef struct {
-
     int current_selection;
-
     int scroll_top;
-
     bool is_dirty;
-
     SettingsPanelView current_view;
-
     // more fields will be added later
 
 } SettingsPanelState;
