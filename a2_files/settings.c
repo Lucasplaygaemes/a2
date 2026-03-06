@@ -9,6 +9,14 @@
 // #define KEY_CTRL_RIGHT_BRACKET 29
 // #define KEY_CTRL_LEFT_BRACKET 27
 
+
+A2Config global_config = {
+    .word_wrap = true,
+    .auto_indent = true,
+    .paste_mode = false,
+    .lsp_enabled = true
+};
+
 const char *main_menu_items[] = {
     "Editor",
     "Theme",
