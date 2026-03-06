@@ -88,8 +88,6 @@ typedef enum {
 
 #define SETTINGSPANELSTATE_DEFINED
 
-
-
 typedef enum {
     SETTINGS_VIEW_MAIN,
     SETTINGS_VIEW_EDITOR,
@@ -104,7 +102,9 @@ typedef struct {
     bool is_dirty;
     SettingsPanelView current_view;
     // more fields will be added later
-
+    
+    char **theme_list;
+    int num_themes;
 } SettingsPanelState;
 
 #endif
@@ -284,6 +284,20 @@ typedef struct {
     int source_line_count;
 } AssemblyMapping;
 #endif
+
+#ifndef A2CONFIG;
+#define A2CONFIG;
+
+typedef struct {
+    bool word_wrap;
+    bool auto_indent;
+    bool paste_mode;
+    bool lsp_enabled;
+} A2Config;
+
+extern A2Config global_config;
+
+#endif 
 
 #ifndef EDITORSTATE_DEFINED
 #define EDITORSTATE_DEFINED
