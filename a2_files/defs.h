@@ -285,8 +285,8 @@ typedef struct {
 } AssemblyMapping;
 #endif
 
-#ifndef A2CONFIG;
-#define A2CONFIG;
+#ifndef A2CONFIG
+#define A2CONFIG
 
 typedef struct {
     bool word_wrap;
