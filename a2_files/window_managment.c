@@ -2,7 +2,6 @@
 #include <wchar.h>
 #include <stdlib.h>
 
-
 #include "window_managment.h"
 #include "defs.h"
 #include "fileio.h"
@@ -301,7 +300,10 @@ void criar_nova_janela(const char *filename) {
     state->buffer_modified = false;
     state->auto_indent_on_newline = true;
     state->last_auto_save_time = time(NULL);
-    state->word_wrap_enabled = true;
+    state->word_wrap_enabled = global_config.word_wrap;
+    state->auto_indent_on_newline = global_config.auto_indent;
+    state->paste_mode = global_config.paste_mode;
+    state->lsp_enabled = global_config.lsp_enabled;
     state->is_dirty = true;
     state->dirty_lines = NULL;
     state->dirty_lines_cap = 0;
