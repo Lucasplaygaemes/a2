@@ -1,9 +1,14 @@
 #include "settings.h"
 #include "window_managment.h" // for the fechar_janela_ativa (close_current_window)
-
+#include "fileio.h"
+#include "themes.h"
+#include "cache.h"
+#include "command_execution.h" // For process_lsp_restart
 #include <ncurses.h>
 #include <stdlib.h>
-
+#include <string.h>
+#include <dirent.h> // For DIR, opendir, readdir, closedir
+#include <unistd.h>
 #include "defs.h"
 
 // #define KEY_CTRL_RIGHT_BRACKET 29
@@ -48,7 +53,47 @@ const LangOption spell_languages[] = {
     {"Italian", "it_IT"}
 };
 const int num_spell_languages = sizeof(spell_languages) / sizeof(LangOption);
+void get_config_filepath(char *buffer, size_t size) {
+    const char *home_dir = getenv("HOME");
+    if (home_dir) {
+        snprintf(buffer, size, "%s/.a2_config", home_dir);
+    } else {
+        snprintf(buffer, size, ".a2_config");
+    }
+}
 
+void save_global_config() {
+    char path[PATH_MAX];
+    get_config_filepath(path, sizeof(path));
+    FILE *f = fopen(path, "w");
+    if (f) {
+        fprintf(f, "word_wrap=%d\n", global_config.word_wrap);
+        fprintf(f, "auto_indent=%d\n", global_config.auto_indent);
+        fprintf(f, "paste_mode=%d\n", global_config.paste_mode);
+        fprintf(f, "lsp_enabled=%d\n", global_config.lsp_enabled);
+        fclose(f);
+    }
+}
+
+void load_global_config() {
+    char path[PATH_MAX];
+    get_config_filepath(path, sizeof(path));
+    FILE *f = fopen(path, "r");
+    
+    if (!f) return; // 
+    
+    char line[256];
+    
+    while (fgets(line, sizeof(line), f)) {
+        int val;
+        if (sscanf(line, "word_wrap=%d", &val) == 1) global_config.word_wrap = val;
+        
+        else if (sscanf(line, "auto_indent=%d", &val) == 1) global_config.auto_indent = val;
+        else if (sscanf(line, "paste_mode=%d", &val) == 1) global_config.paste_mode = val;
+        else if (sscanf(line, "lsp_enabled=%d", &val) == 1) global_config.lsp_enabled = val;
+    }
+    fclose(f);
+}
 
 // --- Helper Functions ---
 
@@ -90,21 +135,11 @@ void draw_main_menu(JanelaEditor *jw) {
 
 void draw_editor_settings(JanelaEditor *jw) {
     SettingsPanelState *state = jw->settings_state;
-    EditorState *editor_state = get_any_editor_state(); // Get a sample state
 
-    mvwprintw(jw->win, 1, 2, "Settings > Editor");
+    mvwprintw(jw->win, 1, 2, "Settings > Editor (Applies globally & to active)");
     mvwaddch(jw->win, 2, 1, ACS_HLINE);
 
-    if (!editor_state) {
-        mvwprintw(jw->win, 4, 4, "Open a file to see editor settings.");
-        return;
-    }
-
-    bool options_status[] = {
-        editor_state->word_wrap_enabled,
-        editor_state->auto_indent_on_newline,
-        editor_state->paste_mode
-    };
+    bool options_status[] = { global_config.word_wrap, global_config.auto_indent, global_config.paste_mode };
 
     for (int i = 0; i < num_editor_options; i++) {
         if (i == state->current_selection) {
@@ -121,10 +156,52 @@ void draw_editor_settings(JanelaEditor *jw) {
     }
 }
 
+void populate_theme_list(SettingsPanelState *state) {
+    if (state->theme_list) return;
+    
+    state->num_themes = 0;
+    state->theme_list = malloc(sizeof(char*) * 100); // space 100 themes
+    
+    const char* dirs_to_check[] = { "themes", "/usr/local/share/a2/themes" };
+    for (int i = 0; i < 2; i++) {
+        DIR *d = opendir(dirs_to_check[i]);
+        if (d) {
+            struct dirent *dir;
+            while ((dir = readdir(d)) != NULL && state->num_themes < 100) {
+                if (strstr(dir->d_name, ".theme")) {
+                    state->theme_list[state->num_themes++] = strdup(dir->d_name);
+                }
+            }
+            closedir(d);
+        }
+    }
+}
+
 void draw_theme_settings(JanelaEditor *jw) {
-    mvwprintw(jw->win, 1, 2, "Settings > Theme");
+    SettingsPanelState *state = jw->settings_state;
+    populate_theme_list(state);
+    
+    mvwprintw(jw->win, 1, 2, "Settings > Theme (Press Enter to Apply)");
     mvwaddch(jw->win, 2, 1, ACS_HLINE);
-    mvwprintw(jw->win, 4, 4, "TODO: List available themes");
+    
+    if (state->num_themes == 0) {
+        mvwprintw(jw->win, 4, 4, "No Themes found.");
+        return;
+    }
+    
+    int win_h = getmaxy(jw->win) - 5;
+    for (int i = 0; i < win_h; i++) {
+        int idx = state->scroll_top + i;
+        if (idx >= state->num_themes) break;
+        
+        if (idx == state->current_selection) {
+            wattron(jw->win, A_BOLD | A_REVERSE);
+        }
+        mvwprintw(jw->win, 4 + i, 4, "%s", state->theme_list[idx]);
+        if (idx == state->current_selection) {
+            wattroff(jw->win, A_BOLD | A_REVERSE);
+        }
+    }
 }
 
 void draw_spell_settings(JanelaEditor *jw) {
@@ -149,11 +226,24 @@ void draw_spell_settings(JanelaEditor *jw) {
 }
 
 void draw_lsp_settings(JanelaEditor *jw) {
+    SettingsPanelState *state = jw->settings_state;
     mvwprintw(jw->win, 1, 2, "Settings > LSP");
     mvwaddch(jw->win, 2, 1, ACS_HLINE);
-    mvwprintw(jw->win, 4, 4, "TODO: List LSP configurations");
+    
+    const char *lsp_opts[] = { "Enable LSP Globally", "Restart Current LSP" };
+    int num_lsp_opts = 2;
+    
+    
+    for (int i = 0; i < num_lsp_opts; i++) {
+        if (i == state->current_selection) wattron(jw->win, A_BOLD | A_REVERSE);
+        if (i == 0) {
+            mvwprintw(jw->win, 4 + i, 4, "%s-25s [%s]", lsp_opts[i], global_config.lsp_enabled ? "ON" : "OFF");
+        } else {
+            mvwprintw(jw->win, 4 + i, 4, "%s", lsp_opts[i]);
+        } 
+        if (i == state->current_selection) wattroff(jw->win, A_BOLD | A_REVERSE);
+    }
 }
-
 
 void settings_panel_redraw(JanelaEditor *jw) {
     SettingsPanelState *state = jw->settings_state;
@@ -233,6 +323,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                     state->current_view = SETTINGS_VIEW_MAIN;
                     state->current_selection = 0;
                     break;
+                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; proxima_janela(); break;
                 case 'j':
                 case KEY_DOWN:
                     if (state->current_selection < num_editor_options - 1) {
@@ -247,44 +338,61 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                     break;
                 case KEY_ENTER:
                 case '\n':
-                    { // Apply the setting change globally
-                        bool changed = false;
-                        for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {
-                            for (int j = 0; j < gerenciador_workspaces.workspaces[i]->num_janelas; j++) {
-                                JanelaEditor *editor_jw = gerenciador_workspaces.workspaces[i]->janelas[j];
-                                if (editor_jw->tipo == TIPOJANELA_EDITOR && editor_jw->estado) {
-                                    changed = true;
-                                    switch (state->current_selection) {
-                                        case 0: // Word Wrap
-                                            editor_jw->estado->word_wrap_enabled = !editor_jw->estado->word_wrap_enabled;
-                                            break;
-                                        case 1: // Auto Indent
-                                            editor_jw->estado->auto_indent_on_newline = !editor_jw->estado->auto_indent_on_newline;
-                                            break;
-                                        case 2: // Paste Mode
-                                            editor_jw->estado->paste_mode = !editor_jw->estado->paste_mode;
-                                            break;
-                                    }
-                                    editor_jw->estado->is_dirty = true;
-                                }
+                    switch (state->current_selection) {
+                        case 0: global_config.word_wrap = !global_config.word_wrap; break;
+                        case 1: global_config.auto_indent = !global_config.auto_indent; break;
+                        case 2: global_config.paste_mode = !global_config.paste_mode; break;
+                    }
+                    save_global_config(); // Salva no disco
+
+                    // Aplica nas janelas abertas
+                    for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {
+                        for (int j = 0; j < gerenciador_workspaces.workspaces[i]->num_janelas; j++) {
+                            JanelaEditor *editor_jw = gerenciador_workspaces.workspaces[i]->janelas[j];
+                            if (editor_jw->tipo == TIPOJANELA_EDITOR && editor_jw->estado) {
+                                editor_jw->estado->word_wrap_enabled = global_config.word_wrap;
+                                editor_jw->estado->auto_indent_on_newline = global_config.auto_indent;
+                                editor_jw->estado->paste_mode = global_config.paste_mode;
+                                editor_jw->estado->is_dirty = true;
                             }
-                        }
-                        if (!changed) { // No editor open, nothing to do
-                             state->current_view = SETTINGS_VIEW_MAIN;
                         }
                     }
                     break;
             }
             break;
-        case SETTINGS_VIEW_THEME:
+        case SETTINGS_VIEW_THEME: {
+            int win_h = getmaxy(jw->win) - 5;
             switch(ch) {
-                case 'q':
-                case 27: // ESC
-                    state->current_view = SETTINGS_VIEW_MAIN;
-                    state->current_selection = 0;
+                case 'q': case 27: 
+                    state->current_view = SETTINGS_VIEW_MAIN; 
+                    state->current_selection = 0; 
+                    state->scroll_top = 0;
+                    break;
+                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; proxima_janela(); break;
+                case 'j': case KEY_DOWN:
+                    if (state->current_selection < state->num_themes - 1) {
+                        state->current_selection++;
+                        if (state->current_selection >= state->scroll_top + win_h) state->scroll_top++;
+                    }
+                    break;
+                case 'k': case KEY_UP:
+                    if (state->current_selection > 0) {
+                        state->current_selection--;
+                        if (state->current_selection < state->scroll_top) state->scroll_top--;
+                    }
+                    break;
+                case KEY_ENTER: case '\n':
+                    if (state->num_themes > 0) {
+                        if (load_theme(state->theme_list[state->current_selection])) {
+                            apply_theme();
+                            save_default_theme(state->theme_list[state->current_selection]);
+                            redesenhar_todas_as_janelas();
+                        }
+                    }
                     break;
             }
             break;
+        }
         case SETTINGS_VIEW_SPELL:
             switch(ch) {
                 case 'q':
@@ -292,6 +400,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                     state->current_view = SETTINGS_VIEW_MAIN;
                     state->current_selection = 0;
                     break;
+                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; proxima_janela(); break;
                 case 'j':
                 case KEY_DOWN:
                     if (state->current_selection < num_spell_languages - 1) {
@@ -342,10 +451,25 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
             break;
         case SETTINGS_VIEW_LSP:
             switch(ch) {
-                case 'q':
-                case 27: // ESC
-                    state->current_view = SETTINGS_VIEW_MAIN;
-                    state->current_selection = 0;
+                case 'q': case 27: 
+                    state->current_view = SETTINGS_VIEW_MAIN; 
+                    state->current_selection = 0; 
+                    break;
+                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; proxima_janela(); break;
+                case 'j': case KEY_DOWN:
+                    if (state->current_selection < 1) state->current_selection++; // Apenas 2 opções
+                    break;
+                case 'k': case KEY_UP:
+                    if (state->current_selection > 0) state->current_selection--;
+                    break;
+                case KEY_ENTER: case '\n':
+                    if (state->current_selection == 0) { // Toggle LSP
+                        global_config.lsp_enabled = !global_config.lsp_enabled;
+                        save_global_config();
+                    } else if (state->current_selection == 1) { // Restart LSP
+                        EditorState *editor_state = get_any_editor_state();
+                        if (editor_state) process_lsp_restart(editor_state);
+                    }
                     break;
             }
             break;
@@ -354,6 +478,10 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
 
 void free_settings_panel_state(SettingsPanelState *state) {
     if (!state) return;
+    if (state->theme_list) {
+        for (int i = 0; i < state->num_themes; i++) free(state->theme_list[i]);
+        free(state->theme_list);
+    }
     free(state);
 }
 
