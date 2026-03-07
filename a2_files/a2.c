@@ -27,6 +27,7 @@
 
 #include "project.h"
 void criar_novo_workspace_vazio();
+void load_global_config();
 
 const int ansi_to_ncurses_map[16] = {
     COLOR_BLACK, COLOR_RED, COLOR_GREEN, COLOR_YELLOW,
@@ -866,6 +867,7 @@ int main(int argc, char *argv[]) {
     start_work_timer();
     setlocale(LC_ALL, "");
     inicializar_ncurses();
+    load_global_config();
     
     char *default_theme_name = load_default_theme_name();
     bool theme_loaded = false;
