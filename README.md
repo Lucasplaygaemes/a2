@@ -26,6 +26,7 @@ Before keeping updating the spell or the settings menu or adding the sudo suppor
 It will not be a easy to do though, i will need to update every single function that uses the *lines.
 It's been really hard making those updates, im truly busy recently, but will keep it up.
 I have made some changes and updated with a new thing, a settings file!
+Is very simple for now, but i will make it a lot more better in the future! every settings should be customizeable by the settings menu.
 
 # Spell!
 Now, with a great effort, a new spell checker was added! What kind of text editor don't have a spell checker?
