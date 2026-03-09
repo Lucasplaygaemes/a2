@@ -25,6 +25,7 @@ But i will keep try my best to fix and add things!
 Before keeping updating the spell or the settings menu or adding the sudo support, i have noticed that, the editor has a line limit! I will try to update it to make it variable.
 It will not be a easy to do though, i will need to update every single function that uses the *lines.
 It's been really hard making those updates, im truly busy recently, but will keep it up.
+I have made some changes and updated with a new thing, a settings file!
 
 # Spell!
 Now, with a great effort, a new spell checker was added! What kind of text editor don't have a spell checker?
