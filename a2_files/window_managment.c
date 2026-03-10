@@ -322,6 +322,9 @@ void criar_nova_janela(const char *filename) {
     }
     
     spell_checker_init(&state->spell_checker);
+    if (global_config.default_spell_lang[0] != '\0') {
+        spell_checker_load_dict(&state->spell_checker, global_config.default_spell_lang);
+    }
     
     state->search_history_count = 0;
     state->search_history_pos = 0;
