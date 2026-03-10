@@ -19,7 +19,12 @@ A2Config global_config = {
     .word_wrap = true,
     .auto_indent = true,
     .paste_mode = false,
-    .lsp_enabled = true
+    .lsp_enabled = true,
+    .tab_size = 4,
+    .expand_tab = true,
+    .status_bar_mode = 1,
+    .default_spell_lang = "",
+    .show_line_numbers = false
 };
 
 const char *main_menu_items[] = {
@@ -71,6 +76,7 @@ void save_global_config() {
         fprintf(f, "auto_indent=%d\n", global_config.auto_indent);
         fprintf(f, "paste_mode=%d\n", global_config.paste_mode);
         fprintf(f, "lsp_enabled=%d\n", global_config.lsp_enabled);
+        fprintf(f, "default_spell_lang=%s\n", global_config.default_spell_lang);
         fclose(f);
     }
 }
@@ -86,11 +92,15 @@ void load_global_config() {
     
     while (fgets(line, sizeof(line), f)) {
         int val;
+        char str_val[128] = {0};
         if (sscanf(line, "word_wrap=%d", &val) == 1) global_config.word_wrap = val;
-        
         else if (sscanf(line, "auto_indent=%d", &val) == 1) global_config.auto_indent = val;
         else if (sscanf(line, "paste_mode=%d", &val) == 1) global_config.paste_mode = val;
         else if (sscanf(line, "lsp_enabled=%d", &val) == 1) global_config.lsp_enabled = val;
+        else if (sscanf(line, "default_spell_lang=%127s", str_val) == 1) {
+            strncpy(global_config.default_spell_lang, str_val, sizeof(global_config.default_spell_lang) - 1);
+            global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
+        }
     }
     fclose(f);
 }
@@ -147,7 +157,9 @@ void draw_editor_settings(JanelaEditor *jw) {
         } else {
             wattron(jw->win, A_BOLD);
         }
-        mvwprintw(jw->win, 4 + i, 4, "%-20s [%s]", editor_option_names[i], options_status[i] ? "ON" : "OFF");
+        
+        mvwprintw(jw->win, 4 + i, 4, "[%c] %s", options_status[i] ? 'X' : ' ', editor_option_names[i]);
+        
         if (i == state->current_selection) {
             wattroff(jw->win, A_BOLD | A_REVERSE);
         } else {
@@ -208,7 +220,7 @@ void draw_spell_settings(JanelaEditor *jw) {
     SettingsPanelState *state = jw->settings_state;
     mvwprintw(jw->win, 1, 2, "Settings > Spell Checker");
     mvwaddch(jw->win, 2, 1, ACS_HLINE);
-    mvwprintw(jw->win, 4, 4, "Select a language to download:");
+    mvwprintw(jw->win, 4, 4, "Select a language to download & set as default:");
 
     for (int i = 0; i < num_spell_languages; i++) {
         if (i == state->current_selection) {
@@ -216,7 +228,10 @@ void draw_spell_settings(JanelaEditor *jw) {
         } else {
             wattron(jw->win, A_BOLD);
         }
-        mvwprintw(jw->win, 6 + i, 6, "%s", spell_languages[i].display_name);
+        
+        bool is_default = (strcmp(global_config.default_spell_lang, spell_languages[i].lang_code) == 0);
+        mvwprintw(jw->win, 6 + i, 6, "[%c] %s", is_default ? '*' : ' ', spell_languages[i].display_name);
+        
         if (i == state->current_selection) {
             wattroff(jw->win, A_BOLD | A_REVERSE);
         } else {
@@ -233,14 +248,15 @@ void draw_lsp_settings(JanelaEditor *jw) {
     const char *lsp_opts[] = { "Enable LSP Globally", "Restart Current LSP" };
     int num_lsp_opts = 2;
     
-    
     for (int i = 0; i < num_lsp_opts; i++) {
         if (i == state->current_selection) wattron(jw->win, A_BOLD | A_REVERSE);
+        
         if (i == 0) {
-            mvwprintw(jw->win, 4 + i, 4, "%s-25s [%s]", lsp_opts[i], global_config.lsp_enabled ? "ON" : "OFF");
+            mvwprintw(jw->win, 4 + i, 4, "[%c] %s", global_config.lsp_enabled ? 'X' : ' ', lsp_opts[i]);
         } else {
-            mvwprintw(jw->win, 4 + i, 4, "%s", lsp_opts[i]);
-        } 
+            mvwprintw(jw->win, 4 + i, 4, "    %s", lsp_opts[i]);
+        }
+         
         if (i == state->current_selection) wattroff(jw->win, A_BOLD | A_REVERSE);
     }
 }
@@ -422,28 +438,31 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                             break;
                         }
                         
-                        // makes the donwload command
                         const char *lang_code = spell_languages[state->current_selection].lang_code;
+                        
+                        strncpy(global_config.default_spell_lang, lang_code, sizeof(global_config.default_spell_lang) - 1);
+                        global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
+                        save_global_config();
+                        
                         char command[2048];
                         const char *base_url = "https://cgit.freedesktop.org/libreoffice/dictionaries/plain";
                         char download_dir[1024];
                         snprintf(download_dir, sizeof(download_dir), "%s/.config/a2/hunspell", getenv("HOME"));
                         
-                        // the new shell command, better
                         snprintf(command, sizeof(command),
-                        "set -e; " // ends if any command fails
+                        "set -e; " 
                         "mkdir -p %s; "
                         "echo 'Downloading %s.aff...'; "
                         "curl --fail -L '%s/%s/%s.aff' -o '%s/%s.aff' || { echo 'Fail downloading the .aff'; exit 1; }; "
                         "echo 'Downloading %s.dic...'; "
                         "curl --fail -L '%s/%s/%s.dic' -o '%s/%s.dic' || { echo 'Fail donwloading the .dic'; exit 1; }; "
                         "echo ''; "
-                        "echo 'Sucess! The dictonary for %s is donwloaded.' ; "
-                        "echo 'You can already use it with the command: set spelllang %s'; ",
+                        "echo 'Success! The dictionary for %s is downloaded.' ; "
+                        "echo 'It is now your default language. Open a new file or use :set spelllang %s'; ",
                         download_dir, lang_code, base_url, lang_code, lang_code, download_dir, lang_code, lang_code, base_url, lang_code, lang_code, download_dir, lang_code, lang_code, lang_code
                         );
-                        // execute the command in a new shell
-                        char *const shell_cmd[] = {"/bin/sh/", "-c", command, NULL};
+                        
+                        char *const shell_cmd[] = {"/bin/sh", "-c", command, NULL};
                         criar_janela_terminal_generica(shell_cmd);
                     }
                     break;
