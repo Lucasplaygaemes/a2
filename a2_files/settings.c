@@ -27,6 +27,34 @@ A2Config global_config = {
     .show_line_numbers = false
 };
 
+typedef struct {
+    const char *name;
+    bool *config_ptr;
+} BoolSetting;
+
+BoolSetting editor_bool_settings[] = {
+    {"Word Wrap", &global_config.word_wrap},
+    {"Auto Indent", &global_config.auto_indent},
+    {"Paste Mode", &global_config.paste_mode},
+    {"Show Line Numbers", &global_config.show_line_numbers},
+    {"Expand Tab", &global_config.expand_tab}
+};
+
+const int num_bool_settings = sizeof(editor_bool_settings) / sizeof(BoolSetting);
+
+typedef struct {
+    const char *name;
+    int *config_ptr;
+} IntSetting;
+
+IntSetting editor_int_settings[] = {
+    {"Tab Size", &global_config.tab_size},
+    {"Status Bar Style", &global_config.status_bar_mode}
+};
+
+const int num_int_settings = sizeof(editor_int_settings) / sizeof(IntSetting);
+
+
 const char *main_menu_items[] = {
     "Editor",
     "Theme",
@@ -34,13 +62,6 @@ const char *main_menu_items[] = {
     "LSP (Language Server)"
 };
 const int num_main_menu_items = sizeof(main_menu_items) / sizeof(char*);
-
-const char* editor_option_names[] = {
-    "Word Wrap",
-    "Auto Indent",
-    "Paste Mode"
-};
-const int num_editor_options = sizeof(editor_option_names) / sizeof(char*);
 
 typedef struct {
     const char* display_name;
@@ -77,6 +98,10 @@ void save_global_config() {
         fprintf(f, "paste_mode=%d\n", global_config.paste_mode);
         fprintf(f, "lsp_enabled=%d\n", global_config.lsp_enabled);
         fprintf(f, "default_spell_lang=%s\n", global_config.default_spell_lang);
+        fprintf(f, "tab_size=%d\n", global_config.tab_size);
+        fprintf(f, "expand_tab=%d\n", global_config.expand_tab);
+        fprintf(f, "status_bar_mode=%d\n", global_config.status_bar_mode);
+        fprintf(f, "show_line_numbers=%d\n", global_config.show_line_numbers);
         fclose(f);
     }
 }
@@ -97,6 +122,10 @@ void load_global_config() {
         else if (sscanf(line, "auto_indent=%d", &val) == 1) global_config.auto_indent = val;
         else if (sscanf(line, "paste_mode=%d", &val) == 1) global_config.paste_mode = val;
         else if (sscanf(line, "lsp_enabled=%d", &val) == 1) global_config.lsp_enabled = val;
+        else if (sscanf(line, "tab_size=%d", &val) == 1) global_config.tab_size = val;
+        else if (sscanf(line, "expand_tab=%d", &val) == 1) global_config.expand_tab = val;
+        else if (sscanf(line, "status_bar_mode=%d", &val) == 1) global_config.status_bar_mode = val;
+        else if (sscanf(line, "show_line_numbers=%d", &val) == 1) global_config.show_line_numbers = val;
         else if (sscanf(line, "default_spell_lang=%127s", str_val) == 1) {
             strncpy(global_config.default_spell_lang, str_val, sizeof(global_config.default_spell_lang) - 1);
             global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
@@ -149,18 +178,33 @@ void draw_editor_settings(JanelaEditor *jw) {
     mvwprintw(jw->win, 1, 2, "Settings > Editor (Applies globally & to active)");
     mvwaddch(jw->win, 2, 1, ACS_HLINE);
 
-    bool options_status[] = { global_config.word_wrap, global_config.auto_indent, global_config.paste_mode };
-
-    for (int i = 0; i < num_editor_options; i++) {
+    for (int i = 0; i < num_bool_settings; i++) {
         if (i == state->current_selection) {
             wattron(jw->win, A_BOLD | A_REVERSE);
         } else {
             wattron(jw->win, A_BOLD);
         }
         
-        mvwprintw(jw->win, 4 + i, 4, "[%c] %s", options_status[i] ? 'X' : ' ', editor_option_names[i]);
+        mvwprintw(jw->win, 4 + i, 4, "[%c] %s", *editor_bool_settings[i].config_ptr ? 'X' : ' ', editor_bool_settings[i].name);
         
         if (i == state->current_selection) {
+            wattroff(jw->win, A_BOLD | A_REVERSE);
+        } else {
+            wattroff(jw->win, A_BOLD);
+        }
+    }
+
+    for (int i = 0; i < num_int_settings; i++) {
+        int display_idx = num_bool_settings + i;
+        if (display_idx == state->current_selection) {
+            wattron(jw->win, A_BOLD | A_REVERSE);
+        } else {
+            wattron(jw->win, A_BOLD);
+        }
+        
+        mvwprintw(jw->win, 4 + display_idx, 4, "[%d] %s", *editor_int_settings[i].config_ptr, editor_int_settings[i].name);
+        
+        if (display_idx == state->current_selection) {
             wattroff(jw->win, A_BOLD | A_REVERSE);
         } else {
             wattroff(jw->win, A_BOLD);
@@ -342,7 +386,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; proxima_janela(); break;
                 case 'j':
                 case KEY_DOWN:
-                    if (state->current_selection < num_editor_options - 1) {
+                    if (state->current_selection < num_bool_settings + num_int_settings - 1) {
                         state->current_selection++;
                     }
                     break;
@@ -354,10 +398,15 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                     break;
                 case KEY_ENTER:
                 case '\n':
-                    switch (state->current_selection) {
-                        case 0: global_config.word_wrap = !global_config.word_wrap; break;
-                        case 1: global_config.auto_indent = !global_config.auto_indent; break;
-                        case 2: global_config.paste_mode = !global_config.paste_mode; break;
+                    if (state->current_selection < num_bool_settings) {
+                        *editor_bool_settings[state->current_selection].config_ptr = !(*editor_bool_settings[state->current_selection].config_ptr);
+                    } else {
+                        int int_idx = state->current_selection - num_bool_settings;
+                        if (strcmp(editor_int_settings[int_idx].name, "Tab Size") == 0) {
+                            global_config.tab_size = (global_config.tab_size == 8) ? 2 : global_config.tab_size + 2;
+                        } else if (strcmp(editor_int_settings[int_idx].name, "Status Bar Style") == 0) {
+                            global_config.status_bar_mode = (global_config.status_bar_mode == 1) ? 0 : 1;
+                        }
                     }
                     save_global_config(); // Salva no disco
 
@@ -369,6 +418,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                                 editor_jw->estado->word_wrap_enabled = global_config.word_wrap;
                                 editor_jw->estado->auto_indent_on_newline = global_config.auto_indent;
                                 editor_jw->estado->paste_mode = global_config.paste_mode;
+                                editor_jw->estado->status_bar_mode = global_config.status_bar_mode;
                                 editor_jw->estado->is_dirty = true;
                             }
                         }
