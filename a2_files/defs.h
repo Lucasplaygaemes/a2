@@ -293,6 +293,11 @@ typedef struct {
     bool auto_indent;
     bool paste_mode;
     bool lsp_enabled;
+    int tab_size;
+    bool expand_tab;
+    int status_bar_mode;
+    char default_spell_lang[128];
+    bool show_line_numbers;
 } A2Config;
 
 extern A2Config global_config;
