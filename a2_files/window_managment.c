@@ -303,6 +303,7 @@ void criar_nova_janela(const char *filename) {
     state->word_wrap_enabled = global_config.word_wrap;
     state->auto_indent_on_newline = global_config.auto_indent;
     state->paste_mode = global_config.paste_mode;
+    state->show_line_numbers = global_config.show_line_numbers;
     state->lsp_enabled = global_config.lsp_enabled;
     state->is_dirty = true;
     state->dirty_lines = NULL;
@@ -826,17 +827,24 @@ void posicionar_cursor_ativo() {
                 (void)cols;
                 wmove(win, rows - 1, state->command_pos + 2);
             } else {
+                int line_number_width = 0;
+                if (state->show_line_numbers) {
+                    int max_lines = state->num_lines > 0 ? state->num_lines : 1;
+                    line_number_width = snprintf(NULL, 0, "%d", max_lines) + 1;
+                    if (line_number_width < 4) line_number_width = 4;
+                }
+                
                 int visual_y, visual_x;
                 get_visual_pos(win, state, &visual_y, &visual_x);
                 int border_offset = ws->num_janelas > 1 ? 1 : 0;
                 int screen_y = visual_y - state->top_line + border_offset;
-                int screen_x = visual_x - state->left_col + border_offset;
+                int screen_x = visual_x - state->left_col + border_offset + line_number_width;
                 int max_y, max_x;
                 getmaxyx(win, max_y, max_x);
                 if (screen_y >= max_y) screen_y = max_y - 1;
                 if (screen_x >= max_x) screen_x = max_x - 1;
                 if (screen_y < border_offset) screen_y = border_offset;
-                if (screen_x < border_offset) screen_x = border_offset;
+                if (screen_x < border_offset + line_number_width) screen_x = border_offset + line_number_width;
                 wmove(win, screen_y, screen_x);
             }
         }
