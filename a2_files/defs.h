@@ -340,6 +340,7 @@ typedef struct EditorState {
     bool auto_indent_on_newline;
     bool paste_mode;
     bool word_wrap_enabled;
+    bool show_line_numbers;
     DirectoryInfo **recent_dirs;
     int num_recent_dirs;
     BracketInfo *unmatched_brackets;
