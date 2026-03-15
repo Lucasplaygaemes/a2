@@ -419,6 +419,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                                 editor_jw->estado->auto_indent_on_newline = global_config.auto_indent;
                                 editor_jw->estado->paste_mode = global_config.paste_mode;
                                 editor_jw->estado->status_bar_mode = global_config.status_bar_mode;
+                                editor_jw->estado->show_line_numbers = global_config.show_line_numbers;
                                 editor_jw->estado->is_dirty = true;
                             }
                         }
