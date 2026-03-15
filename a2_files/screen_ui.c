@@ -164,8 +164,16 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
     get_visual_pos(main_win, state, &visual_y, &visual_x);
     
     int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
+    
+    int line_number_width = 0;
+    if (state->show_line_numbers) {
+        int max_lines = state->num_lines > 0 ? state->num_lines : 1;
+        line_number_width = snprintf(NULL, 0, "%d", max_lines) + 1;
+        if (line_number_width < 4) line_number_width = 4;
+    }
+
     cursor_y = (visual_y - state->top_line) + border_offset;
-    cursor_x = (visual_x - state->left_col) + border_offset;
+    cursor_x = (visual_x - state->left_col) + border_offset + line_number_width;
 
     win_y = getbegy(main_win) + cursor_y + 1;
     win_x = getbegx(main_win) + cursor_x;
@@ -210,7 +218,6 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
 
 void editor_redraw(WINDOW *win, EditorState *state) {
     wbkgd(win, COLOR_PAIR(PAIR_DEFAULT));
-    // The popup cleanup was moved to redesenhar_todas_as_janelas() to prevent it from being cleared prematurely.
 
     if (state->buffer_modified) {
         editor_find_unmatched_brackets(state);
@@ -219,6 +226,13 @@ void editor_redraw(WINDOW *win, EditorState *state) {
     int rows, cols;
     getmaxyx(win, rows, cols);
     int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
+    
+    int line_number_width = 0;
+    if (state->show_line_numbers) {
+        int max_lines = state->num_lines > 0 ? state->num_lines : 1;
+        line_number_width = snprintf(NULL, 0, "%d", max_lines) + 1;
+        if (line_number_width < 4) line_number_width = 4;
+    }
 
     // Store old viewport to detect scrolling
     int old_top_line = state->top_line;
@@ -310,7 +324,8 @@ void editor_redraw(WINDOW *win, EditorState *state) {
 
             int line_offset = 0;
             while(line_offset < line_len || line_len == 0) {
-                int content_width = cols - 2*border_offset;
+                int content_width = cols - 2*border_offset - line_number_width;
+                if (content_width <= 0) content_width = 1;
                 int current_bytes = 0;
                 int current_width = 0;
                 int last_space_bytes = -1;
@@ -343,7 +358,15 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                 }
 
                 if (visual_line_idx >= state->top_line && screen_y < content_height) {
-                    wmove(win, screen_y + border_offset, border_offset);
+                    wmove(win, screen_y + border_offset, border_offset + line_number_width);
+                    
+                    if (state->show_line_numbers && line_offset == 0) {
+                        wattron(win, COLOR_PAIR(8) | A_DIM);
+                        mvwprintw(win, screen_y + border_offset, border_offset, "%*d ", line_number_width - 1, file_line_idx + 1);
+                        wattroff(win, COLOR_PAIR(8) | A_DIM);
+                        wmove(win, screen_y + border_offset, border_offset + line_number_width);
+                    }
+
                     int current_pos_in_segment = 0;
                     while(current_pos_in_segment < break_pos) {
                         if (getcurx(win) >= cols - 1 - border_offset) break;
@@ -462,7 +485,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             if (line_idx >= state->num_lines) {
                 // Clear lines below the end of the file
                 if (scrolled) { // Only clear if we have to
-                    wmove(win, i + border_offset, border_offset);
+                    wmove(win, i + border_offset, border_offset + line_number_width);
                     wclrtoeol(win);
                 }
                 continue;
@@ -470,11 +493,21 @@ void editor_redraw(WINDOW *win, EditorState *state) {
 
             // Only redraw if scrolled or the line is specifically marked as dirty
             if (scrolled || (line_idx < state->dirty_lines_cap && state->dirty_lines[line_idx])) {
-                 wmove(win, i + border_offset, border_offset);
+                 wmove(win, i + border_offset, border_offset + line_number_width);
                  wclrtoeol(win);
-                 wmove(win, i + border_offset, border_offset);
+                 wmove(win, i + border_offset, border_offset + line_number_width);
 
                 char *line = state->lines[line_idx];
+
+                // --- NOVO: Desenha o número da linha ---
+                if (state->show_line_numbers) {
+                    wattron(win, COLOR_PAIR(8) | A_DIM); // Cor padrão, um pouco esmaecida
+                    // Desenha alinhado à direita
+                    mvwprintw(win, i + border_offset, border_offset, "%*d ", line_number_width - 1, line_idx + 1);
+                    wattroff(win, COLOR_PAIR(8) | A_DIM);
+                    wmove(win, i + border_offset, border_offset + line_number_width);
+                }
+
                 if (!line) continue;
 
                 bool highlight_this_line = false;
@@ -686,8 +719,16 @@ void adjust_viewport(WINDOW *win, EditorState *state) {
     getmaxyx(win, rows, cols);
     
     int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
+    
+    int line_number_width = 0;
+    if (state->show_line_numbers) {
+        int max_lines = state->num_lines > 0 ? state->num_lines : 1;
+        line_number_width = snprintf(NULL, 0, "%d", max_lines) + 1;
+        if (line_number_width < 4) line_number_width = 4;
+    }
+    
     int content_height = rows - border_offset - 1;
-    int content_width = cols - 2 * border_offset;
+    int content_width = cols - 2 * border_offset - line_number_width;
 
     int visual_y, visual_x;
     get_visual_pos(win, state, &visual_y, &visual_x);
@@ -721,7 +762,15 @@ void get_visual_pos(WINDOW *win, EditorState *state, int *visual_y, int *visual_
     (void)rows;
 
     int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
-    int content_width = cols - (2 * border_offset);
+    
+    int line_number_width = 0;
+    if (state->show_line_numbers) {
+        int max_lines = state->num_lines > 0 ? state->num_lines : 1;
+        line_number_width = snprintf(NULL, 0, "%d", max_lines) + 1;
+        if (line_number_width < 4) line_number_width = 4;
+    }
+    
+    int content_width = cols - (2 * border_offset) - line_number_width;
     if (content_width <= 0) content_width = 1;
 
     int y = 0;
