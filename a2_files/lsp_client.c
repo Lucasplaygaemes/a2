@@ -785,25 +785,28 @@ void lsp_initialize(EditorState *state) {
         return;
     }
     memset(state->lsp_client, 0, sizeof(LspClient)); // Initialize with zeros
-    
-    
-    // Determine the language based on the file extension
+
+    bool lsp_will_be_enabled = false;
     const char *ext = strrchr(state->filename, '.');
+
+    // Determine languageId and if LSP will be used
     if (ext) {
         if (strcmp(ext, ".c") == 0 || strcmp(ext, ".h") == 0) {
             state->lsp_client->languageId = strdup("c");
+            lsp_will_be_enabled = true;
         } else if (strcmp(ext, ".cpp") == 0 || strcmp(ext, ".hpp") == 0) {
             state->lsp_client->languageId = strdup("cpp");
+            lsp_will_be_enabled = true;
         } else if (strcmp(ext, ".py") == 0) {
             state->lsp_client->languageId = strdup("python");
+            lsp_will_be_enabled = true;
         } else {
             state->lsp_client->languageId = strdup("plaintext");
         }
     } else {
         state->lsp_client->languageId = strdup("plaintext");
     }
-    
-    // Check if the languageId allocation was successful
+
     if (!state->lsp_client->languageId) {
         editor_set_status_msg(state, "Allocation error for languageId");
         free(state->lsp_client);
@@ -811,8 +814,17 @@ void lsp_initialize(EditorState *state) {
         return;
     }
 
-    // If the language is plaintext, do not start the LSP server.
-    if (strcmp(state->lsp_client->languageId, "plaintext") == 0) {
+    // Spell Check Policy
+    bool enable_spell_check = (ext && strcmp(ext, ".txt") == 0) || !lsp_will_be_enabled;
+
+    if (enable_spell_check && global_config.default_spell_lang[0] != '\0') {
+        spell_checker_load_dict(&state->spell_checker, global_config.default_spell_lang);
+    } else {
+        spell_checker_unload_dict(&state->spell_checker);
+    }
+
+    // Now, proceed with LSP initialization if needed
+    if (!lsp_will_be_enabled) {
         free(state->lsp_client->languageId);
         free(state->lsp_client);
         state->lsp_client = NULL;
