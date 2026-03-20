@@ -296,7 +296,8 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 }
                 else if (next_ch == 't' || next_ch == 'T') display_command_palette(state);
                 else if (next_ch == 'r' || next_ch == 'R') rotacionar_janelas();
-                else if (next_ch == 's' || next_ch == 'S') {
+                else if (next_ch == 'S') criar_janela_settings_panel();
+                else if (next_ch == 's') {
                     display_content_search(state, NULL);
                 }
                 else if (next_ch == '\t') { // Tab
