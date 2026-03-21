@@ -10,6 +10,8 @@
 #include <dirent.h> // For DIR, opendir, readdir, closedir
 #include <unistd.h>
 #include "defs.h"
+#include "spell.h"
+#include "others.h"
 
 // #define KEY_CTRL_RIGHT_BRACKET 29
 // #define KEY_CTRL_LEFT_BRACKET 27
@@ -274,8 +276,13 @@ void draw_spell_settings(JanelaEditor *jw) {
         }
         
         bool is_default = (strcmp(global_config.default_spell_lang, spell_languages[i].lang_code) == 0);
-        mvwprintw(jw->win, 6 + i, 6, "[%c] %s", is_default ? '*' : ' ', spell_languages[i].display_name);
+        bool is_downloaded = spell_checker_is_downloaded(spell_languages[i].lang_code);
         
+        if (is_downloaded) {
+            mvwprintw(jw->win, 6 + i, 6, "[%c] %s (D)", is_default ? '*' : ' ', spell_languages[i].display_name);
+        } else {
+            mvwprintw(jw->win, 6 + i, 6, "[%c] %s", is_default ? '*' : ' ', spell_languages[i].display_name);
+        }
         if (i == state->current_selection) {
             wattroff(jw->win, A_BOLD | A_REVERSE);
         } else {
@@ -483,38 +490,54 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                 case KEY_ENTER:
                 case '\n':
                     {
+                        const char *lang_code = spell_languages[state->current_selection].lang_code;
+                        
+                        // Always set as default immediately
+                        strncpy(global_config.default_spell_lang, lang_code, sizeof(global_config.default_spell_lang) - 1);
+                        global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
+                        save_global_config(); // Save new default language
+
+                        // Check if curl is available before doing anything with downloads
                         if (system("which curl > /dev/null 2>&1") != 0) {
                             char *const err_cmd[] = {"/bin/sh", "-c", "echo 'Error: the curl command isn't installed, install it to download the dictionarys.'; read -n 1 - r - p 'Press any key to continue...'", NULL};
                             criar_janela_terminal_generica(err_cmd);
-                            break;
+                            // Set status message if no curl
+                            EditorState* current_editor = get_any_editor_state();
+                            if (current_editor) {
+                                editor_set_status_msg(current_editor, "Error: curl not found. Cannot download dictionaries.");
+                            }
+                            break; // Exit early if no curl
                         }
                         
-                        const char *lang_code = spell_languages[state->current_selection].lang_code;
-                        
-                        strncpy(global_config.default_spell_lang, lang_code, sizeof(global_config.default_spell_lang) - 1);
-                        global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
-                        save_global_config();
-                        
-                        char command[2048];
-                        const char *base_url = "https://cgit.freedesktop.org/libreoffice/dictionaries/plain";
-                        char download_dir[1024];
-                        snprintf(download_dir, sizeof(download_dir), "%s/.config/a2/hunspell", getenv("HOME"));
-                        
-                        snprintf(command, sizeof(command),
-                        "set -e; " 
-                        "mkdir -p %s; "
-                        "echo 'Downloading %s.aff...'; "
-                        "curl --fail -L '%s/%s/%s.aff' -o '%s/%s.aff' || { echo 'Fail downloading the .aff'; exit 1; }; "
-                        "echo 'Downloading %s.dic...'; "
-                        "curl --fail -L '%s/%s/%s.dic' -o '%s/%s.dic' || { echo 'Fail donwloading the .dic'; exit 1; }; "
-                        "echo ''; "
-                        "echo 'Success! The dictionary for %s is downloaded.' ; "
-                        "echo 'It is now your default language. Open a new file or use :set spelllang %s'; ",
-                        download_dir, lang_code, base_url, lang_code, lang_code, download_dir, lang_code, lang_code, base_url, lang_code, lang_code, download_dir, lang_code, lang_code, lang_code
-                        );
-                        
-                        char *const shell_cmd[] = {"/bin/sh", "-c", command, NULL};
-                        criar_janela_terminal_generica(shell_cmd);
+                        if (spell_checker_is_downloaded(lang_code)) {
+                            // Dictionary already downloaded, just set status message
+                            EditorState* current_editor = get_any_editor_state();
+                            if (current_editor) {
+                                editor_set_status_msg(current_editor, "Default spell language set to %s (already downloaded).", lang_code);
+                            }
+                        } else {
+                            // Dictionary not downloaded, proceed with download logic
+                            char command[2048];
+                            const char *base_url = "https://cgit.freedesktop.org/libreoffice/dictionaries/plain";
+                            char download_dir[1024];
+                            snprintf(download_dir, sizeof(download_dir), "%s/.config/a2/hunspell", getenv("HOME"));
+                            
+                            snprintf(command, sizeof(command),
+                            "set -e; " 
+                            "mkdir -p %s; "
+                            "echo 'Downloading %s.aff...'; "
+                            "curl --fail -L '%s/%s/%s.aff' -o '%s/%s.aff' || { echo 'Fail downloading the .aff'; exit 1; }; "
+                            "echo 'Downloading %s.dic...'; "
+                            "curl --fail -L '%s/%s/%s.dic' -o '%s/%s.dic' || { echo 'Fail donwloading the .dic'; exit 1; }; "
+                            "echo ''; "
+                            "echo 'Success! The dictionary for %s is downloaded.' ; "
+                            "echo 'It is now your default language. Open a new file or use :set spelllang %s'; ",
+                            download_dir, lang_code, base_url, lang_code, lang_code, download_dir, lang_code, lang_code, base_url, lang_code, lang_code, download_dir, lang_code, lang_code, lang_code
+                            );
+                            
+                            char *const shell_cmd[] = {"/bin/sh", "-c", command, NULL};
+                            criar_janela_terminal_generica(shell_cmd);
+                        }
                     }
                     break;
             }
