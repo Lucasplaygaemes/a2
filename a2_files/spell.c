@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h> // for the free function
+#include <unistd.h>
 
 #define SPELL_LOG_FILE "/tmp/spell_debug.log"
 
@@ -77,7 +78,7 @@ bool spell_checker_load_dict(SpellChecker *sc, const char *lang) {
     // if not found, we try the system paths
     
     if (!found) {
-        for (int i = 0; i < dict_paths[i] != NULL; i++) {
+        for (int i = 0; dict_paths[i] != NULL; i++) {
             snprintf(aff_path, sizeof(aff_path), "%s%s.aff", dict_paths[i], lang);
             snprintf(dic_path, sizeof(dic_path), "%s%s.dic", dict_paths[i], lang);
             
@@ -175,4 +176,23 @@ void spell_checker_free_suggestions(SpellChecker *sc, char **suggestions, int n_
         return;
     }
     Hunspell_free_list(sc->hunspell_handle, &suggestions, n_suggestions);
+}
+
+bool spell_checker_is_downloaded(const char *lang) {
+    if (!lang) return false;
+    
+    const char *home_dir = getenv("HOME");
+    if (!home_dir) return false;
+    
+    char aff_path[1024];
+    char dic_path[1024];
+    
+    snprintf(aff_path, sizeof(aff_path), "%s/.config/a2/hunspell/%s.aff", home_dir, lang);
+    snprintf(dic_path, sizeof(dic_path), "%s/.config/a2/hunspell/%s.dic", home_dir, lang);
+    
+    if (access(aff_path, F_OK) == 0 && access(dic_path, F_OK) == 0) {
+        return true;
+    }
+    
+    return false;
 }
