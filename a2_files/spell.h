@@ -33,4 +33,7 @@ void spell_checker_destroy(SpellChecker *sc);
 // free the memory used by the suggestion list
 void spell_checker_free_suggestions(SpellChecker *sc, char ** suggestions, int n_suggestions);
 
+// verify if a dictionary was already downloaded
+bool spell_checker_is_downloaded(const char *lang);
+
 #endif 
