@@ -59,7 +59,8 @@ a2 isn't compatible with windows, and probably not with mac too.
 a2 should be compatible with theoretically every distro whom can run C and ncurse, others things may not work but the core functionality will.
 
 # TODO
-My next thing in my TODO list is add a sudo support to a2, making it a more flexable editor.
+My next thing in my TODO list is add a sudo support to a2.
+I'm gonna make the shortcuts be user defined too, and saved in a .config file.
 
 # Contribuiting
 I would be really grateful if you want to improve the code, it's always open to commits. and if you want you can contact me via my email. My email is lucasplaygaemes@gmail.com, we can chat by email.
