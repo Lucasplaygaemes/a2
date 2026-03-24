@@ -7,6 +7,7 @@
 #include "direct_navigation.h"
 #include "git_utils.h"
 #include "window_managment.h"
+#include "cache.h"
 
 #include <limits.h> // For PATH_MAX
 #include <errno.h> // For errno, ENOENT
@@ -17,6 +18,7 @@
 #include <stdlib.h> // For realpath, calloc, free, realloc
 #include <libgen.h> // For dirname()
 #include <unistd.h> // For getcwd()
+#include <sys/wait.h>
 
 // ===================================================================
 // 3. File I/O & Handling
@@ -206,7 +208,82 @@ void save_file(EditorState *state) {
           lsp_did_save(state);
             }
     } else { 
-        editor_set_status_msg(state, "Error saving: %s", strerror(errno)); 
+        if (errno == EACCES) {
+           // access denied, offers to use sudo
+           if (confirm_action("Permission denied. Save with sudo?")) {
+               // create the name of the temporary file
+               char *temp_filename = get_cache_filename("a2_sudo_save.XXXXXX");
+               if (!temp_filename) {
+                   editor_set_status_msg(state, "Error creating the temp file path for sudo.");
+                   return;
+               }
+               
+               int fd = mkstemp(temp_filename);
+               if (fd == -1) {
+                   editor_set_status_msg(state, "Error creating temp file for sudo.");
+                   free(temp_filename);
+                   return;
+               }
+               
+               // write to the temporary buffer
+               FILE *temp_file = fdopen(fd, "w");
+               if (!temp_file) {
+                   editor_set_status_msg(state, "Error opening the temp file stream for sudo.");
+                   close(fd);
+                   remove(temp_filename);
+                   free(temp_filename);
+                   return;
+               }
+               for (int i = 0; i < state->num_lines; i++) {
+                   if (state->lines[i]) {
+                       fprintf(temp_file, "%s\n", state->lines[i]);
+                   }
+               }
+               fclose(temp_file);
+               
+               // construct and execute the command with sudo
+               char command[PATH_MAX * 2 + 50];
+               snprintf(command, sizeof(command), "cat \"%s\" | sudo tee \"%s\" > /dev/null", temp_filename, state->filename);
+               
+               // temporarly exit ncurse to the password prompt appear
+               def_prog_mode();
+               endwin();
+               
+               int ret = system(command);
+               
+               // returns to ncusrse
+               reset_prog_mode();
+               refresh();
+               redesenhar_todas_as_janelas();
+               
+               // clena the temporary file and check the result
+               
+               remove(temp_filename);
+               free(temp_filename);
+               
+               if (WIFEXITED(ret) && WEXITSTATUS(ret) == 0) {
+                   // sucess! update the state of the editor
+                   state->buffer_modified = false;
+                   state->last_file_mod_time = get_file_mod_time(state->filename);
+                   if (state->lsp_enabled) {
+                       lsp_did_save(state);
+                   }
+                   editor_set_status_msg(state, "'%s' saved with sudo.", basename(state->filename));
+                   // if it saved sucessfully, remove the auto-save file
+                   char auto_save_filename[PATH_MAX];
+                   snprintf(auto_save_filename, sizeof(auto_save_filename), "%s%s", state->filename, AUTO_SAVE_EXTENSION);
+                   remove(auto_save_filename);
+               } else {
+                   editor_set_status_msg(state, "sudo save failed.");
+               }
+           } else {
+               editor_set_status_msg(state, "Sudo save cancelled.");
+           }
+        } else {
+            // if it's even another error, show it messages
+            editor_set_status_msg(state, "Error saving: %s", strerror(errno));
+            
+        }
     } 
 }
 
