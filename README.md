@@ -59,7 +59,7 @@ a2 isn't compatible with windows, and probably not with mac too.
 a2 should be compatible with theoretically every distro whom can run C and ncurse, others things may not work but the core functionality will.
 
 # TODO
-My next thing in my TODO list is add a sudo support to a2.
+Now u can save files, i thought that, running all a2 as root, would be risky, so i made that when trying to save a file, if it fails because of permission, the code would ask if you want to save it as root, then make a copy of the current file, and move it to the designed place!
 I'm gonna make the shortcuts be user defined too, and saved in a .config file.
 
 # Contribuiting
