@@ -51,15 +51,15 @@ More explanation are in the Documentation!
 Now a2 have themes! and they are quite easy to make, Themes will be searched in the default app folder, but, if no found, or if you want to add another folder, you can with the command :set themedir <dir>
 
 # Assembly!
-Becasue i'm learning assembly, a new function was added to the code to help me understand better what C functions turned in what in assembly, i will fix any bugs that i find.
+Because i'm learning assembly, a new function was added to the code to help me understand better what C functions turned in what in assembly, i will fix any bugs that i find.
 This is a things that i made mostly of fun and learning experience!
 
 # Multiplatform?
-a2 isn't compatible with windows, and problably not with mac too.
-I haven't tested a2 in a lot of distros yet, but it does work in Debian and distros based in him, and in fedora, if possible the next target is arch.
+a2 isn't compatible with windows, and probably not with mac too.
+a2 should be compatible with theoretically every distro whom can run C and ncurse, others things may not work but the core functionality will.
 
 # TODO
 My next thing in my TODO list is add a sudo support to a2, making it a more flexable editor.
 
 # Contribuiting
-I would be really gratefull if you want to improve the code, it's always open to commits. and if you want you can contact me via my email. My email is lucasplaygaemes@gmail.com, we can chat by email.
+I would be really grateful if you want to improve the code, it's always open to commits. and if you want you can contact me via my email. My email is lucasplaygaemes@gmail.com, we can chat by email.
