@@ -9,7 +9,7 @@ Clone the Repository with
 ```bash
 git clone https://github.com/Lucasplaygaemes/a2
 ```
-Then, install the dependencys and run Make with
+Then, install the dependency's and run Make with
 ```bash
 ./install.sh
 ```
@@ -26,12 +26,10 @@ Before keeping updating the spell or the settings menu or adding the sudo suppor
 It will not be a easy to do though, i will need to update every single function that uses the *lines.
 It's been really hard making those updates, im truly busy recently, but will keep it up.
 I have made some changes and updated with a new thing, a settings file!
-Is very simple for now, but i will make it a lot more better in the future! every settings should be customizeable by the settings menu.
+Is very simple for now, but i will make it a lot more better in the future! every settings should be customize-able by the settings menu.
 
 # Spell!
-Now, with a great effort, a new spell checker was added! What kind of text editor don't have a spell checker?
-It's using Hunspell to work! It will be downloaded with the editor, and English will come as default.
-There is a command to use it, and it's in the manual, but, to make this and everything a lot more eaiser, i will add...
+The spell use's the Hunspell, it has every language and dictionary that it supports.
 
 # Setting Menu!
 I will add an menu! to help to set configurations in the a2!
