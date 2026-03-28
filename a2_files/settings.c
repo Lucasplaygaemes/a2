@@ -39,7 +39,8 @@ BoolSetting editor_bool_settings[] = {
     {"Auto Indent", &global_config.auto_indent},
     {"Paste Mode", &global_config.paste_mode},
     {"Show Line Numbers", &global_config.show_line_numbers},
-    {"Expand Tab", &global_config.expand_tab}
+    {"Expand Tab", &global_config.expand_tab},
+    {"Relative Lines", &global_config.relative_line_numbers}
 };
 
 const int num_bool_settings = sizeof(editor_bool_settings) / sizeof(BoolSetting);
@@ -104,6 +105,7 @@ void save_global_config() {
         fprintf(f, "expand_tab=%d\n", global_config.expand_tab);
         fprintf(f, "status_bar_mode=%d\n", global_config.status_bar_mode);
         fprintf(f, "show_line_numbers=%d\n", global_config.show_line_numbers);
+        fprintf(f, "relative_line_numbers=%d\n", global_config.relative_line_numbers);
         fclose(f);
     }
 }
@@ -128,6 +130,7 @@ void load_global_config() {
         else if (sscanf(line, "expand_tab=%d", &val) == 1) global_config.expand_tab = val;
         else if (sscanf(line, "status_bar_mode=%d", &val) == 1) global_config.status_bar_mode = val;
         else if (sscanf(line, "show_line_numbers=%d", &val) == 1) global_config.show_line_numbers = val;
+        else if (sscanf(line, "relative_line_numbers=%d", &val) == 1) global_config.relative_line_numbers = val;
         else if (sscanf(line, "default_spell_lang=%127s", str_val) == 1) {
             strncpy(global_config.default_spell_lang, str_val, sizeof(global_config.default_spell_lang) - 1);
             global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
