@@ -467,6 +467,12 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             case KEY_CTRL_G: display_directory_navigator(state); break;
                             case 'o':
                             case KEY_UP:
+                                int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
+                                for (int i = 0; i < repeat; i++) {
+                                    if (state->current_line > 0) state->current_line--;
+                                }
+                                state->prefix_count = 0; // resets the counter
+                                state->is_dirty = true;
                                 if (state->word_wrap_enabled) {
                                     if (state->current_line > 0) {
                                         state->current_line--;
@@ -482,6 +488,11 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                                 break;
                             case 'l':
                             case KEY_DOWN: {
+                                int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
+                                for (int i = 0; i < state->num_lines; state->current_line++) {
+                                    if (state->current_line < state->num_lines - 1) state->current_line++;
+                                    }
+                                state->prefix_count = 0;
                                 if (state->current_line < state->num_lines - 1) {
                                     state->current_line++;
                                     state->current_col = state->ideal_col;
@@ -539,6 +550,17 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 
             case NORMAL:
                 switch (ch) {
+                    case '0': case '1': case '2': case '3': case '4':
+                    case '5': case '6': case '7': case '8': case '9':
+                        if (state->prefix_count == 0 && ch == '0') {
+                            state->current_col = 0;
+                            state->ideal_col = 0;
+                        } else {
+                            state->prefix_count = (state->prefix_count * 10) + (ch - '0');
+                            editor_set_status_msg(state, "%d", state->prefix_count);
+                        }
+                        state->is_dirty = true;
+                        return;
                     case '}': { 
                         state->is_dirty = true;
                         bool found_blank = false;
@@ -724,49 +746,56 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     case KEY_CTRL_A: editor_find_previous(state); break;
                     case KEY_CTRL_G: display_directory_navigator(state); break;
                     case 'o':
-                    case KEY_UP:
-                        if (state->word_wrap_enabled) {
-                            if (state->current_line > 0) {
-                                state->current_line--;
-                                state->current_col = state->ideal_col;
-                            }
-                        } else {
-                            if (state->current_line > 0) {
-                                state->current_line--;
-                                state->current_col = state->ideal_col;
-                            }
+                    case KEY_UP: {
+                        int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
+                        for (int i = 0; i < repeat; i++) {
+                            if (state->current_line > 0) state->current_line--;
                         }
+                        state->prefix_count = 0;
+                        state->current_col = state->ideal_col;
                         state->is_dirty = true;
                         break;
+                    }
                     case 'l':
                     case KEY_DOWN: {
-                        if (state->current_line < state->num_lines - 1) {
-                            state->current_line++;
-                            state->current_col = state->ideal_col;
+                        int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
+                        for (int i = 0; i < repeat; i++) {
+                            if (state->current_line < state->num_lines - 1) state->current_line++;
                         }
+                        state->prefix_count = 0;
+                        state->current_col = state->ideal_col;
                         state->is_dirty = true;
                         break;                        
                     }
                     case 'k':
-                    case KEY_LEFT:
-                        if (state->current_col > 0) {
-                            state->current_col--;
-                            while (state->current_col > 0 && (state->lines[state->current_line][state->current_col] & 0xC0) == 0x80) {
+                    case KEY_LEFT: {
+                        int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
+                        for (int i = 0; i < repeat; i++) {
+                            if (state->current_col > 0) {
                                 state->current_col--;
+                                while (state->current_col > 0 && (state->lines[state->current_line][state->current_col] & 0xC0) == 0x80) {
+                                    state->current_col--;
+                                }
                             }
                         }
+                        state->prefix_count = 0;
                         state->ideal_col = state->current_col;
                         state->is_dirty = true;
                         break;
+                    }
                     case 231: // ç
                     case KEY_RIGHT: {
+                        int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
                         char* line = state->lines[state->current_line];
-                        if (line && state->current_col < (int)strlen(line)) {
-                            state->current_col++;
-                            while (line[state->current_col] != '\0' && (line[state->current_col] & 0xC0) == 0x80) {
+                        for (int i = 0; i < repeat; i++) {
+                            if (line && state->current_col < (int)strlen(line)) {
                                 state->current_col++;
+                                while (line[state->current_col] != '\0' && (line[state->current_col] & 0xC0) == 0x80) {
+                                    state->current_col++;
+                                }
                             }
                         }
+                        state->prefix_count = 0;
                         state->ideal_col = state->current_col;
                         state->is_dirty = true;
                         } break;
