@@ -549,6 +549,8 @@ void recalcular_layout_janelas() {
             jw->explorer_state->is_dirty = true;
         } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
             jw->help_state->is_dirty = true;
+        } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+            jw->settings_state->is_dirty = true;
         }
         
         // 4. updating the terminal, vterm
@@ -578,6 +580,8 @@ void recalcular_layout_janelas() {
             jw->explorer_state->is_dirty = true;
         } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
             jw->help_state->is_dirty = true;
+        } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+            jw->settings_state->is_dirty = true;
         }
         
         // If it's a terminal, we need to resize it and update its window pointer
