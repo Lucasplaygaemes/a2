@@ -298,6 +298,7 @@ typedef struct {
     int status_bar_mode;
     char default_spell_lang[128];
     bool show_line_numbers;
+    bool relative_line_numbers;
 } A2Config;
 
 extern A2Config global_config;
@@ -395,7 +396,8 @@ typedef struct EditorState {
     bool spell_hover_pending;
     char *spell_hover_message;
     char spell_hover_word[100];
-
+    
+    int prefix_count;
 } EditorState;
 #endif
 
