@@ -22,6 +22,9 @@ A2Config global_config = {
     .auto_indent = true,
     .paste_mode = false,
     .lsp_enabled = true,
+    .lsp_diagnostics = true,
+    .lsp_completion = true,
+    .lsp_hover = true,
     .tab_size = 4,
     .expand_tab = true,
     .status_bar_mode = 1,
@@ -106,6 +109,9 @@ void save_global_config() {
         fprintf(f, "status_bar_mode=%d\n", global_config.status_bar_mode);
         fprintf(f, "show_line_numbers=%d\n", global_config.show_line_numbers);
         fprintf(f, "relative_line_numbers=%d\n", global_config.relative_line_numbers);
+        fprintf(f, "lsp_diagnostics=%d\n", global_config.lsp_diagnostics);
+        fprintf(f, "lsp_completion=%d\n", global_config.lsp_completion);
+        fprintf(f, "lsp_hover=%d\n", global_config.lsp_hover);
         fclose(f);
     }
 }
@@ -131,6 +137,9 @@ void load_global_config() {
         else if (sscanf(line, "status_bar_mode=%d", &val) == 1) global_config.status_bar_mode = val;
         else if (sscanf(line, "show_line_numbers=%d", &val) == 1) global_config.show_line_numbers = val;
         else if (sscanf(line, "relative_line_numbers=%d", &val) == 1) global_config.relative_line_numbers = val;
+        else if (sscanf(line, "lsp_diagnostics=%d", &val) == 1) global_config.lsp_diagnostics = val;
+        else if (sscanf(line, "lsp_completion=%d", &val) == 1) global_config.lsp_completion = val;
+        else if (sscanf(line, "lsp_hover=%d", &val) == 1) global_config.lsp_hover = val;
         else if (sscanf(line, "default_spell_lang=%127s", str_val) == 1) {
             strncpy(global_config.default_spell_lang, str_val, sizeof(global_config.default_spell_lang) - 1);
             global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
@@ -299,16 +308,28 @@ void draw_lsp_settings(JanelaEditor *jw) {
     mvwprintw(jw->win, 1, 2, "Settings > LSP");
     mvwaddch(jw->win, 2, 1, ACS_HLINE);
     
-    const char *lsp_opts[] = { "Enable LSP Globally", "Restart Current LSP" };
-    int num_lsp_opts = 2;
+    const char *lsp_opts[] = { 
+        "Enable LSP Globally", 
+        "Show Diagnostics (Underline)",
+        "Enable Auto-completion",
+        "Show Hover Information",
+        "Restart Current LSP Server" 
+    };
+    int num_lsp_opts = 5;
     
     for (int i = 0; i < num_lsp_opts; i++) {
         if (i == state->current_selection) wattron(jw->win, A_BOLD | A_REVERSE);
         
-        if (i == 0) {
-            mvwprintw(jw->win, 4 + i, 4, "[%c] %s", global_config.lsp_enabled ? 'X' : ' ', lsp_opts[i]);
-        } else {
+        char status = ' ';
+        if (i == 0) status = global_config.lsp_enabled ? 'X' : ' ';
+        else if (i == 1) status = global_config.lsp_diagnostics ? 'X' : ' ';
+        else if (i == 2) status = global_config.lsp_completion ? 'X' : ' ';
+        else if (i == 3) status = global_config.lsp_hover ? 'X' : ' ';
+        
+        if (i == 4) { // Restart button has no checkbox
             mvwprintw(jw->win, 4 + i, 4, "    %s", lsp_opts[i]);
+        } else {
+            mvwprintw(jw->win, 4 + i, 4, "[%c] %s", status, lsp_opts[i]);
         }
          
         if (i == state->current_selection) wattroff(jw->win, A_BOLD | A_REVERSE);
@@ -553,7 +574,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                     break;
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; proxima_janela(); break;
                 case 'j': case KEY_DOWN:
-                    if (state->current_selection < 1) state->current_selection++; // Apenas 2 opções
+                    if (state->current_selection < 4) state->current_selection++; // Aumentado limite para 4
                     break;
                 case 'k': case KEY_UP:
                     if (state->current_selection > 0) state->current_selection--;
@@ -561,11 +582,17 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                 case KEY_ENTER: case '\n':
                     if (state->current_selection == 0) { // Toggle LSP
                         global_config.lsp_enabled = !global_config.lsp_enabled;
-                        save_global_config();
-                    } else if (state->current_selection == 1) { // Restart LSP
+                    } else if (state->current_selection == 1) {
+                        global_config.lsp_diagnostics = !global_config.lsp_diagnostics;
+                    } else if (state->current_selection == 2) {
+                        global_config.lsp_completion = !global_config.lsp_completion;
+                    } else if (state->current_selection == 3) {
+                        global_config.lsp_hover = !global_config.lsp_hover;
+                    } else if (state->current_selection == 4) {
                         EditorState *editor_state = get_any_editor_state();
                         if (editor_state) process_lsp_restart(editor_state);
                     }
+                    save_global_config();
                     break;
             }
             break;
