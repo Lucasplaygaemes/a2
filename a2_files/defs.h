@@ -292,7 +292,11 @@ typedef struct {
     bool word_wrap;
     bool auto_indent;
     bool paste_mode;
+    bool lsp_diagnostics;
+    bool lsp_completion;
+    bool lsp_hover;
     bool lsp_enabled;
+    
     int tab_size;
     bool expand_tab;
     int status_bar_mode;
