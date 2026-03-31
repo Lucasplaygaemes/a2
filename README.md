@@ -41,10 +41,6 @@ I want to make it the main way to configure a2, and it's shortcuts be changeable
 # Refactoring
 The code has 2 main parts that need to be refactored, the main structure, EditorState and the way that the code handles inputs, isn't the best also, so updates will be made to make it better, but those will take time, and so will delay others things.
 
-# Projects
-Now you can save "projects", the windows, workspaces, and files you open, all of them can be open with just a command!
-More explanation are in the Documentation!
-
 # Themes!
 Now a2 have themes! and they are quite easy to make, Themes will be searched in the default app folder, but, if no found, or if you want to add another folder, you can with the command :set themedir <dir>
 
