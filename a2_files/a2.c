@@ -466,37 +466,24 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             case KEY_CTRL_A: editor_find_previous(state); break;
                             case KEY_CTRL_G: display_directory_navigator(state); break;
                             case 'o':
-                            case KEY_UP:
+                            case KEY_UP: {
                                 int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
                                 for (int i = 0; i < repeat; i++) {
                                     if (state->current_line > 0) state->current_line--;
                                 }
-                                state->prefix_count = 0; // resets the counter
-                                state->is_dirty = true;
-                                if (state->word_wrap_enabled) {
-                                    if (state->current_line > 0) {
-                                        state->current_line--;
-                                        state->current_col = state->ideal_col;
-                                    }
-                                } else {
-                                    if (state->current_line > 0) {
-                                        state->current_line--;
-                                        state->current_col = state->ideal_col;
-                                    }
-                                }
+                                state->prefix_count = 0; 
+                                state->current_col = state->ideal_col;
                                 state->is_dirty = true;
                                 break;
+                            }
                             case 'l':
                             case KEY_DOWN: {
                                 int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
-                                for (int i = 0; i < state->num_lines; state->current_line++) {
+                                for (int i = 0; i < repeat; i++) {
                                     if (state->current_line < state->num_lines - 1) state->current_line++;
-                                    }
-                                state->prefix_count = 0;
-                                if (state->current_line < state->num_lines - 1) {
-                                    state->current_line++;
-                                    state->current_col = state->ideal_col;
                                 }
+                                state->prefix_count = 0;
+                                state->current_col = state->ideal_col;
                                 state->is_dirty = true;
                                 break;
                             }
