@@ -53,8 +53,7 @@ a2 isn't compatible with windows, and probably not with mac too.
 a2 should be compatible with theoretically every distro whom can run C and ncurse, others things may not work but the core functionality will.
 
 # TODO
-Now u can save files, i thought that, running all a2 as root, would be risky, so i made that when trying to save a file, if it fails because of permission, the code would ask if you want to save it as root, then make a copy of the current file, and move it to the designed place!
-Even though i could make with another ways, i have chosen this as the most secure, if there's a flaw, i will fix it as soon as possible.
+Now you can save files as root, will need to use the password of course, but will be able to save, and if something goes wrong it will show the error.
 I'm gonna make the shortcuts be user defined too, and saved in a .config file.
 
 # Contribuiting
