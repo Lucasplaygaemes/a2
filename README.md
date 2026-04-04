@@ -22,11 +22,7 @@ I'm being slow making any new releases, i have been really occupied so i don't h
 But i will keep try my best to fix and add things!
 
 # Important Updates
-Before keeping updating the spell or the settings menu or adding the sudo support, i have noticed that, the editor has a line limit! I will try to update it to make it variable.
-It will not be a easy to do though, i will need to update every single function that uses the *lines.
-It's been really hard making those updates, im truly busy recently, but will keep it up.
-I have made some changes and updated with a new thing, a settings file!
-Is very simple for now, but i will make it a lot more better in the future! every settings should be customize-able by the settings menu.
+Sudo as finally been added! and i will fix in the future the hard coded line limit! For now, i'm going to refactor the way a2 handle input, making it more customize-able, you will be able to change it in the settings, because it will be a really big change, i will made a new branch for it. 
 
 # Spell!
 The spell use's the Hunspell, it has every language and dictionary that it supports.
