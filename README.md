@@ -27,6 +27,9 @@ Sudo as finally been added! and i will fix in the future the hard coded line lim
 # Spell!
 The spell use's the Hunspell, it has every language and dictionary that it supports.
 
+# Input
+The refactoring of the input will make a lot of changes, so i made a branch and i want to start and finish it today, but i'm not sure if i can do that, so it may be a slow process.
+
 # Setting Menu!
 I will add an menu! to help to set configurations in the a2!
 It will contain the things about it, and you will be able to download languages for the spell checker from there!
