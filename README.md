@@ -17,6 +17,11 @@ Then, install the dependency's and run Make with
 # Documentation!
 Documentation is in - [**Documentation**](./index.md)
 
+# BIG CHANGES
+Finally! I Have taken a lot of time, i'm sorry, but now it's here!!!
+Now we have Keybindings, and u can change it! and it save! AND the keyboard shortcuts manual will be updated with the new kb!!!!
+There will be bugs, be aware of it, i will fix them!
+
 # New Release!
 I'm being slow making any new releases, i have been really occupied so i don't have a lot of time to spend on here.
 But i will keep try my best to fix and add things!
