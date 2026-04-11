@@ -10,6 +10,7 @@
 #include "cache.h"
 #include "themes.h"
 #include "diff.h"
+#include "settings.h"
 
 #include <sys/stat.h>
 #include <ctype.h> // For isspace
@@ -65,7 +66,7 @@ void process_command(EditorState *state, bool *should_exit) {
     } else if (strcmp(command, "help") == 0) {
         display_help_viewer("a2_help.txt");
     } else if (strcmp(command, "ksc") == 0) {
-        display_help_viewer("shortcuts_help.txt");
+        display_dynamic_ksc();
     } else if (strcmp(command, "gstatus") == 0) {
         char *const cmd[] = {"git", "status", NULL};
         criar_janela_terminal_generica(cmd);
@@ -302,6 +303,13 @@ void process_command(EditorState *state, bool *should_exit) {
           }
     } else if (strcmp(command, "lsp-list") == 0) {
         display_diagnostics_list(state); 
+    } else if (strcmp(command, "shortcuts-reset") == 0) {
+        load_ds_keybindings();
+    } else if (strcmp(command, "shortcuts-save") == 0) {
+        save_keybindings();
+        editor_set_status_msg(state, "Shortcuts saved to sc.a2");
+    } else if (strcmp(command, "shortcuts-generate-default") == 0) {
+        save_ds_keybindings();
     } else if (strcmp(command, "toggle_auto_indent") == 0) {
         state->auto_indent_on_newline = !state->auto_indent_on_newline;
         editor_set_status_msg(state, "Auto-indent on newline: %s", state->auto_indent_on_newline ? "ON" : "OFF");

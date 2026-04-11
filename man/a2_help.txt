@@ -8,6 +8,7 @@ Welcome to `a2`, a lightweight, fast, and configurable text editor inspired by V
 
 ## Core Features
 
+- *Configuration:* All settings, macros, and keyboard shortcuts are stored centrally in `~/.a2/`, making your environment easy to backup and portable.
 - *Spell Checker:* Real-time spell checking with suggestions (Tab completion) and hover-info for misspelled words. Activated conditionally for .txt files or when no Language Server Protocol (LSP) is active.
 - *Modal Editing:* Efficiently edit text with Normal, Insert, and Visual modes.
 - *Workspaces & Splits:* Organize your work across multiple workspaces, each with its own layout of split windows.

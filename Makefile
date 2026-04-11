@@ -71,6 +71,7 @@ install: all
 	@echo "Installing syntaxes and themes..."
 	sudo mkdir -p /usr/local/share/a2/syntaxes
 	sudo cp -r syntaxes/* /usr/local/share/a2/syntaxes/
+	sudo cp ds.a2 /usr/local/share/a2/ds.a2
 	@echo "Installing help files..."
 	sudo mkdir -p /usr/local/share/a2/man
 	sudo cp -r man/*.txt /usr/local/share/a2/man/

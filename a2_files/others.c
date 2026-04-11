@@ -6,7 +6,16 @@
 #include "fileio.h" // For load_last_line, save_last_line
 #include "window_managment.h"
 #include "command_execution.h"
+#include "cache.h"
+#include "settings.h"
+#include "diff.h"
+#include "project.h"
+#include "timer.h"
+#include "direct_navigation.h"
 #include <pthread.h>
+
+// Forward declarations
+void key_to_string(KeyBinding *kb, char *buf, size_t size);
 #include <unistd.h>
 #include <ctype.h>
 #include <ctype.h>
@@ -1641,6 +1650,66 @@ void editor_unindent_line(EditorState *state, int line_num) {
     }
 }
 
+void editor_join_line(EditorState *state) {
+    if (state->current_line >= state->num_lines - 1) return;
+    
+    state->buffer_modified = true;
+    push_undo(state);
+    clear_redo_stack(state);
+    
+    int next_line_idx = state->current_line + 1;
+    char *current_line = state->lines[state->current_line];
+    char *next_line = state->lines[next_line_idx];
+    
+    // Trim leading whitespace from next line
+    char *trimmed_next = next_line;
+    while (*trimmed_next && isspace(*trimmed_next)) trimmed_next++;
+    
+    int current_len = strlen(current_line);
+    int trimmed_next_len = strlen(trimmed_next);
+    
+    // Allocate space for combined line + space separator
+    char *new_line = malloc(current_len + trimmed_next_len + 2);
+    if (!new_line) return;
+    
+    strcpy(new_line, current_line);
+    // Add space if there isn't one already
+    if (current_len > 0 && !isspace(new_line[current_len - 1])) {
+        strcat(new_line, " ");
+        state->current_col = current_len;
+    } else {
+        state->current_col = current_len;
+    }
+    strcat(new_line, trimmed_next);
+    
+    free(state->lines[state->current_line]);
+    state->lines[state->current_line] = new_line;
+    
+    // Remove the next line
+    free(state->lines[next_line_idx]);
+    for (int i = next_line_idx; i < state->num_lines - 1; i++) {
+        state->lines[i] = state->lines[i+1];
+    }
+    state->num_lines--;
+    
+    mark_all_lines_dirty(state);
+    if (state->lsp_enabled) lsp_did_change(state);
+}
+
+void editor_expand_snippet(EditorState *state) {
+    if (state->completion_mode == COMPLETION_NONE || state->num_suggestions == 0) return;
+    
+    // Simple snippet logic: expand function calls into templates
+    char *suggestion = state->completion_suggestions[state->selected_suggestion];
+    if (strstr(suggestion, "(")) {
+        editor_apply_completion(state);
+        // After applying, if it's a function, we could add more logic here
+        editor_set_status_msg(state, "Snippet expanded.");
+    } else {
+        editor_apply_completion(state);
+    }
+}
+
 void editor_toggle_comment(EditorState *state) {
     state->buffer_modified = true;
     const char *comment_str = "//";
@@ -2473,4 +2542,175 @@ void editor_start_spell_completion(EditorState *state) {
         }
         state->completion_start_col = start;
     }
+}
+
+EditorAction get_action_from_key(int ch, bool alt, bool ctrl, int leader) {
+    for (int i = 1; i < ACT_COUNT; i++) {
+        if (global_bindings[i].key == ch &&
+            global_bindings[i].alt == alt &&
+            global_bindings[i].ctrl == ctrl &&
+            global_bindings[i].leader == leader) {
+            return global_bindings[i].action;
+        }
+    } 
+    return ACT_NONE;
+}
+
+bool is_leader_key(int ch) {
+    if (ch == 0) return false;
+    for (int i = 1; i < ACT_COUNT; i++) {
+        if (global_bindings[i].leader == ch) return true;
+    }
+    return false;
+}
+
+void execute_action(EditorAction action, EditorState *state, bool *should_exit) {
+    if (action == ACT_NONE) return;
+    
+    switch (action) {
+        case ACT_SAVE_FILE: save_file(state); break;
+        case ACT_OPENS_RECENT: display_recent_files(); break;
+        case ACT_FUZZY_FINDER: display_fuzzy_finder(state); break;
+        case ACT_EXPLORER: criar_janela_explorer(); break;
+        case ACT_CMD_PALLETE: display_command_palette(state); break;
+        case ACT_NEW_WINDOW: criar_nova_janela(NULL); break;
+        case ACT_CLOSE_WINDOW: fechar_janela_ativa(should_exit); break;
+        case ACT_NEW_WORKSPACE: criar_novo_workspace(); break;
+        case ACT_NEXT_WORKSPACE: ciclar_workspaces(1); break;
+        case ACT_PREV_WORKSPACE: ciclar_workspaces(-1); break;
+        case ACT_NEXT_WINDOW: proxima_janela(); break;
+        case ACT_PREV_WINDOW: janela_anterior(); break;
+        case ACT_CYCLE_LAYOUT: ciclar_layout(); break;
+        case ACT_ROTATE_WINDOWS: rotacionar_janelas(); break;
+        case ACT_TOGGLE_COMMENT: editor_toggle_comment(state); break;
+        case ACT_CHANGE_INSIDE_QUOTE: editor_change_inside_quotes(state, '"'); break;
+        case ACT_INDENT_LINE: editor_ident_line(state, state->current_line); break;
+        case ACT_UNINDENT_LINE: editor_unindent_line(state, state->current_line); break;
+        case ACT_JOIN_LINES: editor_join_line(state); break;
+        case ACT_NEXT_WORD: editor_move_to_next_word(state); break;
+        case ACT_PREV_WORD: editor_move_to_previous_word(state); break;
+        case ACT_FIND_LOCAL: editor_find(state); break;
+        case ACT_FIND_NEXT: editor_find_next(state); break;
+        case ACT_FIND_PREV: editor_find_previous(state); break;
+        case ACT_GREP_PROJECT: display_content_search(state, NULL); break;
+        case ACT_VIEW_ASSEMBLY: compile_and_view_assembly(state); break;
+        case ACT_GOTO_DEFINITION: process_lsp_definition(state); break;
+        case ACT_SHOW_SYMBOLS: process_lsp_symbols(state); break;
+        case ACT_DIFF_INTERACTIVE: start_interactive_diff(state); break;
+        case ACT_GIT_STATUS: { char *const cmd[] = {"git", "status", NULL}; criar_janela_terminal_generica(cmd); } break;
+        case ACT_EXPAND_SNIPPET: editor_expand_snippet(state); break;
+        
+        // Additional Sequences Logic
+        case ACT_GDB_DEBUG: prompt_and_create_gdb_workspace(); break;
+        case ACT_ASM_CONVERT: asm_convert_file(state, state->filename); break;
+        case ACT_GIT_ADD_U: { char *const cmd[] = {"git", "add", "-u", NULL}; criar_janela_terminal_generica(cmd); } break;
+        case ACT_DIR_NAVIGATOR: prompt_for_directory_change(state); break;
+        case ACT_PASTE_CLIPBOARD: paste_from_clipboard(state); break;
+        case ACT_PASTE_ABOVE: { state->current_col = 0; state->ideal_col = 0; editor_handle_enter(state); state->current_line--; editor_paste(state); } break;
+        case ACT_PASTE_GLOBAL_ABOVE: { state->current_col = 0; state->ideal_col = 0; editor_handle_enter(state); state->current_line--; editor_global_paste(state); } break;
+        case ACT_PASTE_BELOW: { state->current_col = strlen(state->lines[state->current_line]); editor_handle_enter(state); editor_paste(state); } break;
+        case ACT_PASTE_GLOBAL_BELOW: { state->current_col = strlen(state->lines[state->current_line]); editor_handle_enter(state); editor_global_paste(state); } break;
+        case ACT_GENERIC_INPUT: { char msg_buffer[256] = ""; generic_input_msg(state, msg_buffer); } break;
+        case ACT_YANK_PARAGRAPH: editor_yank_paragraph(state); break;
+        case ACT_NEXT_PARAGRAPH: {
+            state->is_dirty = true;
+            bool found_blank = false;
+            int i = state->current_line + 1;
+            while (i < state->num_lines) {
+                if (is_line_blank(state->lines[i])) { found_blank = true; break; }
+                i++;
+            }
+            while (i < state->num_lines) {
+                if (!is_line_blank(state->lines[i])) { state->current_line = i; break; }
+                i++;
+            }
+            if (!found_blank) state->current_line = state->num_lines - 1;
+            state->current_col = 0; state->ideal_col = 0;
+        } break;
+        case ACT_PREV_PARAGRAPH: {
+            state->is_dirty = true;
+            bool found_blank = false;
+            int i = state->current_line - 1;
+            while (i > 0) {
+                if (is_line_blank(state->lines[i])) { found_blank = true; break; }
+                i--;
+            }
+            while (i > 0) {
+                if (!is_line_blank(state->lines[i])) { state->current_line = i; break; }
+                i--;
+            }
+            if (!found_blank) state->current_line = 0;
+            state->current_col = 0; state->ideal_col = 0;
+        } break;
+
+        case ACT_SWITCH_TO_WS_1: mover_janela_para_workspace(0); break;
+        case ACT_SWITCH_TO_WS_2: mover_janela_para_workspace(1); break;
+        case ACT_SWITCH_TO_WS_3: mover_janela_para_workspace(2); break;
+        case ACT_SWITCH_TO_WS_4: mover_janela_para_workspace(3); break;
+        case ACT_SWITCH_TO_WS_5: mover_janela_para_workspace(4); break;
+        case ACT_SWITCH_TO_WS_6: mover_janela_para_workspace(5); break;
+        case ACT_SWITCH_TO_WS_7: mover_janela_para_workspace(6); break;
+        case ACT_SWITCH_TO_WS_8: mover_janela_para_workspace(7); break;
+        case ACT_SWITCH_TO_WS_9: mover_janela_para_workspace(8); break;
+
+        case ACT_MOVE_WIN_TO_POS_1: mover_janela_para_posicao(0); break;
+        case ACT_MOVE_WIN_TO_POS_2: mover_janela_para_posicao(1); break;
+        case ACT_MOVE_WIN_TO_POS_3: mover_janela_para_posicao(2); break;
+        case ACT_MOVE_WIN_TO_POS_4: mover_janela_para_posicao(3); break;
+        case ACT_MOVE_WIN_TO_POS_5: mover_janela_para_posicao(4); break;
+        case ACT_MOVE_WIN_TO_POS_6: mover_janela_para_posicao(5); break;
+        case ACT_MOVE_WIN_TO_POS_7: mover_janela_para_posicao(6); break;
+        case ACT_MOVE_WIN_TO_POS_8: mover_janela_para_posicao(7); break;
+        case ACT_MOVE_WIN_TO_POS_9: mover_janela_para_posicao(8); break;
+
+        case ACT_SAVE_PROJECT: project_save_session(NULL); break;
+        case ACT_LOAD_PROJECT: project_load_session(NULL); break; // Note: NULL will prompt for name if needed or use default
+        case ACT_LSP_RENAME: { char new_name[100] = ""; generic_input_msg(state, new_name); process_lsp_rename(state, new_name); } break;
+        case ACT_LSP_RESTART: process_lsp_restart(state); break;
+        case ACT_TIMER_REPORT: display_work_summary(); break;
+        case ACT_SETTINGS: criar_janela_settings_panel(); break;
+        case ACT_HELP: display_help_viewer("a2_help.txt"); break;
+        case ACT_KSC: display_dynamic_ksc(); break;
+        default: break;
+    }
+}
+
+void display_dynamic_ksc() {
+    char *temp_file = get_cache_filename("current_ksc.md");
+    if (!temp_file) return;
+
+    FILE *f = fopen(temp_file, "w");
+    if (!f) { free(temp_file); return; }
+
+    fprintf(f, "# Current Keyboard Shortcuts\n\n");
+    fprintf(f, "This list reflects your personal customizations. You can change these keys in *Alt+S > Keybindings*.\n\n");
+
+    const char* current_category = NULL;
+    for (int i = 1; i < ACT_COUNT; i++) {
+        const char* category = "Other";
+        if (i < ACT_NEW_WINDOW) category = "File Operations";
+        else if (i < ACT_TOGGLE_COMMENT) category = "Windows & Workspaces";
+        else if (i < ACT_FIND_LOCAL) category = "Editing";
+        else if (i < ACT_SETTINGS) category = "Search & Tools";
+        else category = "System";
+
+        if (current_category == NULL || strcmp(current_category, category) != 0) {
+            current_category = category;
+            fprintf(f, "\n## %s\n", category);
+        }
+
+        char key_text[32];
+        key_to_string(&global_bindings[i], key_text, sizeof(key_text));
+        
+        fprintf(f, "- *%-15s* : %s (%s)\n", 
+                key_text, 
+                global_bindings[i].name,
+                global_bindings[i].desc);
+    }
+
+    fprintf(f, "\n\n---\n*Use '/' to search for actions or keys.*");
+    fclose(f);
+
+    display_help_viewer(temp_file);
+    free(temp_file);
 }

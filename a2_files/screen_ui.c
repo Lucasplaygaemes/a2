@@ -83,14 +83,20 @@ WINDOW *draw_pop_up(const char *message, int y, int x) {
    
    if (win_width > term_cols) win_width = term_cols;
    if (win_height > term_cols) win_height = term_cols;
-   if (win_width >  term_cols - 2) win_width = term_cols - 2;
+   if (win_width > term_cols - 2) win_width = term_cols - 2;
    
-   if (y + win_height > term_rows) {
+   if (y == -1) {
+       y = (term_rows - win_height) / 2;
+   } else if (y + win_height > term_rows) {
        y = term_rows - win_height;
    }
-   if (x + win_width > term_cols) {
-       x = term_cols;
+
+   if (x == -1) {
+       x = (term_cols - win_width) / 2;
+   } else if (x + win_width > term_cols) {
+       x = term_cols - win_width;
    }
+
    if (x < 0) x = 0;
    if (y < 0) y = 0;
    

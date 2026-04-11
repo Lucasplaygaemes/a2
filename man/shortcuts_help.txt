@@ -2,6 +2,8 @@
 
 This page lists the keyboard shortcuts for the `a2` editor.
 
+**Note:** All shortcuts below are the defaults. You can customize every action in the editor by going to *Alt+S > Keybindings*. Your changes will be saved to `~/.a2/sc.a2`.
+
 ## Global Shortcuts
 - *Alt+T* : Open the unified Command Palette.
 - *Alt+F* : Open the Fuzzy Finder to search for project files.

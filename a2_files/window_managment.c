@@ -783,6 +783,17 @@ void redesenhar_todas_as_janelas() {
                     draw_diagnostic_popup(active_jw->win, state, diag->message);
                 }
             }
+        } else if (active_jw->tipo == TIPOJANELA_SETTINGS_PANEL && active_jw->settings_state) {
+            if (active_jw->settings_state->is_assigning_key) {
+                const char *msg = (active_jw->settings_state->assigning_stage == 0) ? 
+                                  " PRESS THE NEW KEY COMBINATION " : 
+                                  " LEADER SET! PRESS THE SECOND KEY ";
+                WINDOW *pop = draw_pop_up(msg, -1, -1);
+                if (pop) {
+                    wnoutrefresh(pop);
+                    delwin(pop); // wnoutrefresh copied the content to the buffer, so we can delete the window
+                }
+            }
         }
     }
 
@@ -1882,19 +1893,25 @@ void display_help_viewer(const char* filename) {
     char path[PATH_MAX];
     FILE *f = NULL;
     
-    if (executable_dir[0] != '\0') {
-        snprintf(path, sizeof(path), "%s/man/%s", executable_dir, filename);
+    if (filename[0] == '/') {
+        strncpy(path, filename, PATH_MAX - 1);
+        path[PATH_MAX - 1] = '\0';
         f = fopen(path, "r");
-    }
-    
-    if (!f) {
-        snprintf(path, sizeof(path), "/usr/local/share/a2/man/%s", filename);
-        f = fopen(path, "r");
-    }
-    
-    if (!f) {
-        snprintf(path, sizeof(path), "man/%s", filename);
-        f = fopen(path, "r");
+    } else {
+        if (executable_dir[0] != '\0') {
+            snprintf(path, sizeof(path), "%s/man/%s", executable_dir, filename);
+            f = fopen(path, "r");
+        }
+        
+        if (!f) {
+            snprintf(path, sizeof(path), "/usr/local/share/a2/man/%s", filename);
+            f = fopen(path, "r");
+        }
+        
+        if (!f) {
+            snprintf(path, sizeof(path), "man/%s", filename);
+            f = fopen(path, "r");
+        }
     }
     
     if (f) {

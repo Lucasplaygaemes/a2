@@ -8,6 +8,7 @@
 #include "git_utils.h"
 #include "window_managment.h"
 #include "cache.h"
+#include "settings.h"
 
 #include <limits.h> // For PATH_MAX
 #include <errno.h> // For errno, ENOENT
@@ -571,13 +572,9 @@ void handle_file_recovery(EditorState *state, const char *original_filename, con
 
 // Helper to get the path for the macros file
 void get_macros_filename(char *buffer, size_t size) {
-    const char *home_dir = getenv("HOME");
-    if (home_dir) {
-        snprintf(buffer, size, "%s/.a2_macros", home_dir);
-    } else {
-        // Fallback if HOME is not set
-        snprintf(buffer, size, ".a2_macros");
-    }
+    char dir[PATH_MAX];
+    ensure_a2_config_dir(dir, sizeof(dir));
+    snprintf(buffer, size, "%s/macros.a2", dir);
 }
 
 void save_macros(EditorState *state) {
@@ -617,26 +614,27 @@ void save_macros(EditorState *state) {
 
 void load_macros(EditorState *state) {
     char path[PATH_MAX];
-    FILE *f = NULL;
+    get_macros_filename(path, sizeof(path));
+    FILE *f = fopen(path, "r");
 
-    // 1. Try to load from the user's home directory first.
-    const char *home_dir = getenv("HOME");
-    if (home_dir) {
-        snprintf(path, sizeof(path), "%s/.a2_macros", home_dir);
-        f = fopen(path, "r");
+    // 1. Try centralized path first
+    if (!f) {
+        // Fallback to old home directory file for backward compatibility during transition
+        const char *home_dir = getenv("HOME");
+        if (home_dir) {
+            snprintf(path, sizeof(path), "%s/.a2_macros", home_dir);
+            f = fopen(path, "r");
+        }
     }
 
-    // 2. If not found in home, try the current working directory (project root).
+    // 2. If not found, try the current working directory (project root).
     if (!f) {
         snprintf(path, sizeof(path), ".a2_macros");
         f = fopen(path, "r");
     }
 
     // 3. If still not found, do nothing.
-    if (!f) {
-        // File doesn't exist in either location, which is fine.
-        return;
-    }
+    if (!f) return;
 
     // Clear existing macros before loading
     for (int i = 0; i < 26; i++) {
