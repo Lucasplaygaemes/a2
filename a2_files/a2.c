@@ -148,7 +148,17 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
             case KEY_ENTER: case '\n':
                 editor_apply_completion(state);
                 return;
-            case 27: // ESC
+            case 27: // ESC or Alt
+                nodelay(active_win, TRUE);
+                wint_t completion_next_ch;
+                int completion_get_result = wget_wch(active_win, &completion_next_ch);
+                nodelay(active_win, FALSE);
+                
+                if (completion_get_result != ERR && (completion_next_ch == 's' || completion_next_ch == 'S')) {
+                    editor_expand_snippet(state);
+                    return; // Snippet handled, stay in completion mode if possible
+                }
+                
                 editor_end_completion(state);
                 return;
             default: 
@@ -158,17 +168,16 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         }
     }
         
-    if (ch == 27 || ch == 31) { // ESC or Altƚƚ
+    if (ch == 27 || ch == 31) { // ESC or Alt
         nodelay(active_win, TRUE);
         wint_t next_ch;
         int get_result = wget_wch(active_win, &next_ch);
         nodelay(active_win, FALSE);
 
-        if (get_result == ERR) { // Just a single ESC press
-            // Cancel any pending multi-key sequence
+        if (get_result == ERR) { // Pure ESC
             if (state->pending_sequence_key != 0) {
                 state->pending_sequence_key = 0;
-                editor_set_status_msg(state, ""); // Clear status message
+                editor_set_status_msg(state, "");
             } else if (state->mode == INSERT || state->mode == VISUAL) {
                 state->mode = NORMAL;
             }
@@ -179,179 +188,63 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 state->move_register = NULL;
                 editor_set_status_msg(state, "Move cancelled.");
             }
-        } else { // Alt sequence or a sequence key
+        } else { 
+            // 1. If we have a pending leader, try to resolve it
             if (state->pending_sequence_key != 0) {
-                wint_t first_key = state->pending_sequence_key;
-                state->pending_sequence_key = 0; // Reset for the next sequence
-
-                if (first_key == 'd') {
-                    if (next_ch == 'd') {
-                        // ACTION for Alt+d, d
-                        prompt_and_create_gdb_workspace();
-                    } else if (next_ch == 'e') {
-                        // ACTION for Alt+d, e
-                        display_fuzzy_finder(state);
-                    } else if (next_ch == 'l') {
-                        asm_convert_file(state, state->filename);
-                    } else if (next_ch == 'f') {
-                        process_lsp_definition(state);
-                    } else {
-                        editor_set_status_msg(state, "Unknown sequence: Alt+d, %lc", next_ch);
-                    }
-                } else if (first_key == 'g') {
-                    if (next_ch == 'a') {
-                        char *const cmd[] = {"git", "add", "-u", NULL};
-                        criar_janela_terminal_generica(cmd);
-                    } else if (next_ch == 's') {
-                        char *const cmd[] = {"git", "status", NULL};
-                        criar_janela_terminal_generica(cmd);
-                    } else if (next_ch == 'g') {
-                        prompt_for_directory_change(state);
-                    } else if (next_ch == 'd') {
-                        start_interactive_diff(state);
-                    } else {
-                        editor_set_status_msg(state, "Unknown sequence: Alt+z, %lc", next_ch);
-                    }
-                } else if (first_key == 'y') {
-                    if (next_ch == 'p') {
-                        editor_yank_paragraph(state);
-                    } else {
-                        editor_set_status_msg(state, "Unknown sequence: Alt+y, %lc", next_ch);
-                    }
-                } else if (first_key == 'p') {
-                    if (next_ch == 'c') {
-                        paste_from_clipboard(state);
-                    }
-                    
-                    if (next_ch == 'a') {
-                        state->current_col = 0;
-                        state->ideal_col = 0;
-                        editor_handle_enter(state);
-                        state->current_line--;
-                        editor_paste(state);
-                    } else if (next_ch == 'P') {
-                        state->current_col = 0;
-                        state->ideal_col = 0;
-                        editor_handle_enter(state);
-                        state->current_line--;
-                        editor_global_paste(state);
-                    }  else if (next_ch == 'u') {
-                        state->current_col = strlen(state->lines[state->current_line]);
-                        editor_handle_enter(state);
-                        editor_paste(state);
-                    } else if (next_ch == 'U') {
-                        state->current_col = strlen(state->lines[state->current_line]);
-                        editor_handle_enter(state);
-                        editor_global_paste(state);
-                    } else if (next_ch == 't') {
-                        char msg_buffer[256] = ""; // Use a mutable buffer
-                        generic_input_msg(state, msg_buffer);
-                    }
-                        
-                }                
-                
-                // You can add more sequences here, e.g., else if (first_key == 'g') { ... }
-
-            } else { // This is the first key of a potential sequence or a single Alt shortcut
-                // --- Check for keys that START a sequence ---
-                if (next_ch == 'd') {
-                    state->pending_sequence_key = 'd'; // Use lowercase for consistency
-                    editor_set_status_msg(state, "(Alt+d)...");
-                } else if (next_ch == 'g') {
-                    state->pending_sequence_key = 'g';
-                    editor_set_status_msg(state, "(Alt+g)...");
-                } else if (next_ch == 'p') {
-                    state->pending_sequence_key = 'p';
-                    editor_set_status_msg(state, "(Alt+p)...");
-                } else if (next_ch == 'y') {
-                    state->pending_sequence_key = 'y';
-                    editor_set_status_msg(state, "(Alt+y)...");
-                }
-                
-                // --- Handle all other single Alt shortcuts ---
-                else if (next_ch == 'e') criar_janela_explorer();
-                else if (next_ch == 'n') ciclar_workspaces(-1);
-                else if (next_ch == 'm') ciclar_workspaces(1);
-                else if (next_ch == 'W') save_file(state);
-                else if (next_ch == '\n' || next_ch == KEY_ENTER) criar_nova_janela(NULL);
-                else if (next_ch == 'x' || next_ch == 'X') fechar_janela_ativa(should_exit);
-                else if (next_ch == 'c') editor_toggle_comment(state);
-                else if (next_ch == 'C') editor_change_inside_quotes(state, '"');
-                else if (next_ch == 'b' || next_ch == 'B') display_recent_files();
-                // The old 'd' logic is now handled above as a sequence starter
-                else if (next_ch == 'h' || next_ch == 'H') gf2_starter();
-                else if (next_ch == 'f' || next_ch == 'F') display_fuzzy_finder(state);
-                else if (next_ch == 'w') editor_move_to_next_word(state);
-                else if (next_ch == 'b' || next_ch == 'q') editor_move_to_previous_word(state);
-                else if (next_ch == '.' || next_ch == '>') ciclar_layout();
-                else if (next_ch >= '1' && next_ch <= '9') mover_janela_para_workspace(next_ch - '1');
-                else if (next_ch == 'a' || next_ch == 'A') {
-                    compile_and_view_assembly(state);
+                EditorAction act = get_action_from_key(next_ch, false, false, state->pending_sequence_key);
+                state->pending_sequence_key = 0;
+                if (act != ACT_NONE) {
+                    execute_action(act, state, should_exit);
                     return;
-                    }
-                else if (strchr("!@#$%^&*( ", next_ch)) {
-                    const char* symbols = "!@#$%^&*(";
-                    char* p = strchr(symbols, next_ch);
-                    if (p) mover_janela_para_posicao(p - symbols);
-                }
-                else if (next_ch == 't' || next_ch == 'T') display_command_palette(state);
-                else if (next_ch == 'r' || next_ch == 'R') rotacionar_janelas();
-                else if (next_ch == 'S') criar_janela_settings_panel();
-                else if (next_ch == 's') {
-                    display_content_search(state, NULL);
-                }
-                else if (next_ch == '\t') { // Tab
-                    if (state->mode == VISUAL) {
-                        int start_line, end_line;
-                        if (state->selection_start_line < state->current_line) {
-                            start_line = state->selection_start_line;
-                            end_line = state->current_line;
-                        } else {
-                            start_line = state->current_line;
-                            end_line = state->selection_start_line;
-                        }
-                        for (int i = start_line; i <= end_line; i++) {
-                            editor_ident_line(state, i);
-                        }
-                    } else {
-                       editor_ident_line(state, state->current_line);
-                    }
-                    flushinp(); // Discard any pending typeahead to prevent key repeat issues
-                }
-                else if (next_ch == 'y' || next_ch == 'Y') { // Changed from 'o' to 'y' for system clipboard copy
-                    if (state->mode == VISUAL && state->visual_selection_mode != VISUAL_MODE_NONE) copy_selection_to_clipboard(state);
-                }
-                // Removed Alt+k for global paste. Use 'P' in NORMAL mode instead.
-                else if (next_ch == 'j' || next_ch == 'J') {
-                    state->current_col = strlen(state->lines[state->current_line]);
-                    editor_handle_enter(state);
-                    editor_global_paste(state);
-                }
-                else if (next_ch == 'p' || next_ch == 'P') {
-                    if (state->mode == NORMAL || state->mode == INSERT) paste_from_clipboard(state);
-                    else if (state->mode == VISUAL && state->visual_selection_mode != VISUAL_MODE_NONE) {
-                        editor_delete_selection(state);
-                        paste_from_clipboard(state);
-                    }
-                }
-                else if (next_ch == 'v' || next_ch == 'V') { // Global Paste
-                    if (state->mode == VISUAL && state->visual_selection_mode != VISUAL_MODE_NONE) {
-                        editor_delete_selection(state);
-                        editor_global_paste(state);
-                    } else { // NORMAL or INSERT
-                        editor_global_paste(state);
-                    }
                 }
             }
-        }
-        return; // End processing here
-    }
 
-    if (ch == KEY_CTRL_W) {
-        criar_novo_workspace();
+            // 2. Check if this key is a LEADER for any registered sequence
+            if (is_leader_key(next_ch)) {
+                state->pending_sequence_key = next_ch;
+                editor_set_status_msg(state, "(Alt+%c)...", (char)next_ch);
+                return;
+            }
+
+            // 3. Try global actions (Single Alt+Key or Sequence with Leader)
+            EditorAction action = get_action_from_key(next_ch, true, false, 0);
+            if (action == ACT_NONE && state->pending_sequence_key != 0) {
+                // Try resolving sequence
+                action = get_action_from_key(next_ch, false, false, state->pending_sequence_key);
+                state->pending_sequence_key = 0;
+            }
+
+            if (action != ACT_NONE) {
+                execute_action(action, state, should_exit);
+                return;
+            }
+
+            // 4. If no action found, check if it's a prefix for sequences
+            if (is_leader_key(next_ch)) {
+                state->pending_sequence_key = next_ch;
+                editor_set_status_msg(state, "(Alt+%lc)...", next_ch);
+            } else if (next_ch == '\t') { 
+                if (state->mode == VISUAL) {
+                    int start_line, end_line;
+                    if (state->selection_start_line < state->current_line) { start_line = state->selection_start_line; end_line = state->current_line; }
+                    else { start_line = state->current_line; end_line = state->selection_start_line; }
+                    for (int i = start_line; i <= end_line; i++) editor_ident_line(state, i);
+                } else { editor_ident_line(state, state->current_line); }
+                flushinp();
+            }
+        }
         return;
     }
-        switch (state->mode) {
+
+    // Global Ctrl and Key check
+    bool is_ctrl = (ch > 0 && ch < 32 && ch != 10 && ch != 13 && ch != 9); // Exclude Enter/Tab
+    EditorAction global_act = get_action_from_key(ch, false, is_ctrl, 0);
+    if (global_act != ACT_NONE) {
+        execute_action(global_act, state, should_exit);
+        return;
+    }
+
+    switch (state->mode) {
             case VISUAL:
                 switch (ch) {
                     case 22: // Ctrl+V for local paste
@@ -548,52 +441,6 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         }
                         state->is_dirty = true;
                         return;
-                    case '}': { 
-                        state->is_dirty = true;
-                        bool found_blank = false;
-                        int i = state->current_line + 1;
-                        while (i < state->num_lines) {
-                            if (is_line_blank(state->lines[i])) {
-                                found_blank = true;
-                                break;
-                            }
-                            i++;
-                        }
-                        while (i < state->num_lines) {
-                            if (!is_line_blank(state->lines[i])) {
-                                state->current_line = i;
-                                break;
-                            }
-                            i++;
-                        }
-                        if (!found_blank) state->current_line = state->num_lines - 1;
-                        state->current_col = 0;
-                        state->ideal_col = 0;
-                        break;
-                    }
-                    case '{': {
-                        state->is_dirty = true;
-                        bool found_blank = false;
-                        int i = state->current_line - 1;
-                        while (i > 0) {
-                            if (is_line_blank(state->lines[i])) {
-                                found_blank = true;
-                                break;
-                            }
-                            i--;
-                        }
-                        while (i > 0) {
-                            if (!is_line_blank(state->lines[i])) {
-                                state->current_line = i;
-                                break;
-                            }
-                            i--;
-                        }
-                        if (!found_blank) state->current_line = 0;
-                        state->current_col = 0;
-                        state->ideal_col = 0;
-                        break;
-                    }
                     case 'y':
                         state->is_dirty = true;
                         state->pending_operator = ch;
@@ -695,6 +542,9 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         state->current_line = state->num_lines - 1;
                         state->current_col = 0;
                         state->ideal_col = 0;
+                        break;
+                    case 'J':
+                        editor_join_line(state);
                         break;
                     case 'g':
                         state->is_dirty = true;
@@ -834,30 +684,14 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     }
 }    
 
-bool handle_global_shortcut(int ch, bool *should_exit) {
-    switch (ch) {
-        // --- Workspace Shortcuts ---
-        case 'n':
-        case 'm':
-            ciclar_workspaces(ch == 'm' ? 1 : -1);
-            return true; // Shortcut consumed
-
-        // --- Window Shortcuts ---
-        case 'x':
-        case 'X':
-            fechar_janela_ativa(should_exit);
-            return true; // Shortcut consumed
-            
-        case '\n':
-        case KEY_ENTER:
-            criar_nova_janela(NULL);
-            return true; // Shortcut consumed
-        
-        // Add other global Alt shortcuts HERE
-
-        default:
-            return false; // Not a global shortcut, so the active window should handle it
+bool handle_global_shortcut(int ch, bool alt, bool ctrl, bool *should_exit) {
+    EditorAction action = get_action_from_key(ch, alt, ctrl, 0);
+    if (action != ACT_NONE) {
+        JanelaEditor *active_jw = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx];
+        execute_action(action, active_jw->estado, should_exit);
+        return true;
     }
+    return false;
 }
 
 
@@ -885,6 +719,8 @@ int main(int argc, char *argv[]) {
     setlocale(LC_ALL, "");
     inicializar_ncurses();
     load_global_config();
+    reset_bindings_to_default();
+    load_keybindings();
     
     char *default_theme_name = load_default_theme_name();
     bool theme_loaded = false;
@@ -1017,7 +853,11 @@ int main(int argc, char *argv[]) {
                     } 
                     // Check for Alt shortcuts
                     else if (len == 2 && input_buf[0] == 27) { // Check for Alt + key
-                        if (handle_global_shortcut(input_buf[1], &should_exit)) {
+                        if (handle_global_shortcut(input_buf[1], true, false, &should_exit)) {
+                            atalho_consumido = true;
+                        }
+                    } else if (len == 1) { // Check for Ctrl shortcuts
+                        if (handle_global_shortcut(input_buf[0], false, true, &should_exit)) {
                             atalho_consumido = true;
                         }
                     }
@@ -1035,12 +875,12 @@ int main(int argc, char *argv[]) {
                         int next_ch = wgetch(stdscr);
                         nodelay(stdscr, FALSE);
                         if (next_ch != ERR) {
-                            handle_global_shortcut(next_ch, &should_exit);
+                            handle_global_shortcut(next_ch, true, false, &should_exit);
                         }
-                    } else if (ch == KEY_CTRL_RIGHT_BRACKET) {
-                        proxima_janela();
-                    } else if (ch == KEY_CTRL_LEFT_BRACKET) {
-                        janela_anterior();
+                    } else {
+                        // Check for Ctrl/Simple shortcuts
+                        bool is_ctrl = (ch > 0 && ch < 32 && ch != 10 && ch != 13 && ch != 9);
+                        handle_global_shortcut(ch, false, is_ctrl, &should_exit);
                     }
                 }
             }

@@ -633,12 +633,43 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
             }
             break;
         case 'p':
+            run_and_display_command("git push", "Git Push Result");
+            break;
+        case 'P':
             state->show_preview = !state->show_preview;
             state->is_dirty = true;
             break;
-        case 'P':     // push
-            run_and_display_command("git push", "Git Push Result");
-            break;
+        case 'x': // batch cut
+           if (state->clipboard_paths) {
+               for(int i = 0; i < state->num_clipboard_items; i++) free(state->clipboard_paths[i]);
+               free(state->clipboard_paths);
+               state->clipboard_paths = NULL;
+           }
+           state->num_clipboard_items = 0;
+           
+           if (state->num_selected > 0) {
+               state->clipboard_paths = malloc(sizeof(char*) * state->num_selected);
+               for (int i = 0; i < state->num_entries; i++) {
+                   if (state->is_selected[i]) {
+                       char full_path[PATH_MAX];
+                       snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[i]);
+                       state->clipboard_paths[state->num_clipboard_items++] = strdup(full_path);
+                   }
+               }
+           } else if (state->num_entries > 0) {
+               state->clipboard_paths = malloc(sizeof(char*) * 1);
+               char full_path[PATH_MAX];
+               snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[state->selection]);
+               state->clipboard_paths[0] = strdup(full_path);
+               state->num_clipboard_items = 1;
+           }
+           
+           state->clipboard_operation = OP_CUT;
+           snprintf(state->status_msg, sizeof(state->status_msg), "Cut %d items.", state->num_clipboard_items);
+           memset(state->is_selected, 0, state->num_entries * sizeof(bool));
+           state->num_selected = 0;
+           state->is_dirty = true;
+           break;
         case 'q':
             fechar_janela_ativa(should_exit);
             break;
