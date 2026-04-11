@@ -59,7 +59,9 @@ This page details the commands available in Command Mode (activated with *:*).
 - *:diff [f1] [f2]*: Shows file differences. Runs interactively if args omitted. Can be triggered from explorer with 'D'.
 - *:timer*: Shows the work time report.
 - *:set <option>*: Changes a setting. Options: `paste`, `nopaste`, `wrap`, `nowrap`, `bar <0|1>`, `themedir <path>`, `spelllang <lang>` (sets default, downloads if needed, but won't re-download if already present), `nospell`.
+- *:shortcuts-reset*: Reloads default shortcuts from `ds.a2`.
+- *:shortcuts-save*: Saves current shortcut configuration to `~/.a2/sc.a2`.
 - *:toggle_auto_indent*: Toggles auto-indent on new lines.
-- *:savemacros*: Saves current macros to `~/.a2_macros`.
-- *:loadmacros*: Loads macros from the file.
+- *:savemacros*: Saves current macros to `~/.a2/macros.a2`.
+- *:loadmacros*: Loads macros from the config folder.
 - *:listmacros*: Displays all loaded macros.
