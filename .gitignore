@@ -55,10 +55,17 @@ dkms.conf
 # debug information files
 *.dwo
 
-#a2 files
-.sv
-.pos
-.a2
+# a2 files
+*.sv
+*.pos
+.a2/
+sc.a2
+settings.a2
+macros.a2
+work_timer.log
+editor_lsp.log
+lsp_log.txt
+jntd_debug.log
 
 # assembly outputs
 .s
