@@ -31,7 +31,7 @@ The spell use's the Hunspell, it has every language and dictionary that it suppo
 The refactoring of the input will make a lot of changes, so i made a branch and i want to start and finish it today, but i'm not sure if i can do that, so it may be a slow process.
 
 # Setting Menu
-The a2 as a settings menu, where you can personlize the it's experinece, it's a simple one and don't have too many options, for now at least.
+The a2 as a settings menu, where you can personlize it's experience, it's a simple one and don't have too many options, for now at least.
 
 # Refactoring
 The code has 2 main parts that need to be refactored, the main structure, EditorState and the way that the code handles inputs, isn't the best also, so updates will be made to make it better, but those will take time, and so will delay others things.
