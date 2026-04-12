@@ -1,5 +1,5 @@
 ## A2
-A2 is an text editor vim alike and emacs alike, this isn't a project where i want to surpass or be in the same ground as those two, making it for hobby and to learn C better!
+A2 is a text editor inspired by Vim and Emacs. This isn't a project where I intend to surpass or compete with those two; I am building it as a hobby to learn the C language better!
 <img width="1920" height="1016" alt="image" src="https://github.com/user-attachments/assets/e3daf5d7-c7c5-4f83-b85d-756793cd2e5b" />
 
 
@@ -49,11 +49,7 @@ This is a things that i made mostly of fun and learning experience!
 
 # Multiplatform?
 a2 isn't compatible with windows, and probably not with mac too.
-a2 should be compatible with theoretically every distro whom can run C and ncurse, others things may not work but the core functionality will.
+a2 should be compatible with theoretically every distr
 
-# TODO
-Now you can save files as root, will need to use the password of course, but will be able to save, and if something goes wrong it will show the error.
-I'm gonna make the shortcuts be user defined too, and saved in a .config file.
-
-# Contribuiting
-I would be really grateful if you want to improve the code, it's always open to commits. and if you want you can contact me via my email. My email is lucasplaygaemes@gmail.com, we can chat by email.
+## Contributing
+Contributions are welcome! Whether it's fixing bugs, improving documentation, or refactoring code, feel free to open a Pull Request. Since this is a learning project, feedback on C best practices is especially appreciated.
