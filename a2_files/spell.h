@@ -1,7 +1,12 @@
 #ifndef SPELL_H
 #define SPELL_H
 
+#if __has_include(<hunspell/hunspell.h>)
+#include <hunspell/hunspell.h>
+#else
 #include <hunspell.h>
+#endif
+
 #include <stdbool.h>
 
 void spell_log(const char *message);
