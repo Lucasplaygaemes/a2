@@ -30,18 +30,11 @@ The spell use's the Hunspell, it has every language and dictionary that it suppo
 # Input
 The refactoring of the input will make a lot of changes, so i made a branch and i want to start and finish it today, but i'm not sure if i can do that, so it may be a slow process.
 
-# Setting Menu!
-I will add an menu! to help to set configurations in the a2!
-It will contain the things about it, and you will be able to download languages for the spell checker from there!
-It will probably contain too the settings panel for the plugins, that we discuss later.
-This is a hard to thing to make, so it will be a slow process.
-I want to make it the main way to configure a2, and it's shortcuts be changeable and make the most out of customization! It will be a slow, but great thing to add!
+# Setting Menu
+The a2 as a settings menu, where you can personlize the it's experinece, it's a simple one and don't have too many options, for now at least.
 
 # Refactoring
 The code has 2 main parts that need to be refactored, the main structure, EditorState and the way that the code handles inputs, isn't the best also, so updates will be made to make it better, but those will take time, and so will delay others things.
-
-# Themes!
-Now a2 have themes! and they are quite easy to make, Themes will be searched in the default app folder, but, if no found, or if you want to add another folder, you can with the command :set themedir <dir>
 
 # Assembly!
 Because i'm learning assembly, a new function was added to the code to help me understand better what C functions turned in what in assembly, i will fix any bugs that i find.
