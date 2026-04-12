@@ -362,7 +362,20 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     
                     if (state->show_line_numbers && line_offset == 0) {
                         wattron(win, COLOR_PAIR(8) | A_DIM);
-                        mvwprintw(win, screen_y + border_offset, border_offset, "%*d ", line_number_width - 1, file_line_idx + 1);
+                        int display_num;
+                        if (global_config.relative_line_numbers) {
+                            if (file_line_idx == state->current_line) {
+                                display_num = file_line_idx + 1;
+                                wattroff(win, A_DIM);
+                                wattron(win, A_BOLD);
+                            } else {
+                                display_num = abs(file_line_idx - state->current_line);
+                            }
+                        } else {
+                            display_num = file_line_idx + 1;
+                        }
+                        mvwprintw(win, screen_y + border_offset, border_offset, "%*d ", line_number_width - 1, display_num);
+                        wattroff(win, A_BOLD);
                         wattroff(win, COLOR_PAIR(8) | A_DIM);
                         wmove(win, screen_y + border_offset, border_offset + line_number_width);
                     }
@@ -444,8 +457,8 @@ void editor_redraw(WINDOW *win, EditorState *state) {
 
                                 if (max(segment_start_col, diag_start_col) < min(segment_end_col, diag_end_col)) {
                                     int y_pos = screen_y + border_offset;
-                                    int start_x = border_offset + get_visual_col(line + segment_start_col, max(0, diag_start_col - segment_start_col));
-                                    int end_x = border_offset + get_visual_col(line + segment_start_col, min(break_pos, diag_end_col - segment_start_col));
+                                    int start_x = border_offset + line_number_width + get_visual_col(line + segment_start_col, max(0, diag_start_col - segment_start_col));
+                                    int end_x = border_offset + line_number_width + get_visual_col(line + segment_start_col, min(break_pos, diag_end_col - segment_start_col));
                                     
                                     int color_pair;
                                     switch (diag->severity) {
@@ -499,11 +512,23 @@ void editor_redraw(WINDOW *win, EditorState *state) {
 
                 char *line = state->lines[line_idx];
 
-                // --- NOVO: Desenha o número da linha ---
                 if (state->show_line_numbers) {
                     wattron(win, COLOR_PAIR(8) | A_DIM); // Cor padrão, um pouco esmaecida
+                    int display_num;
+                    if (global_config.relative_line_numbers) {
+                        if (line_idx == state->current_line) {
+                            display_num = line_idx + 1;
+                            wattroff(win, A_DIM);
+                            wattron(win, A_BOLD);
+                        } else {
+                            display_num = abs(line_idx - state->current_line);
+                        }
+                    } else {
+                        display_num = line_idx + 1;
+                    }
+                        
                     // Desenha alinhado à direita
-                    mvwprintw(win, i + border_offset, border_offset, "%*d ", line_number_width - 1, line_idx + 1);
+                    mvwprintw(win, i + border_offset, border_offset, "%*d ", line_number_width - 1, display_num);
                     wattroff(win, COLOR_PAIR(8) | A_DIM);
                     wmove(win, i + border_offset, border_offset + line_number_width);
                 }
@@ -603,10 +628,10 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         LspDiagnostic *diag = &state->lsp_document->diagnostics[d];
                         if (diag->range.start.line == line_idx) {
                             int y_pos = i + border_offset;
-                            int start_x = border_offset + get_visual_col(line, diag->range.start.character) - state->left_col;
-                            int end_x = border_offset + get_visual_col(line, diag->range.end.character) - state->left_col;
+                            int start_x = border_offset + line_number_width + get_visual_col(line, diag->range.start.character) - state->left_col;
+                            int end_x = border_offset + line_number_width + get_visual_col(line, diag->range.end.character) - state->left_col;
 
-                            if (start_x < border_offset) start_x = border_offset;
+                            if (start_x < border_offset + line_number_width) start_x = border_offset + line_number_width;
                             if (end_x > cols - border_offset) end_x = cols - border_offset;
 
                             if (start_x < end_x) {

@@ -22,14 +22,13 @@ I'm being slow making any new releases, i have been really occupied so i don't h
 But i will keep try my best to fix and add things!
 
 # Important Updates
-Before keeping updating the spell or the settings menu or adding the sudo support, i have noticed that, the editor has a line limit! I will try to update it to make it variable.
-It will not be a easy to do though, i will need to update every single function that uses the *lines.
-It's been really hard making those updates, im truly busy recently, but will keep it up.
-I have made some changes and updated with a new thing, a settings file!
-Is very simple for now, but i will make it a lot more better in the future! every settings should be customize-able by the settings menu.
+Sudo as finally been added! and i will fix in the future the hard coded line limit! For now, i'm going to refactor the way a2 handle input, making it more customize-able, you will be able to change it in the settings, because it will be a really big change, i will made a new branch for it. 
 
 # Spell!
 The spell use's the Hunspell, it has every language and dictionary that it supports.
+
+# Input
+The refactoring of the input will make a lot of changes, so i made a branch and i want to start and finish it today, but i'm not sure if i can do that, so it may be a slow process.
 
 # Setting Menu!
 I will add an menu! to help to set configurations in the a2!
@@ -40,10 +39,6 @@ I want to make it the main way to configure a2, and it's shortcuts be changeable
 
 # Refactoring
 The code has 2 main parts that need to be refactored, the main structure, EditorState and the way that the code handles inputs, isn't the best also, so updates will be made to make it better, but those will take time, and so will delay others things.
-
-# Projects
-Now you can save "projects", the windows, workspaces, and files you open, all of them can be open with just a command!
-More explanation are in the Documentation!
 
 # Themes!
 Now a2 have themes! and they are quite easy to make, Themes will be searched in the default app folder, but, if no found, or if you want to add another folder, you can with the command :set themedir <dir>

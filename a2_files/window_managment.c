@@ -549,6 +549,8 @@ void recalcular_layout_janelas() {
             jw->explorer_state->is_dirty = true;
         } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
             jw->help_state->is_dirty = true;
+        } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+            jw->settings_state->is_dirty = true;
         }
         
         // 4. updating the terminal, vterm
@@ -578,6 +580,8 @@ void recalcular_layout_janelas() {
             jw->explorer_state->is_dirty = true;
         } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
             jw->help_state->is_dirty = true;
+        } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+            jw->settings_state->is_dirty = true;
         }
         
         // If it's a terminal, we need to resize it and update its window pointer
@@ -729,12 +733,13 @@ void redesenhar_todas_as_janelas() {
             if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
                 editor_redraw(jw->win, jw->estado);
                 jw->estado->is_dirty = false; // Reset the flag after drawing
-            } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state && jw->explorer_state->is_dirty) {
+                
+            } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
                 explorer_redraw(jw); 
-            } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state && jw->help_state->is_dirty) {
+            } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
                 help_viewer_redraw(jw);
                 jw->help_state->is_dirty = false;
-            } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state && jw->settings_state->is_dirty) {
+            } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
                 settings_panel_redraw(jw);
                 jw->settings_state->is_dirty = false;
             } else if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.vterm) {
@@ -763,7 +768,6 @@ void redesenhar_todas_as_janelas() {
         }
     }
 
-    // 2. Draw popups on top of the active window
     if (ws->num_janelas > 0) {
         JanelaEditor *active_jw = ws->janelas[ws->janela_ativa_idx];
         if (active_jw->tipo == TIPOJANELA_EDITOR && active_jw->estado) {
