@@ -28,7 +28,7 @@ The refactoring of the input will make a lot of changes, so i made a branch and 
 The a2 as a settings menu, where you can personlize it's experience, it's a simple one and don't have too many options, for now at least.
 
 # Refactoring
-The code has 2 main parts that need to be refactored, the main structure, EditorState and the way that the code handles inputs, isn't the best also, so updates will be made to make it better, but those will take time, and so will delay others things.
+The Firts part of the refactor was made, the input was already refactored, now the EditorState need to be done.
 
 # Assembly!
 Because i'm learning assembly, a new function was added to the code to help me understand better what C functions turned in what in assembly, i will fix any bugs that i find.
