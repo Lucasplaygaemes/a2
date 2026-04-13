@@ -2702,10 +2702,13 @@ void display_dynamic_ksc() {
         char key_text[32];
         key_to_string(&global_bindings[i], key_text, sizeof(key_text));
         
+        const char* name = global_bindings[i].name ? global_bindings[i].name : "Unknown";
+        const char* desc = global_bindings[i].desc ? global_bindings[i].desc : "No description";
+
         fprintf(f, "- *%-15s* : %s (%s)\n", 
                 key_text, 
-                global_bindings[i].name,
-                global_bindings[i].desc);
+                name,
+                desc);
     }
 
     fprintf(f, "\n\n---\n*Use '/' to search for actions or keys.*");
