@@ -17,20 +17,9 @@ Then, install the dependency's and run Make with
 # Documentation!
 Documentation is in - [**Documentation**](./index.md)
 
-# BIG CHANGES
-Finally! I Have taken a lot of time, i'm sorry, but now it's here!!!
-Now we have Keybindings, and u can change it! and it save! AND the keyboard shortcuts manual will be updated with the new kb!!!!
-There will be bugs, be aware of it, i will fix them!
-
-# New Release!
-I'm being slow making any new releases, i have been really occupied so i don't have a lot of time to spend on here.
-But i will keep try my best to fix and add things!
-
-# Important Updates
-Sudo as finally been added! and i will fix in the future the hard coded line limit! For now, i'm going to refactor the way a2 handle input, making it more customize-able, you will be able to change it in the settings, because it will be a really big change, i will made a new branch for it. 
-
-# Spell!
-The spell use's the Hunspell, it has every language and dictionary that it supports.
+# News
+The a2 now has a Keybindings feature where you can delete, define, or edit keybindings, and those will be saved as custom ones, but, if necessary theres a button to reset to the default ones, the ds.a2 files is exaclty that.
+With big changes come even bigger bugs, gonna keep my eyes open.
 
 # Input
 The refactoring of the input will make a lot of changes, so i made a branch and i want to start and finish it today, but i'm not sure if i can do that, so it may be a slow process.
