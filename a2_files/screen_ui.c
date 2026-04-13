@@ -1308,12 +1308,12 @@ void help_viewer_redraw(JanelaEditor *jw) {
                     if (start_file && strchr(start_file, ')')) {
                         char *link_text_ptr = ptr + 1;
                         while (link_text_ptr < end_text) {
-                            wchar_t link_wc;
-                            int link_bytes = mbtowc(&link_wc, link_text_ptr, MB_CUR_MAX);
+                            wchar_t link_wcs[2] = {0, 0};
+                            int link_bytes = mbtowc(&link_wcs[0], link_text_ptr, MB_CUR_MAX);
                             if (link_bytes <= 0) { link_text_ptr++; continue; }
                             
                             cchar_t link_cc;
-                            setcchar(&link_cc, &link_wc, A_UNDERLINE, PAIR_TYPE, NULL);
+                            setcchar(&link_cc, link_wcs, A_UNDERLINE, PAIR_TYPE, NULL);
                             mvwadd_wch(jw->win, i + 1, x++, &link_cc);
                             
                             link_text_ptr += link_bytes;
@@ -1328,12 +1328,12 @@ void help_viewer_redraw(JanelaEditor *jw) {
                     if (end) {
                         char* bold_text = ptr + 1;
                         while(bold_text < end) {
-                            wchar_t bold_wc;
-                            int bold_bytes = mbtowc(&bold_wc, bold_text, MB_CUR_MAX);
+                            wchar_t bold_wcs[2] = {0, 0};
+                            int bold_bytes = mbtowc(&bold_wcs[0], bold_text, MB_CUR_MAX);
                             if(bold_bytes <= 0) { bold_text++; continue; }
 
                             cchar_t bold_cc;
-                            setcchar(&bold_cc, &bold_wc, A_BOLD, 0, NULL);
+                            setcchar(&bold_cc, bold_wcs, A_BOLD, 0, NULL);
                             mvwadd_wch(jw->win, i + 1, x++, &bold_cc);
                             bold_text += bold_bytes;
                         }
@@ -1342,12 +1342,12 @@ void help_viewer_redraw(JanelaEditor *jw) {
                     }
                 }
 
-                wchar_t wc;
-                int bytes_consumed = mbtowc(&wc, ptr, MB_CUR_MAX);
+                wchar_t wcs[2] = {0, 0};
+                int bytes_consumed = mbtowc(&wcs[0], ptr, MB_CUR_MAX);
                 if (bytes_consumed <= 0) { ptr++; continue; }
 
                 cchar_t cc;
-                setcchar(&cc, &wc, A_NORMAL, 0, NULL);
+                setcchar(&cc, wcs, A_NORMAL, 0, NULL);
                 mvwadd_wch(jw->win, i + 1, x++, &cc);
                 ptr += bytes_consumed;
             }
@@ -1433,8 +1433,7 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
     switch(ch) {
         case 'q':
             fechar_janela_ativa(should_exit);
-            state->is_dirty = true;
-            break;
+            return; // State is now invalid, exit function immediately
         case '/':
             state->search_mode = true;
             state->search_term[0] = '\0';
