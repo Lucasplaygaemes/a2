@@ -28,6 +28,8 @@ void editor_ident_line(EditorState *state, int line_num);
 void editor_unindent_line(EditorState *state, int line_num);
 void editor_delete_selection(EditorState *state);
 void editor_yank_paragraph(EditorState *state);
+void editor_join_line(EditorState *state);
+void editor_expand_snippet(EditorState *state);
 
 void editor_ensure_dirty_lines_capacity(EditorState *state, int required_capacity);
 void mark_line_as_dirty(EditorState *state, int line_num);
@@ -97,5 +99,13 @@ void build_assembly_mappings(EditorState *state, int int_source_line);
 void generic_input_msg(EditorState *state, char msg[256]);
 
 void editor_start_spell_completion(EditorState *state);
+
+EditorAction get_action_from_key(int ch, bool alt, bool ctrl, int leader);
+
+bool is_leader_key(int ch);
+
+void execute_action(EditorAction action, EditorState *state, bool *should_exit);
+
+void display_dynamic_ksc();
 
 #endif // OTHERS_H

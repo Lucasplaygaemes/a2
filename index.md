@@ -14,6 +14,7 @@ Welcome to `a2`, a lightweight, fast, and configurable modal text editor inspire
 - **Macros:** Record and play back sequences of commands (`q` and `@`) to automate repetitive tasks.
 - **Advanced Search & Replace:** A powerful `:s` command to perform targeted text substitutions.
 - **Theming:** Customize the editor's appearance with simple `.theme` files. Several themes like Solarized, Monokai, and Dracula are included.
+- **Dynamic Configuration:** Every keyboard shortcut and setting can be customized. All your personal data (macros, themes, shortcuts) is stored centrally in `~/.a2/`.
 - **Project Management:** Save and load project sessions, including open files, window layouts, and cursor positions for quick context switching.
 
 ## Installation
@@ -127,14 +128,18 @@ This guide details all available commands and keybindings.
 | `:set nowrap` | Disable word wrap. |
 | `:set bar <0|1>` | Set status bar style (0: minimalist, 1: default). |
 | `:set themedir <path>` | Set a persistent custom directory for themes. |
-| `:savemacros` | Save current macros to `~/.a2_macros`. |
-| `:loadmacros` | Load macros from file. |
+| `:shortcuts-reset` | Reload default shortcuts from `ds.a2`. |
+| `:shortcuts-save` | Save current shortcut configuration to `~/.a2/sc.a2`. |
+| `:savemacros` | Save current macros to `~/.a2/macros.a2`. |
+| `:loadmacros` | Load macros from the config folder. |
 | `:listmacros` | Display all loaded macros. |
 | `:toggle_auto_indent`| Toggle auto-indent on new lines. |
 
 ---
 
 ## Keybindings
+
+> **Note:** All shortcuts below are the defaults. You can customize every action in the editor by going to `Alt+S` > `Keybindings`. Your changes will be saved to `~/.a2/sc.a2`.
 
 ### Global
 | Shortcut | Description |

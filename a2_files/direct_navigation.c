@@ -409,8 +409,10 @@ int compare_files(const void *a, const void *b) {
 void load_file_history(EditorState *state) {
     debug_log("--- Loading file history ---\n");
     for (int i = 0; i < state->num_recent_files; i++) {
-        free(state->recent_files[i]->path);
-        free(state->recent_files[i]);
+        if (state->recent_files[i]) {
+            free(state->recent_files[i]->path);
+            free(state->recent_files[i]);
+        }
     }
     free(state->recent_files);
     state->recent_files = NULL;

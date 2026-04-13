@@ -1,21 +1,21 @@
+#define _GNU_SOURCE
 #include "settings.h"
 #include "window_managment.h" // for the fechar_janela_ativa (close_current_window)
 #include "fileio.h"
 #include "themes.h"
 #include "cache.h"
 #include "command_execution.h" // For process_lsp_restart
+#include "screen_ui.h"
 #include <ncurses.h>
 #include <stdlib.h>
 #include <string.h>
 #include <dirent.h> // For DIR, opendir, readdir, closedir
 #include <unistd.h>
+#include <ctype.h>
+#include <sys/stat.h>
 #include "defs.h"
 #include "spell.h"
 #include "others.h"
-
-// #define KEY_CTRL_RIGHT_BRACKET 29
-// #define KEY_CTRL_LEFT_BRACKET 27
-
 
 A2Config global_config = {
     .word_wrap = true,
@@ -65,7 +65,8 @@ const char *main_menu_items[] = {
     "Editor",
     "Theme",
     "Spell Checker",
-    "LSP (Language Server)"
+    "LSP (Language Server)",
+    "Keybindings"
 };
 const int num_main_menu_items = sizeof(main_menu_items) / sizeof(char*);
 
@@ -85,13 +86,232 @@ const LangOption spell_languages[] = {
     {"Italian", "it_IT"}
 };
 const int num_spell_languages = sizeof(spell_languages) / sizeof(LangOption);
+
+static EditorState* get_any_editor_state();
+
 void get_config_filepath(char *buffer, size_t size) {
-    const char *home_dir = getenv("HOME");
-    if (home_dir) {
-        snprintf(buffer, size, "%s/.a2_config", home_dir);
+    char dir[PATH_MAX];
+    ensure_a2_config_dir(dir, sizeof(dir));
+    snprintf(buffer, size, "%s/settings.a2", dir);
+}
+
+void key_to_string(KeyBinding *kb, char *buf, size_t size) {
+    if (kb->key == 0 && kb->leader == 0) { snprintf(buf, size, "None"); return; }
+    
+    char key_name[32];
+    if (kb->key == 10 || kb->key == KEY_ENTER) strcpy(key_name, "Enter");
+    else if (kb->key == '\t') strcpy(key_name, "Tab");
+    else if (kb->key < 32 && kb->key > 0) snprintf(key_name, sizeof(key_name), "Ctrl+%c", kb->key + 64);
+    else if (kb->key > 0) snprintf(key_name, sizeof(key_name), "%c", (char)kb->key);
+    else strcpy(key_name, "?");
+
+    if (kb->leader > 0) {
+        // If there's a leader, assume it's an Alt+Key sequence
+        snprintf(buf, size, "Alt+%c, %s", (char)kb->leader, key_name);
     } else {
-        snprintf(buffer, size, ".a2_config");
+        snprintf(buf, size, "%s%s", kb->alt ? "Alt+" : "", key_name);
     }
+}
+
+void ensure_a2_config_dir(char *path_out, size_t size) {
+    const char *home = getenv("HOME");
+    if (home) {
+        snprintf(path_out, size, "%s/.a2", home);
+    } else {
+        snprintf(path_out, size, ".a2");
+    }
+    mkdir(path_out, 0755);
+}
+
+void get_sc_path(char *buffer, size_t size) {
+    char dir[PATH_MAX];
+    ensure_a2_config_dir(dir, sizeof(dir));
+    snprintf(buffer, size, "%s/sc.a2", dir);
+}
+
+void get_ds_path(char *buffer, size_t size) {
+    char dir[PATH_MAX];
+    // 1. Try User's home override first (~/.a2/ds.a2)
+    ensure_a2_config_dir(dir, sizeof(dir));
+    snprintf(buffer, size, "%s/ds.a2", dir);
+    if (access(buffer, F_OK) == 0) return;
+
+    // 2. Try next to executable
+    if (executable_dir[0] != '\0') {
+        snprintf(buffer, size, "%s/ds.a2", executable_dir);
+        if (access(buffer, F_OK) == 0) return;
+    }
+    // 3. Try system-wide
+    snprintf(buffer, size, "/usr/local/share/a2/ds.a2");
+    if (access(buffer, F_OK) == 0) return;
+    
+    // 4. Fallback to current dir
+    snprintf(buffer, size, "ds.a2");
+}
+
+void save_keybindings() {
+    char path[PATH_MAX];
+    get_sc_path(path, sizeof(path));
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+
+    for (int i = 1; i < ACT_COUNT; i++) {
+        if (global_bindings[i].action == ACT_NONE) continue;
+        // Format: SLUG:TECLA:ALT:CTRL:LEADER
+        fprintf(f, "%s:%d:%d:%d:%d\n", 
+                global_bindings[i].slug, 
+                global_bindings[i].key, 
+                global_bindings[i].alt, 
+                global_bindings[i].ctrl,
+                global_bindings[i].leader);
+    }
+    fclose(f);
+}
+
+static bool load_bindings_from_file(const char* path) {
+    FILE *f = fopen(path, "r");
+    if (!f) return false;
+
+    char line[256];
+    while (fgets(line, sizeof(line), f)) {
+        char slug[32];
+        int key, alt, ctrl, leader;
+        if (sscanf(line, "%31[^:]:%d:%d:%d:%d\n", slug, &key, &alt, &ctrl, &leader) == 5) {
+            // Find action by slug
+            for (int i = 1; i < ACT_COUNT; i++) {
+                if (strcmp(default_bindings[i].slug, slug) == 0) {
+                    global_bindings[i].key = key;
+                    global_bindings[i].alt = (bool)alt;
+                    global_bindings[i].ctrl = (bool)ctrl;
+                    global_bindings[i].leader = leader;
+                    break;
+                }
+            }
+        }
+    }
+    fclose(f);
+    return true;
+}
+
+void load_keybindings() {
+    char path[PATH_MAX];
+    
+    // 1. Try User Shortcuts (sc.a2)
+    get_sc_path(path, sizeof(path));
+    if (load_bindings_from_file(path)) return;
+    
+    // 2. Try Default Shortcuts (ds.a2)
+    get_ds_path(path, sizeof(path));
+    if (load_bindings_from_file(path)) return;
+    
+    // 3. Fallback to hardcoded defaults
+    reset_bindings_to_default();
+}
+
+void load_ds_keybindings() {
+    char path[PATH_MAX];
+    get_ds_path(path, sizeof(path));
+    if (load_bindings_from_file(path)) {
+        editor_set_status_msg(get_any_editor_state(), "Default shortcuts loaded from ds.a2");
+    } else {
+        reset_bindings_to_default();
+        editor_set_status_msg(get_any_editor_state(), "ds.a2 not found. Hardcoded defaults used.");
+    }
+}
+
+void save_ds_keybindings() {
+    char path[PATH_MAX];
+    get_ds_path(path, sizeof(path));
+    FILE *f = fopen(path, "w");
+    if (!f) {
+        editor_set_status_msg(get_any_editor_state(), "Error: Could not open %s for writing", path);
+        return;
+    }
+
+    for (int i = 1; i < ACT_COUNT; i++) {
+        if (global_bindings[i].action == ACT_NONE) continue;
+        fprintf(f, "%s:%d:%d:%d:%d\n", 
+                global_bindings[i].slug, 
+                global_bindings[i].key, 
+                global_bindings[i].alt, 
+                global_bindings[i].ctrl,
+                global_bindings[i].leader);
+    }
+    fclose(f);
+    editor_set_status_msg(get_any_editor_state(), "Default shortcuts saved to %s", path);
+}
+
+static void draw_settings_header(WINDOW *win, const char *title, int width) {
+    wattron(win, COLOR_PAIR(PAIR_STATUS_BAR) | A_BOLD);
+    for (int i = 0; i < width; i++) mvwaddch(win, 0, i, ' ');
+    mvwprintw(win, 0, 2, " %s ", title);
+    wattroff(win, COLOR_PAIR(PAIR_STATUS_BAR) | A_BOLD);
+}
+
+bool is_key_duplicate(int idx) {
+    KeyBinding *current = &global_bindings[idx];
+    if (current->key == 0) return false;
+    
+    for (int i = 1; i < ACT_COUNT; i++) {
+        if (i == idx) continue;
+        if (global_bindings[i].key == current->key &&
+            global_bindings[i].leader == current->leader &&
+            global_bindings[i].alt == current->alt &&
+            global_bindings[i].ctrl == current->ctrl) {
+            return true;
+            }
+    }
+    return false;
+}
+
+void draw_keybinding_settings(JanelaEditor *jw) {
+    SettingsPanelState *state = jw->settings_state;
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
+    
+    char title[128];
+    if (state->search_mode) snprintf(title, sizeof(title), "SEARCH: %s_", state->search_term);
+    else snprintf(title, sizeof(title), "SETTINGS > KEYBINDINGS ('/' to Search)");
+    
+    draw_settings_header(jw->win, title, cols);
+    
+    int win_h = rows - 7;
+    int printed_count = 0;
+    
+    for (int i = 1; i < ACT_COUNT; i++) {
+        // filter logic
+        if (strlen(state->search_term) > 0) {
+            if (strcasestr(global_bindings[i].name, state->search_term) == NULL && 
+                strcasestr(global_bindings[i].desc, state->search_term) == NULL) {
+                continue;
+            }
+        }
+        
+        if (printed_count >= state->scroll_top && printed_count < state->scroll_top + win_h) {
+            int y_pos = 3 + (printed_count - state->scroll_top);
+            
+            if (printed_count == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
+            
+            // highlight the duplicate
+            bool duplicate = is_key_duplicate(i);
+            if (duplicate) wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+            
+            char key_text[64];
+            key_to_string(&global_bindings[i], key_text, sizeof(key_text));
+
+            mvwprintw(jw->win, y_pos, 4, " %-20s : %-15s ", global_bindings[i].name, key_text);
+            
+            if (duplicate) wattroff(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+            if (printed_count == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
+        }
+        printed_count++;
+    }
+
+    int footer_y = rows - 3;
+    int reset_btn_idx = printed_count; 
+    if (state->current_selection == reset_btn_idx) wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD | A_REVERSE);
+    mvwprintw(jw->win, footer_y, 4, "  [ RESTORE DEFAULT KEYBINDINGS ]  ");
+    if (state->current_selection == reset_btn_idx) wattroff(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD | A_REVERSE);
 }
 
 void save_global_config() {
@@ -168,61 +388,59 @@ static EditorState* get_any_editor_state() {
 
 void draw_main_menu(JanelaEditor *jw) {
     SettingsPanelState *state = jw->settings_state;
-    mvwprintw(jw->win, 1, 2, "Settings Panel");
-    mvwaddch(jw->win, 2, 1, ACS_HLINE);
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
+    (void)rows;
+    
+    draw_settings_header(jw->win, "A2 SETTINGS", cols);
+
+    const char *icons[] = { "  (E) Editor Configuration", "  (T) Themes & Appearance", "  (S) Spell Checker", "  (L) LSP (Language Server)", "  (K) Keybindings" };
 
     for (int i = 0; i < num_main_menu_items; i++) {
         if (i == state->current_selection) {
-            wattron(jw->win, A_BOLD | A_REVERSE);
+            wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
+            mvwprintw(jw->win, 3 + i*2, 4, " > %-30s ", icons[i]);
+            wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
         } else {
-            wattron(jw->win, A_BOLD);
-        }
-        mvwprintw(jw->win, 4 + i, 4, "%s", main_menu_items[i]);
-        if (i == state->current_selection) {
-            wattroff(jw->win, A_BOLD | A_REVERSE);
-        } else {
-            wattroff(jw->win, A_BOLD);
+            mvwprintw(jw->win, 3 + i*2, 4, "   %-30s ", icons[i]);
         }
     }
 }
 
 void draw_editor_settings(JanelaEditor *jw) {
     SettingsPanelState *state = jw->settings_state;
-
-    mvwprintw(jw->win, 1, 2, "Settings > Editor (Applies globally & to active)");
-    mvwaddch(jw->win, 2, 1, ACS_HLINE);
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
+    (void)rows;
+    
+    draw_settings_header(jw->win, "SETTINGS > EDITOR", cols);
 
     for (int i = 0; i < num_bool_settings; i++) {
-        if (i == state->current_selection) {
-            wattron(jw->win, A_BOLD | A_REVERSE);
-        } else {
-            wattron(jw->win, A_BOLD);
-        }
+        bool val = *editor_bool_settings[i].config_ptr;
+        if (i == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
         
-        mvwprintw(jw->win, 4 + i, 4, "[%c] %s", *editor_bool_settings[i].config_ptr ? 'X' : ' ', editor_bool_settings[i].name);
+        mvwprintw(jw->win, 3 + i, 4, " %-20s ", editor_bool_settings[i].name);
         
-        if (i == state->current_selection) {
-            wattroff(jw->win, A_BOLD | A_REVERSE);
+        if (val) {
+            wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
+            wprintw(jw->win, "[ ON ]");
+            wattroff(jw->win, PAIR_DIFF_ADD | A_BOLD);
         } else {
-            wattroff(jw->win, A_BOLD);
+            wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+            wprintw(jw->win, "[OFF]");
+            wattroff(jw->win, PAIR_ERROR | A_BOLD);
         }
+
+        if (i == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
 
     for (int i = 0; i < num_int_settings; i++) {
         int display_idx = num_bool_settings + i;
-        if (display_idx == state->current_selection) {
-            wattron(jw->win, A_BOLD | A_REVERSE);
-        } else {
-            wattron(jw->win, A_BOLD);
-        }
+        if (display_idx == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
         
-        mvwprintw(jw->win, 4 + display_idx, 4, "[%d] %s", *editor_int_settings[i].config_ptr, editor_int_settings[i].name);
+        mvwprintw(jw->win, 3 + display_idx, 4, " %-20s : %d ", editor_int_settings[i].name, *editor_int_settings[i].config_ptr);
         
-        if (display_idx == state->current_selection) {
-            wattroff(jw->win, A_BOLD | A_REVERSE);
-        } else {
-            wattroff(jw->win, A_BOLD);
-        }
+        if (display_idx == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
 }
 
@@ -250,89 +468,105 @@ void populate_theme_list(SettingsPanelState *state) {
 void draw_theme_settings(JanelaEditor *jw) {
     SettingsPanelState *state = jw->settings_state;
     populate_theme_list(state);
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
     
-    mvwprintw(jw->win, 1, 2, "Settings > Theme (Press Enter to Apply)");
-    mvwaddch(jw->win, 2, 1, ACS_HLINE);
+    draw_settings_header(jw->win, "SETTINGS > THEMES", cols);
     
     if (state->num_themes == 0) {
-        mvwprintw(jw->win, 4, 4, "No Themes found.");
+        mvwprintw(jw->win, 4, 4, "No themes found.");
         return;
     }
     
-    int win_h = getmaxy(jw->win) - 5;
+    int win_h = rows - 5;
     for (int i = 0; i < win_h; i++) {
         int idx = state->scroll_top + i;
         if (idx >= state->num_themes) break;
         
         if (idx == state->current_selection) {
-            wattron(jw->win, A_BOLD | A_REVERSE);
-        }
-        mvwprintw(jw->win, 4 + i, 4, "%s", state->theme_list[idx]);
-        if (idx == state->current_selection) {
-            wattroff(jw->win, A_BOLD | A_REVERSE);
+            wattron(jw->win, COLOR_PAIR(PAIR_SELECTION) | A_BOLD);
+            mvwprintw(jw->win, 3 + i, 4, "  * %-25s  ", state->theme_list[idx]);
+            wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION) | A_BOLD);
+        } else {
+            mvwprintw(jw->win, 3 + i, 4, "    %-25s  ", state->theme_list[idx]);
         }
     }
 }
 
 void draw_spell_settings(JanelaEditor *jw) {
     SettingsPanelState *state = jw->settings_state;
-    mvwprintw(jw->win, 1, 2, "Settings > Spell Checker");
-    mvwaddch(jw->win, 2, 1, ACS_HLINE);
-    mvwprintw(jw->win, 4, 4, "Select a language to download & set as default:");
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
+    (void)rows;
+    
+    draw_settings_header(jw->win, "SETTINGS > SPELL CHECKER", cols);
+    mvwprintw(jw->win, 2, 4, "Default Language:");
 
     for (int i = 0; i < num_spell_languages; i++) {
-        if (i == state->current_selection) {
-            wattron(jw->win, A_BOLD | A_REVERSE);
-        } else {
-            wattron(jw->win, A_BOLD);
-        }
-        
         bool is_default = (strcmp(global_config.default_spell_lang, spell_languages[i].lang_code) == 0);
         bool is_downloaded = spell_checker_is_downloaded(spell_languages[i].lang_code);
         
+        if (i == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
+        
+        mvwprintw(jw->win, 4 + i, 6, " %-20s ", spell_languages[i].display_name);
+        
+        if (is_default) {
+            wattron(jw->win, COLOR_PAIR(PAIR_KEYWORD) | A_BOLD);
+            wprintw(jw->win, " [DEFAULT] ");
+            wattroff(jw->win, PAIR_KEYWORD | A_BOLD);
+        }
+        
         if (is_downloaded) {
-            mvwprintw(jw->win, 6 + i, 6, "[%c] %s (D)", is_default ? '*' : ' ', spell_languages[i].display_name);
-        } else {
-            mvwprintw(jw->win, 6 + i, 6, "[%c] %s", is_default ? '*' : ' ', spell_languages[i].display_name);
+            wattron(jw->win, COLOR_PAIR(PAIR_COMMENT));
+            wprintw(jw->win, " (Local) ");
+            wattroff(jw->win, PAIR_COMMENT);
         }
-        if (i == state->current_selection) {
-            wattroff(jw->win, A_BOLD | A_REVERSE);
-        } else {
-            wattroff(jw->win, A_BOLD);
-        }
+
+        if (i == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
 }
 
 void draw_lsp_settings(JanelaEditor *jw) {
     SettingsPanelState *state = jw->settings_state;
-    mvwprintw(jw->win, 1, 2, "Settings > LSP");
-    mvwaddch(jw->win, 2, 1, ACS_HLINE);
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
+    (void)rows;
+    
+    draw_settings_header(jw->win, "SETTINGS > LSP", cols);
     
     const char *lsp_opts[] = { 
-        "Enable LSP Globally", 
-        "Show Diagnostics (Underline)",
-        "Enable Auto-completion",
-        "Show Hover Information",
-        "Restart Current LSP Server" 
+        "LSP Enabled", 
+        "Show Diagnostics",
+        "Auto-completion",
+        "Show Hover Info",
+        "RESTART LSP SERVER" 
     };
-    int num_lsp_opts = 5;
     
-    for (int i = 0; i < num_lsp_opts; i++) {
-        if (i == state->current_selection) wattron(jw->win, A_BOLD | A_REVERSE);
+    for (int i = 0; i < 5; i++) {
+        if (i == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
         
-        char status = ' ';
-        if (i == 0) status = global_config.lsp_enabled ? 'X' : ' ';
-        else if (i == 1) status = global_config.lsp_diagnostics ? 'X' : ' ';
-        else if (i == 2) status = global_config.lsp_completion ? 'X' : ' ';
-        else if (i == 3) status = global_config.lsp_hover ? 'X' : ' ';
+        bool status = false;
+        if (i == 0) status = global_config.lsp_enabled;
+        else if (i == 1) status = global_config.lsp_diagnostics;
+        else if (i == 2) status = global_config.lsp_completion;
+        else if (i == 3) status = global_config.lsp_hover;
         
-        if (i == 4) { // Restart button has no checkbox
-            mvwprintw(jw->win, 4 + i, 4, "    %s", lsp_opts[i]);
+        if (i == 4) {
+            mvwprintw(jw->win, 4 + i, 4, "  !!! %s !!! ", lsp_opts[i]);
         } else {
-            mvwprintw(jw->win, 4 + i, 4, "[%c] %s", status, lsp_opts[i]);
+            mvwprintw(jw->win, 4 + i, 4, "  %-20s : ", lsp_opts[i]);
+            if (status) {
+                wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
+                wprintw(jw->win, " YES ");
+                wattroff(jw->win, PAIR_DIFF_ADD | A_BOLD);
+            } else {
+                wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+                wprintw(jw->win, " NO ");
+                wattroff(jw->win, PAIR_ERROR | A_BOLD);
+            }
         }
          
-        if (i == state->current_selection) wattroff(jw->win, A_BOLD | A_REVERSE);
+        if (i == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
 }
 
@@ -357,6 +591,9 @@ void settings_panel_redraw(JanelaEditor *jw) {
         case SETTINGS_VIEW_LSP:
             draw_lsp_settings(jw);
             break;
+        case SETTINGS_VIEW_KEYBINDINGS:
+            draw_keybinding_settings(jw);
+            break;
     }
     
     int rows, cols;
@@ -366,7 +603,7 @@ void settings_panel_redraw(JanelaEditor *jw) {
     if (state->current_view == SETTINGS_VIEW_MAIN) {
         mvwprintw(jw->win, rows - 1, 1, " (q) Close | (Enter) Select ");
     } else {
-        mvwprintw(jw->win, rows - 1, 1, " (q/Esc) Back | (Enter) Select ");
+        mvwprintw(jw->win, rows - 1, 1, " (q/Esc) Back | (Enter) Select | (/) Search ");
     }
     wattroff(jw->win, A_REVERSE);
     
@@ -376,6 +613,23 @@ void settings_panel_redraw(JanelaEditor *jw) {
 void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
     SettingsPanelState *state = jw->settings_state;
     state->is_dirty = true;
+
+    if (state->search_mode) {
+        if (ch == 27 || ch == '\n' || ch == KEY_ENTER) {
+            state->search_mode = false;
+            state->current_selection = 0;
+            state->scroll_top = 0;
+        } else if (ch == 127 || ch == KEY_BACKSPACE || ch == 8) {
+            if (strlen(state->search_term) > 0) {
+                state->search_term[strlen(state->search_term) - 1] = '\0';
+            }
+        } else if (isprint(ch) && strlen(state->search_term) < 63) {
+            int len = strlen(state->search_term);
+            state->search_term[len] = (char)ch;
+            state->search_term[len+1] = '\0';
+        }
+        return;
+    }
 
     switch (state->current_view) {
         case SETTINGS_VIEW_MAIN:
@@ -402,11 +656,135 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                     // Switch to the selected view
                     state->current_view = state->current_selection + 1; // relies on enum order
                     state->current_selection = 0; // Reset selection for the new view
+                    state->scroll_top = 0;
+                    state->search_term[0] = '\0';
                     break;
             }
             break;
+        case SETTINGS_VIEW_KEYBINDINGS:
+            if (state->is_assigning_key) {
+                // Find correct index based on filtered view
+                int target_idx = -1;
+                int count = 0;
+                for(int i=1; i<ACT_COUNT; i++) {
+                    if (strlen(state->search_term) == 0 || strcasestr(global_bindings[i].name, state->search_term) || strcasestr(global_bindings[i].desc, state->search_term)) {
+                        if (count == state->current_selection) { target_idx = i; break; }
+                        count++;
+                    }
+                }
 
-        // Handle input for sub-views
+                if (target_idx == -1) {
+                    state->is_assigning_key = false;
+                    state->assigning_stage = 0;
+                    return;
+                }
+
+                if (ch == 27 && state->assigning_stage == 0) { // ESC sequence (Alt)
+                    nodelay(jw->win, TRUE);
+                    int next = wgetch(jw->win);
+                    nodelay(jw->win, FALSE);
+                    
+                    if (next != ERR) {
+                        if (confirm_action("Use as Leader Key for sequence?")) {
+                            global_bindings[target_idx].leader = next;
+                            state->assigning_stage = 1;
+                            editor_set_status_msg(get_any_editor_state(), "Leader set. Press second key.");
+                            return; // Wait for second key
+                        } else {
+                            // Assign as simple Alt+Key
+                            global_bindings[target_idx].key = next;
+                            global_bindings[target_idx].alt = true;
+                            global_bindings[target_idx].leader = 0;
+                            global_bindings[target_idx].ctrl = false;
+                        }
+                    } 
+                } else {
+                    // Regular key or stage 1 key
+                    global_bindings[target_idx].key = ch;
+                    if (state->assigning_stage == 0) {
+                        global_bindings[target_idx].alt = false;
+                        global_bindings[target_idx].ctrl = (ch > 0 && ch < 32);
+                        global_bindings[target_idx].leader = 0;
+                    }
+                    // if stage was 1, leader is already set, we just update the key
+                }
+                
+                state->is_assigning_key = false;
+                state->assigning_stage = 0;
+                save_keybindings();
+                editor_set_status_msg(get_any_editor_state(), "Keybinding updated.");
+                return;
+            }
+            
+            switch(ch) {
+                case '/':
+                    state->search_mode = true;
+                    state->search_term[0] = '\0';
+                    break;
+                case 'q': case 27:
+                    state->current_view = SETTINGS_VIEW_MAIN;
+                    state->current_selection = 4; 
+                    break;
+                case 'j': case KEY_DOWN:
+                    {
+                        int total_items = 0;
+                        for(int i=1; i<ACT_COUNT; i++) {
+                            if (strlen(state->search_term) == 0 || strcasestr(global_bindings[i].name, state->search_term) || strcasestr(global_bindings[i].desc, state->search_term)) total_items++;
+                        }
+                        if (state->current_selection < total_items) {
+                            state->current_selection++;
+                            int win_h = getmaxy(jw->win) - 7;
+                            if (state->current_selection < total_items && state->current_selection >= state->scroll_top + win_h) state->scroll_top++;
+                        }
+                    }
+                    break;
+                case 'k': case KEY_UP:
+                    if (state->current_selection > 0) {
+                        state->current_selection--;
+                        if (state->current_selection < state->scroll_top) state->scroll_top--;
+                    }
+                    break;
+                case KEY_DC: // Delete key (ncurses)
+                case 127:    // Backspace/Delete (common)
+                case 8:      // Ctrl+H / Backspace
+                    {
+                        int current_idx = -1;
+                        int count = 0;
+                        for(int i=1; i<ACT_COUNT; i++) {
+                            if (strlen(state->search_term) == 0 || strcasestr(global_bindings[i].name, state->search_term) || strcasestr(global_bindings[i].desc, state->search_term)) {
+                                if (count == state->current_selection) { current_idx = i; break; }
+                                count++;
+                            }
+                        }
+                        if (current_idx != -1) {
+                            global_bindings[current_idx].key = 0;
+                            global_bindings[current_idx].alt = false;
+                            global_bindings[current_idx].ctrl = false;
+                            global_bindings[current_idx].leader = 0;
+                            save_keybindings();
+                            editor_set_status_msg(get_any_editor_state(), "Keybinding cleared.");
+                        }
+                    }
+                    break;
+                case KEY_ENTER: case '\n':
+                    {
+                        int total_items = 0;
+                        for(int i=1; i<ACT_COUNT; i++) {
+                            if (strlen(state->search_term) == 0 || strcasestr(global_bindings[i].name, state->search_term) || strcasestr(global_bindings[i].desc, state->search_term)) total_items++;
+                        }
+                        if (state->current_selection == total_items) {
+                            if (confirm_action("Restore all keybindings to default?")) {
+                                reset_bindings_to_default();
+                                save_keybindings();
+                                editor_set_status_msg(get_any_editor_state(), "Keybindings restored to default.");
+                            }
+                        } else {
+                            state->is_assigning_key = true;
+                        }
+                    }
+                    break;
+            }
+            break;
         case SETTINGS_VIEW_EDITOR:
             switch(ch) {
                 case 'q':
@@ -607,4 +985,3 @@ void free_settings_panel_state(SettingsPanelState *state) {
     }
     free(state);
 }
-

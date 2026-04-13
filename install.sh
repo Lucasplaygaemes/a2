@@ -47,7 +47,7 @@ install_dependencies() {
         fi
     elif command -v dnf &> /dev/null; then
         info "Detected DNF package manager (Fedora)."
-        REQUIRED_PACKAGES="gcc ncurses-devel jansson-devel libcurl-devel openssl-devel git cmake glibc-devel hunspell"
+        REQUIRED_PACKAGES="gcc ncurses-devel jansson-devel libcurl-devel openssl-devel git cmake glibc-devel hunspell-devel"
         PACKAGES_TO_INSTALL=""
         for pkg in $REQUIRED_PACKAGES; do
             if ! rpm -q "$pkg" &> /dev/null; then

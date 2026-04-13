@@ -127,11 +127,21 @@ void free_editor_state(EditorState* state) {
         free(state->syntax_rules);
     }
     if (state->recent_dirs) {
-        for (int j = 0; j < state->num_recent_dirs; j++) free(state->recent_dirs[j]->path);
+        for (int j = 0; j < state->num_recent_dirs; j++) {
+            if (state->recent_dirs[j]) {
+                free(state->recent_dirs[j]->path);
+                free(state->recent_dirs[j]);
+            }
+        }
         free(state->recent_dirs);
     }
     if (state->recent_files) {
-        for (int j = 0; j < state->num_recent_files; j++) free(state->recent_files[j]->path);
+        for (int j = 0; j < state->num_recent_files; j++) {
+            if (state->recent_files[j]) {
+                free(state->recent_files[j]->path);
+                free(state->recent_files[j]);
+            }
+        }
         free(state->recent_files);
     }
     if (state->unmatched_brackets) free(state->unmatched_brackets);
@@ -781,6 +791,17 @@ void redesenhar_todas_as_janelas() {
                 LspDiagnostic *diag = get_diagnostic_under_cursor(state);
                 if (diag) {
                     draw_diagnostic_popup(active_jw->win, state, diag->message);
+                }
+            }
+        } else if (active_jw->tipo == TIPOJANELA_SETTINGS_PANEL && active_jw->settings_state) {
+            if (active_jw->settings_state->is_assigning_key) {
+                const char *msg = (active_jw->settings_state->assigning_stage == 0) ? 
+                                  " PRESS THE NEW KEY COMBINATION " : 
+                                  " LEADER SET! PRESS THE SECOND KEY ";
+                WINDOW *pop = draw_pop_up(msg, -1, -1);
+                if (pop) {
+                    wnoutrefresh(pop);
+                    delwin(pop); // wnoutrefresh copied the content to the buffer, so we can delete the window
                 }
             }
         }
@@ -1857,13 +1878,25 @@ end_finder:
 }
 
 void display_help_viewer(const char* filename) {
+    if (gerenciador_workspaces.num_workspaces == 0 || gerenciador_workspaces.workspace_ativo_idx == -1) return;
     GerenciadorJanelas *ws = ACTIVE_WS;
-    ws->num_janelas++;
-    ws->janelas = realloc(ws->janelas, sizeof(JanelaEditor*) * ws->num_janelas);
+    if (!ws) return;
+
+    JanelaEditor **new_janelas = realloc(ws->janelas, sizeof(JanelaEditor*) * (ws->num_janelas + 1));
+    if (!new_janelas) return;
+    ws->janelas = new_janelas;
 
     JanelaEditor *nova_janela = calloc(1, sizeof(JanelaEditor));
+    if (!nova_janela) return;
+
     nova_janela->tipo = TIPOJANELA_HELP;
     nova_janela->help_state = calloc(1, sizeof(HelpViewerState));
+    if (!nova_janela->help_state) {
+        free(nova_janela);
+        return;
+    }
+    
+    ws->num_janelas++;
     nova_janela->help_state->is_dirty = true;
     
     HelpViewerState *state = nova_janela->help_state;
@@ -1882,19 +1915,25 @@ void display_help_viewer(const char* filename) {
     char path[PATH_MAX];
     FILE *f = NULL;
     
-    if (executable_dir[0] != '\0') {
-        snprintf(path, sizeof(path), "%s/man/%s", executable_dir, filename);
+    if (filename[0] == '/') {
+        strncpy(path, filename, PATH_MAX - 1);
+        path[PATH_MAX - 1] = '\0';
         f = fopen(path, "r");
-    }
-    
-    if (!f) {
-        snprintf(path, sizeof(path), "/usr/local/share/a2/man/%s", filename);
-        f = fopen(path, "r");
-    }
-    
-    if (!f) {
-        snprintf(path, sizeof(path), "man/%s", filename);
-        f = fopen(path, "r");
+    } else {
+        if (executable_dir[0] != '\0') {
+            snprintf(path, sizeof(path), "%s/man/%s", executable_dir, filename);
+            f = fopen(path, "r");
+        }
+        
+        if (!f) {
+            snprintf(path, sizeof(path), "/usr/local/share/a2/man/%s", filename);
+            f = fopen(path, "r");
+        }
+        
+        if (!f) {
+            snprintf(path, sizeof(path), "man/%s", filename);
+            f = fopen(path, "r");
+        }
     }
     
     if (f) {

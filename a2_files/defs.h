@@ -93,7 +93,8 @@ typedef enum {
     SETTINGS_VIEW_EDITOR,
     SETTINGS_VIEW_THEME,
     SETTINGS_VIEW_SPELL,
-    SETTINGS_VIEW_LSP
+    SETTINGS_VIEW_LSP,
+    SETTINGS_VIEW_KEYBINDINGS
 } SettingsPanelView;
 
 typedef struct {
@@ -105,7 +106,14 @@ typedef struct {
     
     char **theme_list;
     int num_themes;
+    
+    bool is_assigning_key;
+    
+    int assigning_stage; // 0: firts key, 1: wating for the second key
+    char search_term[64]; // search term 
+    bool search_mode;     // if its typing in the search
 } SettingsPanelState;
+
 
 #endif
 
@@ -409,6 +417,97 @@ typedef struct EditorState {
 #define EXPLORERSTATE_DEFINED
 
 typedef enum {
+    ACT_NONE = 0,
+    // file
+    ACT_SAVE_FILE,         // Alt+W
+    ACT_OPENS_RECENT,      // Alt+b
+    ACT_FUZZY_FINDER,      // Alt+f
+    ACT_EXPLORER,          // Alt+e
+    ACT_CMD_PALLETE,       // Alt+t
+    
+    // windows and workspaces
+    ACT_NEW_WINDOW,        // Alt+Enter
+    ACT_CLOSE_WINDOW,      // Alt+X
+    ACT_NEW_WORKSPACE,     // Ctrl+W
+    ACT_NEXT_WORKSPACE,    // Alt+n
+    ACT_PREV_WORKSPACE,    // Alt+n
+    ACT_NEXT_WINDOW,       // Ctrl+]
+    ACT_PREV_WINDOW,       // Ctrl+[
+    ACT_CYCLE_LAYOUT,      // Alt+.
+    ACT_ROTATE_WINDOWS,    // Alt+R
+    
+    // edition
+    ACT_TOGGLE_COMMENT,    // Alt+c
+    ACT_CHANGE_INSIDE_QUOTE,  // Alt+Shift+C
+    ACT_INDENT_LINE,       // Alt+Tab
+    ACT_UNINDENT_LINE,     // Shift+Tab
+    ACT_JOIN_LINES,        // J
+    ACT_NEXT_WORD,         // Alt+w
+    ACT_PREV_WORD,         // Alt+q
+    
+    // Search and tools
+    ACT_FIND_LOCAL,        // Ctrl+f
+    ACT_FIND_NEXT,         // Ctrl+d
+    ACT_FIND_PREV,         // Ctrl+a
+    ACT_GREP_PROJECT,      // Alt+s
+    ACT_VIEW_ASSEMBLY,     // Alt+a
+    ACT_GOTO_DEFINITION,   // Alt+D, F
+    ACT_SHOW_SYMBOLS,      // Alt+D, S (or via pallete)
+    ACT_DIFF_INTERACTIVE,  // Alt+G, D
+    ACT_GIT_STATUS,        // Alt_G, S
+    ACT_EXPAND_SNIPPET,    // Alt+S (during completion)
+    
+    // Additional Actions
+    ACT_GDB_DEBUG,         // Alt+d, d
+    ACT_ASM_CONVERT,       // Alt+d, l
+    ACT_GIT_ADD_U,         // Alt+g, a
+    ACT_DIR_NAVIGATOR,     // Alt+g, g
+    ACT_PASTE_CLIPBOARD,   // Alt+p, c
+    ACT_PASTE_ABOVE,       // Alt+p, a
+    ACT_PASTE_GLOBAL_ABOVE,// Alt+p, P
+    ACT_PASTE_BELOW,       // Alt+p, u
+    ACT_PASTE_GLOBAL_BELOW,// Alt+p, U
+    ACT_GENERIC_INPUT,     // Alt+p, t
+    ACT_YANK_PARAGRAPH,    // Alt+y, p
+    ACT_NEXT_PARAGRAPH,    // }
+    ACT_PREV_PARAGRAPH,    // {
+    
+    // Workspace & Window Management
+    ACT_SWITCH_TO_WS_1, ACT_SWITCH_TO_WS_2, ACT_SWITCH_TO_WS_3,
+    ACT_SWITCH_TO_WS_4, ACT_SWITCH_TO_WS_5, ACT_SWITCH_TO_WS_6,
+    ACT_SWITCH_TO_WS_7, ACT_SWITCH_TO_WS_8, ACT_SWITCH_TO_WS_9,
+    
+    ACT_MOVE_WIN_TO_POS_1, ACT_MOVE_WIN_TO_POS_2, ACT_MOVE_WIN_TO_POS_3,
+    ACT_MOVE_WIN_TO_POS_4, ACT_MOVE_WIN_TO_POS_5, ACT_MOVE_WIN_TO_POS_6,
+    ACT_MOVE_WIN_TO_POS_7, ACT_MOVE_WIN_TO_POS_8, ACT_MOVE_WIN_TO_POS_9,
+
+    // Project & Extra Tools
+    ACT_SAVE_PROJECT,
+    ACT_LOAD_PROJECT,
+    ACT_LSP_RENAME,
+    ACT_LSP_RESTART,
+    ACT_TIMER_REPORT,
+    
+    // System
+    ACT_SETTINGS,          // Alt+Shift+S
+    ACT_HELP,              // :help
+    ACT_KSC,               // :ksc
+    
+    ACT_COUNT              // totalizer
+} EditorAction;
+
+typedef struct {
+    EditorAction action;
+    int leader;      // prefix key, ('g' for Alt+G)
+    int key;         // the key code, ex:. 's', KEY_F1
+    bool alt;        // Alt modificator
+    bool ctrl;       // ctrl modificator
+    char slug[32];   // canonical name for config files (ex: "SAVE_FILE")
+    char name[32];   // short name for UI
+    char desc[64];   // description
+} KeyBinding;
+
+typedef enum {
     OP_NONE,
     OP_COPY,
     OP_CUT
@@ -558,5 +657,9 @@ typedef struct {
 #endif
 
 extern GrepState global_grep_state;
+extern KeyBinding global_bindings[ACT_COUNT];
+extern const KeyBinding default_bindings[ACT_COUNT];
+
+void reset_bindings_to_default();
 
 #endif // DEFS_H

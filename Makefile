@@ -2,9 +2,17 @@
 
 # --- Compiler Configuration ---
 CC = gcc
-# Simplified CFLAGS for the a2 project
+
+# Base CFLAGS and LDFLAGS
 CFLAGS = -g -Wall -Wextra -I. -I./a2_files $(shell pkg-config --cflags hunspell)
 LDFLAGS = -lncursesw -ljansson -lcurl -lpthread -ldl -lssl -lcrypto -lvterm $(shell pkg-config --libs hunspell) -lm -Wl,-rpath=/usr/local/lib
+
+# Enable ASan if ASAN=1 is passed: make ASAN=1
+ifeq ($(ASAN), 1)
+    CFLAGS += -fsanitize=address
+    LDFLAGS += -fsanitize=address
+    $(info *** AddressSanitizer enabled ***)
+endif
 
 # --- Main Target ---
 TARGET = a2
@@ -71,6 +79,7 @@ install: all
 	@echo "Installing syntaxes and themes..."
 	sudo mkdir -p /usr/local/share/a2/syntaxes
 	sudo cp -r syntaxes/* /usr/local/share/a2/syntaxes/
+	sudo cp ds.a2 /usr/local/share/a2/ds.a2
 	@echo "Installing help files..."
 	sudo mkdir -p /usr/local/share/a2/man
 	sudo cp -r man/*.txt /usr/local/share/a2/man/
