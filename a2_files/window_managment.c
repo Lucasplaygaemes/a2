@@ -127,11 +127,21 @@ void free_editor_state(EditorState* state) {
         free(state->syntax_rules);
     }
     if (state->recent_dirs) {
-        for (int j = 0; j < state->num_recent_dirs; j++) free(state->recent_dirs[j]->path);
+        for (int j = 0; j < state->num_recent_dirs; j++) {
+            if (state->recent_dirs[j]) {
+                free(state->recent_dirs[j]->path);
+                free(state->recent_dirs[j]);
+            }
+        }
         free(state->recent_dirs);
     }
     if (state->recent_files) {
-        for (int j = 0; j < state->num_recent_files; j++) free(state->recent_files[j]->path);
+        for (int j = 0; j < state->num_recent_files; j++) {
+            if (state->recent_files[j]) {
+                free(state->recent_files[j]->path);
+                free(state->recent_files[j]);
+            }
+        }
         free(state->recent_files);
     }
     if (state->unmatched_brackets) free(state->unmatched_brackets);
@@ -1868,13 +1878,25 @@ end_finder:
 }
 
 void display_help_viewer(const char* filename) {
+    if (gerenciador_workspaces.num_workspaces == 0 || gerenciador_workspaces.workspace_ativo_idx == -1) return;
     GerenciadorJanelas *ws = ACTIVE_WS;
-    ws->num_janelas++;
-    ws->janelas = realloc(ws->janelas, sizeof(JanelaEditor*) * ws->num_janelas);
+    if (!ws) return;
+
+    JanelaEditor **new_janelas = realloc(ws->janelas, sizeof(JanelaEditor*) * (ws->num_janelas + 1));
+    if (!new_janelas) return;
+    ws->janelas = new_janelas;
 
     JanelaEditor *nova_janela = calloc(1, sizeof(JanelaEditor));
+    if (!nova_janela) return;
+
     nova_janela->tipo = TIPOJANELA_HELP;
     nova_janela->help_state = calloc(1, sizeof(HelpViewerState));
+    if (!nova_janela->help_state) {
+        free(nova_janela);
+        return;
+    }
+    
+    ws->num_janelas++;
     nova_janela->help_state->is_dirty = true;
     
     HelpViewerState *state = nova_janela->help_state;
