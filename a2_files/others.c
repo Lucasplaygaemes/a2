@@ -43,7 +43,7 @@ const char *editor_commands[] = {
     "q", "q!", "w", "wq", "help", "gcc", "rc", "rc!", "open", "new", "timer", "diff", "set",
     "lsp-restart", "lsp-diag", "lsp-definition", "lsp-references", "lsp-rename",
     "lsp-status", "lsp-hover", "lsp-symbols", "lsp-refresh", "lsp-check", "lsp-debug",
-    "lsp-list", "toggle_auto_indent"
+    "lsp-list", "toggle_auto_indent", "llvm"
 };
 const int num_editor_commands = sizeof(editor_commands) / sizeof(char*);
 
@@ -2594,6 +2594,7 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_FIND_PREV: editor_find_previous(state); break;
         case ACT_GREP_PROJECT: display_content_search(state, NULL); break;
         case ACT_VIEW_ASSEMBLY: compile_and_view_assembly(state); break;
+        case ACT_VIEW_LLVM: compile_and_view_llvm(state); break;
         case ACT_GOTO_DEFINITION: process_lsp_definition(state); break;
         case ACT_SHOW_SYMBOLS: process_lsp_symbols(state); break;
         case ACT_DIFF_INTERACTIVE: start_interactive_diff(state); break;
