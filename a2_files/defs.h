@@ -451,6 +451,7 @@ typedef enum {
     ACT_FIND_PREV,         // Ctrl+a
     ACT_GREP_PROJECT,      // Alt+s
     ACT_VIEW_ASSEMBLY,     // Alt+a
+    ACT_VIEW_LLVM,         // Alt+l
     ACT_GOTO_DEFINITION,   // Alt+D, F
     ACT_SHOW_SYMBOLS,      // Alt+D, S (or via pallete)
     ACT_DIFF_INTERACTIVE,  // Alt+G, D

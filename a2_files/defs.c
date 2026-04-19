@@ -44,6 +44,7 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     [ACT_FIND_PREV] = {ACT_FIND_PREV, 0, 1, false, true, "FIND_PREV", "Find Previous", "Previous occurrence (CTRL+A)"},
     [ACT_GREP_PROJECT] = {ACT_GREP_PROJECT, 0, 's', true, false, "GREP", "Grep", "Search text in all project"},
     [ACT_VIEW_ASSEMBLY] = {ACT_VIEW_ASSEMBLY, 0, 'a', true, false, "VIEW_ASSEMBLY", "See Assembly", "Compile and show assembly"},
+    [ACT_VIEW_LLVM] = {ACT_VIEW_LLVM, 0, 'l', true, false, "VIEW_LLVM", "See LLVM", "Compile and show LLVM IR"},
     [ACT_GOTO_DEFINITION] = {ACT_GOTO_DEFINITION, 'd', 'f', false, false, "GOTO_DEFINITION", "Definition", "LSP: Jump to definition"},
     [ACT_SHOW_SYMBOLS] = {ACT_SHOW_SYMBOLS, 0, 'S', true, false, "SHOW_SYMBOLS", "Symbols", "LSP: Show symbols list"},
     [ACT_DIFF_INTERACTIVE] = {ACT_DIFF_INTERACTIVE, 'g', 'd', false, false, "DIFF", "Diff", "Compare two files"},
