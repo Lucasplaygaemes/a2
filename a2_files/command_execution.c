@@ -231,7 +231,9 @@ void process_command(EditorState *state, bool *should_exit) {
                 display_fuzzy_finder(state);
             } else if (strcmp(command, "explorer") == 0) {
                     criar_janela_explorer();
-            } else if (strcmp(command, "save-project") == 0) {
+            } else if (strcmp(command, "llvm") == 0) {
+        compile_and_view_llvm(state);
+    } else if (strcmp(command, "save-project") == 0) {
                 project_save_session(args);
             } else if (strcmp(command, "load-project") == 0) {
                 if (strlen(args) > 0) {
@@ -775,6 +777,67 @@ void compile_and_view_assembly(EditorState *state) {
         
     }
     
+    recalcular_layout_janelas();
+    redesenhar_todas_as_janelas();
+}
+
+void compile_and_view_llvm(EditorState *state) {
+    if (strcmp(state->filename, "[No Name]") == 0) {
+        editor_set_status_msg(state, "Save the file first");
+        return;        
+    }
+    
+    char source_file[PATH_MAX];
+    char llvm_file[PATH_MAX];
+    
+    // Save the current file
+    save_file(state);
+    strncpy(source_file, state->filename, PATH_MAX - 1);
+    
+    // Define the .ll file name
+    strncpy(llvm_file, state->filename, PATH_MAX - 1);
+    char *dot = strrchr(llvm_file, '.');
+    if (dot) *dot = '\0';
+    strcat(llvm_file, ".ll");
+    
+    // Command: clang -S -emit-llvm -g (includes debug info)
+    char cmd[2048];
+    snprintf(cmd, sizeof(cmd), "clang -S -emit-llvm -g \"%s\" -o \"%s\"", source_file, llvm_file);
+    
+    editor_set_status_msg(state, "Compiling to LLVM IR...");
+    int ret = system(cmd);
+    if (ret != 0) {
+        editor_set_status_msg(state, "LLVM compilation failed!"); 
+        return;
+    }
+    
+    // Logic to open in a new window or focus if already open
+    GerenciadorJanelas *ws = ACTIVE_WS;
+    int target_idx = -1;
+    
+    for (int i = 0; i < ws->num_janelas; i++) {
+        if (ws->janelas[i]->tipo == TIPOJANELA_EDITOR && strcmp(ws->janelas[i]->estado->filename, llvm_file) == 0) {
+            target_idx = i;
+            break;
+        }
+    }
+    
+    if (target_idx == -1) {
+        // If there's only 1 window, split the screen
+        if (ws->num_janelas == 1) {
+            ws->current_layout = LAYOUT_VERTICAL_SPLIT;
+            criar_nova_janela(llvm_file);
+        } else {
+            // Open in the next available window
+            target_idx = (ws->janela_ativa_idx + 1) % ws->num_janelas;
+            load_file(ws->janelas[target_idx]->estado, llvm_file);
+        }
+    } else {
+        ACTIVE_WS->janela_ativa_idx = target_idx;
+        load_file(ws->janelas[target_idx]->estado, llvm_file);
+    }
+    
+    editor_set_status_msg(state, "LLVM IR Generated.");
     recalcular_layout_janelas();
     redesenhar_todas_as_janelas();
 }

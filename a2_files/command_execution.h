@@ -35,4 +35,6 @@ void project_save_session(const char *project_name);
 
 void compile_and_view_assembly(EditorState *c_state);
 
+void compile_and_view_llvm(EditorState *state);
+
 #endif // COMMAND_EXECUTION_H
