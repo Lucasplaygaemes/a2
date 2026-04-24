@@ -418,6 +418,39 @@ typedef struct EditorState {
 
 typedef enum {
     ACT_NONE = 0,
+
+    // modes
+    ACT_NORMAL_MODE,       // esc    
+    ACT_INSERT_MODE,       // i
+    ACT_VISUAL_MODE,       // v
+    ACT_COMMAND_MODE,      // :
+    
+    // Basic Navigation
+    ACT_MOVE_UP,
+    ACT_MOVE_DOWN,
+    ACT_MOVE_LEFT,
+    ACT_MOVE_RIGHT,
+    ACT_MOVE_HOME,
+    ACT_MOVE_END,
+    ACT_MOVE_PAGE_UP,
+    ACT_MOVE_PAGE_DOWN,
+    ACT_MOVE_TOP,          // gg
+    ACT_MOVE_BOTTOM,       // G
+    ACT_SCROLL_UP,         // Shift+Up
+    ACT_SCROLL_DOWN,       // Shift+Down
+
+    // Prefix Digits
+    ACT_DIGIT_0, ACT_DIGIT_1, ACT_DIGIT_2, ACT_DIGIT_3, ACT_DIGIT_4,
+    ACT_DIGIT_5, ACT_DIGIT_6, ACT_DIGIT_7, ACT_DIGIT_8, ACT_DIGIT_9,
+
+    // Undo/Redo
+    ACT_UNDO,
+    ACT_REDO,
+    ACT_DELETE_LINE,
+    ACT_JUMP_BRACKET,      // %
+    ACT_MACRO_RECORD,      // q
+    ACT_MACRO_PLAY,        // @
+
     // file
     ACT_SAVE_FILE,         // Alt+W
     ACT_OPENS_RECENT,      // Alt+b
