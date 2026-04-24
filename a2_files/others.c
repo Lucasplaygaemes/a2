@@ -2568,6 +2568,134 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
     if (action == ACT_NONE) return;
     
     switch (action) {
+        case ACT_INSERT_MODE: state->mode = INSERT; state->is_dirty = true; break;
+        case ACT_NORMAL_MODE: state->mode = NORMAL; state->is_dirty = true; break;
+        case ACT_VISUAL_MODE: state->mode = VISUAL; state->is_dirty = true; break;
+        case ACT_COMMAND_MODE: state->mode = COMMAND; state->history_pos = state->history_count; state->command_buffer[0] = '\0'; state->command_pos = 0; state->is_dirty = true; break;
+        
+        case ACT_MOVE_UP: {
+            int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
+            for (int i = 0; i < repeat; i++) if (state->current_line > 0) state->current_line--;
+            state->prefix_count = 0; state->current_col = state->ideal_col; state->is_dirty = true;
+        } break;
+        case ACT_MOVE_DOWN: {
+            int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
+            for (int i = 0; i < repeat; i++) if (state->current_line < state->num_lines - 1) state->current_line++;
+            state->prefix_count = 0; state->current_col = state->ideal_col; state->is_dirty = true;
+        } break;
+        case ACT_MOVE_LEFT: {
+            int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
+            for (int i = 0; i < repeat; i++) {
+                if (state->current_col > 0) {
+                    state->current_col--;
+                    while (state->current_col > 0 && (state->lines[state->current_line][state->current_col] & 0xC0) == 0x80) state->current_col--;
+                }
+            }
+            state->prefix_count = 0; state->ideal_col = state->current_col; state->is_dirty = true;
+        } break;
+        case ACT_MOVE_RIGHT: {
+            int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
+            char* line = state->lines[state->current_line];
+            for (int i = 0; i < repeat; i++) {
+                if (line && state->current_col < (int)strlen(line)) {
+                    state->current_col++;
+                    while (line[state->current_col] != '\0' && (line[state->current_col] & 0xC0) == 0x80) state->current_col++;
+                }
+            }
+            state->prefix_count = 0; state->ideal_col = state->current_col; state->is_dirty = true;
+        } break;
+        case ACT_MOVE_HOME: state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
+        case ACT_MOVE_END: { char* line = state->lines[state->current_line]; if(line) state->current_col = strlen(line); state->ideal_col = state->current_col; state->is_dirty = true; } break;
+        case ACT_MOVE_PAGE_UP: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; state->is_dirty = true; break;
+        case ACT_MOVE_PAGE_DOWN: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; state->is_dirty = true; break;
+        case ACT_MOVE_TOP: state->current_line = 0; state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
+        case ACT_MOVE_BOTTOM: state->current_line = state->num_lines - 1; state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
+        case ACT_SCROLL_UP: for (int i = 0; i < 10; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; state->is_dirty = true; break;
+        case ACT_SCROLL_DOWN: for (int i = 0; i < 10; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; state->is_dirty = true; break;
+        
+        case ACT_DIGIT_0:
+            if (state->prefix_count == 0) { state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; }
+            else { state->prefix_count = (state->prefix_count * 10) + 0; editor_set_status_msg(state, "%d", state->prefix_count); }
+            return; // Don't reset prefix_count
+        case ACT_DIGIT_1: case ACT_DIGIT_2: case ACT_DIGIT_3: case ACT_DIGIT_4:
+        case ACT_DIGIT_5: case ACT_DIGIT_6: case ACT_DIGIT_7: case ACT_DIGIT_8: case ACT_DIGIT_9:
+            state->prefix_count = (state->prefix_count * 10) + (action - ACT_DIGIT_0);
+            editor_set_status_msg(state, "%d", state->prefix_count);
+            return; // Don't reset prefix_count
+
+        case ACT_UNDO: do_undo(state); break;
+        case ACT_REDO: do_redo(state); break;
+        case ACT_DELETE_LINE: {
+            int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
+            for (int i = 0; i < repeat; i++) editor_delete_line(state);
+            state->prefix_count = 0;
+        } break;
+        case ACT_JUMP_BRACKET: editor_jump_to_matching_bracket(state); break;
+        
+        case ACT_MACRO_RECORD:
+            state->is_dirty = true;
+            if (state->is_recording_macro) {
+                state->is_recording_macro = false;
+                editor_set_status_msg(state, "Recording stopped");
+            } else {
+                editor_set_status_msg(state, "Recording @");
+                redesenhar_todas_as_janelas();
+                wint_t reg_ch;
+                WINDOW *active_win = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->win;
+                wget_wch(active_win, &reg_ch);
+                if (reg_ch >= 'a' && reg_ch <= 'z') {
+                    state->is_recording_macro = true;
+                    state->recording_register_idx = reg_ch - 'a';
+                    if (state->macro_registers[state->recording_register_idx]) {
+                        free(state->macro_registers[state->recording_register_idx]);
+                        state->macro_registers[state->recording_register_idx] = NULL;
+                    }
+                    editor_set_status_msg(state, "recording @%c", (char)reg_ch);
+                } else {
+                    editor_set_status_msg(state, "Macro recording cancelled.");
+                }
+            }
+            break;
+            
+        case ACT_MACRO_PLAY: {
+            state->is_dirty = true;
+            editor_set_status_msg(state, "@");
+            redesenhar_todas_as_janelas();
+            wint_t reg_ch_play;
+            WINDOW *active_win = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->win;
+            wget_wch(active_win, &reg_ch_play);
+
+            if (reg_ch_play == '@') {
+                if (state->last_played_macro_register != 0) reg_ch_play = state->last_played_macro_register;
+                else { editor_set_status_msg(state, "No previous macro executed."); break; }
+            }
+
+            if (reg_ch_play >= 'a' && reg_ch_play <= 'z') {
+                char* macro_to_play = state->macro_registers[reg_ch_play - 'a'];
+                if (macro_to_play) {
+                    editor_set_status_msg(state, "playing @%c", (char)reg_ch_play);
+                    state->last_played_macro_register = reg_ch_play;
+                    bool was_recording = state->is_recording_macro;
+                    state->is_recording_macro = false;
+
+                    wchar_t wc;
+                    int i = 0;
+                    int len = strlen(macro_to_play);
+                    while (i < len) {
+                        int consumed = mbtowc(&wc, &macro_to_play[i], len - i);
+                        if (consumed > 0) {
+                            void process_editor_input(EditorState *state, wint_t ch, bool *should_exit);
+                            process_editor_input(state, wc, should_exit);
+                            i += consumed;
+                        } else i++;
+                    }
+                    state->is_recording_macro = was_recording;
+                    editor_set_status_msg(state, "macro finished");
+                } else editor_set_status_msg(state, "register @%c is empty", (char)reg_ch_play);
+            } else editor_set_status_msg(state, "Invalid register.");
+            break;
+        }
+
         case ACT_SAVE_FILE: save_file(state); break;
         case ACT_OPENS_RECENT: display_recent_files(); break;
         case ACT_FUZZY_FINDER: display_fuzzy_finder(state); break;
