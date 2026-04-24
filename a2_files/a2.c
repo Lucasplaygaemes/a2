@@ -95,7 +95,11 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     int initial_num_workspaces = gerenciador_workspaces.num_workspaces;
     int initial_num_windows = (initial_num_workspaces > 0) ? ACTIVE_WS->num_janelas : 0;
 
-    if (state->is_recording_macro && !(state->mode == NORMAL && ch == 'q')) {
+    // Detect if current key triggers macro recording to avoid recording the 'stop' key
+    bool is_ctrl_tmp = (ch > 0 && ch < 32 && ch != 10 && ch != 13 && ch != 9);
+    EditorAction current_act = get_action_from_key(ch, false, is_ctrl_tmp, state->pending_sequence_key);
+
+    if (state->is_recording_macro && current_act != ACT_MACRO_RECORD) {
         int reg_idx = state->recording_register_idx;
         char new_chars[MB_CUR_MAX + 1];
         int len = wctomb(new_chars, ch);
@@ -239,9 +243,23 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     // Global Ctrl and Key check
     bool is_ctrl = (ch > 0 && ch < 32 && ch != 10 && ch != 13 && ch != 9); // Exclude Enter/Tab
     EditorAction global_act = get_action_from_key(ch, false, is_ctrl, 0);
+    
     if (global_act != ACT_NONE) {
-        execute_action(global_act, state, should_exit);
-        return;
+        bool should_execute = true;
+        
+        // In INSERT or COMMAND mode, don't intercept simple printable characters (like 'q', 'i', 'p')
+        // unless they are special keys (like Arrows) or have modifiers.
+        if (state->mode == INSERT || state->mode == COMMAND) {
+            KeyBinding *kb = &global_bindings[global_act];
+            if (!kb->alt && !kb->ctrl && kb->leader == 0 && kb->key < 256) {
+                should_execute = false;
+            }
+        }
+
+        if (should_execute) {
+            execute_action(global_act, state, should_exit);
+            return;
+        }
     }
 
     switch (state->mode) {
@@ -427,226 +445,6 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 // state->status_msg[0] = '\0';
                 break;
             }
-                
-            case NORMAL:
-                switch (ch) {
-                    case '0': case '1': case '2': case '3': case '4':
-                    case '5': case '6': case '7': case '8': case '9':
-                        if (state->prefix_count == 0 && ch == '0') {
-                            state->current_col = 0;
-                            state->ideal_col = 0;
-                        } else {
-                            state->prefix_count = (state->prefix_count * 10) + (ch - '0');
-                            editor_set_status_msg(state, "%d", state->prefix_count);
-                        }
-                        state->is_dirty = true;
-                        return;
-                    case 'y':
-                        state->is_dirty = true;
-                        state->pending_operator = ch;
-                        state->mode = OPERATOR_PENDING;
-                        editor_set_status_msg(state, "%c", ch);
-                        return;
-                    case 'q':
-                        state->is_dirty = true;
-                        if (state->is_recording_macro) {
-                            state->is_recording_macro = false;
-                            editor_set_status_msg(state, "Recording stopped");
-                        } else {
-                            
-                            editor_set_status_msg(state, "Recording @");
-                            redesenhar_todas_as_janelas();
-                            wint_t reg_ch;
-                            wget_wch(active_win, &reg_ch);
-                            if (reg_ch >= 'a' && reg_ch <= 'z') {
-                                state->is_recording_macro = true;
-                                state->recording_register_idx = reg_ch - 'a';
-                                if (state->macro_registers[state->recording_register_idx]) {
-                                      free(state->macro_registers[state->recording_register_idx]);
-                                      state->macro_registers[state->recording_register_idx] = NULL;
-                                }
-                                editor_set_status_msg(state, "recording @%c", (char)reg_ch);
-                            } else {
-                                editor_set_status_msg(state, "Macro recording cancelled.");
-                            }
-                        }
-                        break;
-                    case '@': {
-                        state->is_dirty = true;
-                        editor_set_status_msg(state, "@");
-                        redesenhar_todas_as_janelas();
-                        wint_t reg_ch_play;
-                        wget_wch(active_win, &reg_ch_play);
-
-                        if (reg_ch_play == '@') { // Logic for @@
-                            if (state->last_played_macro_register != 0) {
-                                reg_ch_play = state->last_played_macro_register;
-                            } else {
-                                editor_set_status_msg(state, "No previous macro executed.");
-                                break; 
-                            }
-                        }
-
-                        if (reg_ch_play >= 'a' && reg_ch_play <= 'z') {
-                            char* macro_to_play = state->macro_registers[reg_ch_play - 'a'];
-                            if (macro_to_play) {
-                                editor_set_status_msg(state, "playing @%c", (char)reg_ch_play);
-                                state->last_played_macro_register = reg_ch_play; // Store the executed macro register
-                                bool was_recording = state->is_recording_macro;
-                                state->is_recording_macro = false;
-
-                                wchar_t wc;
-                                int i = 0;
-                                int len = strlen(macro_to_play);
-                                while (i < len) {
-                                    int consumed = mbtowc(&wc, &macro_to_play[i], len - i);
-                                    if (consumed > 0) {
-                                        process_editor_input(state, wc, should_exit);
-                                        i += consumed;
-                                    } else {
-                                        i++;
-                                    }
-                                }
-                                
-                                state->is_recording_macro = was_recording;
-                                editor_set_status_msg(state, "macro finished");
-                            } else {
-                                editor_set_status_msg(state, "register @%c is empty", (char)reg_ch_play);
-                            }
-                        } else {
-                            editor_set_status_msg(state, "Invalid register.");
-                        }
-                        break;
-                    }
-                    case 22: // Ctrl+V for local paste
-                        editor_paste(state);
-                        break;
-                    //shift tab
-                    case KEY_BTAB:
-                        push_undo(state);
-                        editor_unindent_line(state, state->current_line); break;
-                    case 'u':
-                        state->current_col = 0;
-                        state->ideal_col = 0;
-                        editor_handle_enter(state);
-                        state->current_line--;
-                        state->mode = INSERT;
-                        break;
-                    case 'U':
-                        state->current_col = strlen(state->lines[state->current_line]);
-                        editor_handle_enter(state);
-                        state->mode = INSERT;
-                        break;
-                    case 'G':
-                        state->is_dirty = true;
-                        state->current_line = state->num_lines - 1;
-                        state->current_col = 0;
-                        state->ideal_col = 0;
-                        break;
-                    case 'J':
-                        editor_join_line(state);
-                        break;
-                    case 'g':
-                        state->is_dirty = true;
-                        state->current_line = 0;
-                        state->current_col = 0;
-                        state->ideal_col = 0;
-                        break;
-                    case '%':
-                        state->is_dirty = true;
-                        editor_jump_to_matching_bracket(state);
-                        break;
-                    case 'p': // Paste from local register
-                        editor_paste(state);
-                        break;
-                    case 'P': // Paste from global register
-                        editor_global_paste(state);
-                        break;
-                    case 'm':
-                        if (state->is_moving) {
-                            editor_paste_from_move_register(state);
-                            state->is_moving = false;
-                            free(state->move_register);
-                            state->move_register = NULL;
-                            editor_set_status_msg(state, "Text moved.");
-                        }
-                        break;
-                    case 'v': state->mode = VISUAL; state->is_dirty = true; break;
-                    case 'i': state->mode = INSERT; state->is_dirty = true; break;
-                    case ':': state->mode = COMMAND; state->history_pos = state->history_count; state->command_buffer[0] = '\0'; state->command_pos = 0; state->is_dirty = true; break;
-                    case KEY_CTRL_RIGHT_BRACKET: proxima_janela(); state->is_dirty = true; break;
-                    case KEY_CTRL_LEFT_BRACKET: janela_anterior(); state->is_dirty = true; break;
-                    case KEY_CTRL_F: editor_find(state); break;
-                    case KEY_CTRL_DEL: editor_delete_line(state); break;
-                    case KEY_CTRL_K: editor_delete_line(state); state->is_dirty = true; break;
-                    case KEY_CTRL_D: editor_find_next(state); break;
-                    case KEY_CTRL_A: editor_find_previous(state); break;
-                    case KEY_CTRL_G: display_directory_navigator(state); break;
-                    case 'o':
-                    case KEY_UP: {
-                        int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
-                        for (int i = 0; i < repeat; i++) {
-                            if (state->current_line > 0) state->current_line--;
-                        }
-                        state->prefix_count = 0;
-                        state->current_col = state->ideal_col;
-                        state->is_dirty = true;
-                        break;
-                    }
-                    case 'l':
-                    case KEY_DOWN: {
-                        int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
-                        for (int i = 0; i < repeat; i++) {
-                            if (state->current_line < state->num_lines - 1) state->current_line++;
-                        }
-                        state->prefix_count = 0;
-                        state->current_col = state->ideal_col;
-                        state->is_dirty = true;
-                        break;                        
-                    }
-                    case 'k':
-                    case KEY_LEFT: {
-                        int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
-                        for (int i = 0; i < repeat; i++) {
-                            if (state->current_col > 0) {
-                                state->current_col--;
-                                while (state->current_col > 0 && (state->lines[state->current_line][state->current_col] & 0xC0) == 0x80) {
-                                    state->current_col--;
-                                }
-                            }
-                        }
-                        state->prefix_count = 0;
-                        state->ideal_col = state->current_col;
-                        state->is_dirty = true;
-                        break;
-                    }
-                    case 231: // ç
-                    case KEY_RIGHT: {
-                        int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
-                        char* line = state->lines[state->current_line];
-                        for (int i = 0; i < repeat; i++) {
-                            if (line && state->current_col < (int)strlen(line)) {
-                                state->current_col++;
-                                while (line[state->current_col] != '\0' && (line[state->current_col] & 0xC0) == 0x80) {
-                                    state->current_col++;
-                                }
-                            }
-                        }
-                        state->prefix_count = 0;
-                        state->ideal_col = state->current_col;
-                        state->is_dirty = true;
-                        } break;
-                    case 'O':
-                    case KEY_PPAGE: case KEY_SR: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; state->is_dirty = true; break;
-                    case 'L':
-                    case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; state->is_dirty = true; break;
-                    case 'K':
-                    case KEY_HOME: state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
-                    case 199: // Ç
-                    case KEY_END: { char* line = state->lines[state->current_line]; if(line) state->current_col = strlen(line); state->ideal_col = state->current_col; state->is_dirty = true; } break;
-                    case KEY_SDC: editor_delete_line(state); break;
-                }
-                break;
             case INSERT:
                 handle_insert_mode_key(state, ch);
                 break;
