@@ -11,6 +11,42 @@ KeyBinding global_bindings[ACT_COUNT];
 const KeyBinding default_bindings[ACT_COUNT] = {
     [ACT_NONE] = {ACT_NONE, 0, 0, false, false, "NONE", "None", "No Action"},
     
+    [ACT_NORMAL_MODE] = {ACT_NORMAL_MODE, 0, 27, false, false, "NORMAL_MODE", "Normal Mode", "Changes to Normal Mode."},
+    [ACT_INSERT_MODE] = {ACT_INSERT_MODE, 0, 'i', false, false, "INSERT_MODE", "Insert Mode", "Changes to Insert mode."},
+    [ACT_VISUAL_MODE] = {ACT_VISUAL_MODE, 0, 'v', false, false, "VISUAL_MODE", "Visual Mode", "Changes into Visual Mode."},
+    [ACT_COMMAND_MODE] = {ACT_COMMAND_MODE, 0, ':', false, false, "COMMAND_MODE", "Command Mode", "Opens the command bar."},
+    
+    [ACT_MOVE_UP] = {ACT_MOVE_UP, 0, KEY_UP, false, false, "MOVE_UP", "Move Up", "Move cursor up"},
+    [ACT_MOVE_DOWN] = {ACT_MOVE_DOWN, 0, KEY_DOWN, false, false, "MOVE_DOWN", "Move Down", "Move cursor down"},
+    [ACT_MOVE_LEFT] = {ACT_MOVE_LEFT, 0, KEY_LEFT, false, false, "MOVE_LEFT", "Move Left", "Move cursor left"},
+    [ACT_MOVE_RIGHT] = {ACT_MOVE_RIGHT, 0, KEY_RIGHT, false, false, "MOVE_RIGHT", "Move Right", "Move cursor right"},
+    [ACT_MOVE_HOME] = {ACT_MOVE_HOME, 0, KEY_HOME, false, false, "MOVE_HOME", "Home", "Move to start of line"},
+    [ACT_MOVE_END] = {ACT_MOVE_END, 0, KEY_END, false, false, "MOVE_END", "End", "Move to end of line"},
+    [ACT_MOVE_PAGE_UP] = {ACT_MOVE_PAGE_UP, 0, KEY_PPAGE, false, false, "PAGE_UP", "Page Up", "Move one page up"},
+    [ACT_MOVE_PAGE_DOWN] = {ACT_MOVE_PAGE_DOWN, 0, KEY_NPAGE, false, false, "PAGE_DOWN", "Page Down", "Move one page down"},
+    [ACT_MOVE_TOP] = {ACT_MOVE_TOP, 0, 'g', false, false, "MOVE_TOP", "Top", "Move to top of file"},
+    [ACT_MOVE_BOTTOM] = {ACT_MOVE_BOTTOM, 0, 'G', false, false, "MOVE_BOTTOM", "Bottom", "Move to bottom of file"},
+    [ACT_SCROLL_UP] = {ACT_SCROLL_UP, 0, KEY_SR, false, false, "SCROLL_UP", "Jump Up", "Jump 10 lines up"},
+    [ACT_SCROLL_DOWN] = {ACT_SCROLL_DOWN, 0, KEY_SF, false, false, "SCROLL_DOWN", "Jump Down", "Jump 10 lines down"},
+
+    [ACT_DIGIT_0] = {ACT_DIGIT_0, 0, '0', false, false, "DIGIT_0", "0", "Prefix digit 0"},
+    [ACT_DIGIT_1] = {ACT_DIGIT_1, 0, '1', false, false, "DIGIT_1", "1", "Prefix digit 1"},
+    [ACT_DIGIT_2] = {ACT_DIGIT_2, 0, '2', false, false, "DIGIT_2", "2", "Prefix digit 2"},
+    [ACT_DIGIT_3] = {ACT_DIGIT_3, 0, '3', false, false, "DIGIT_3", "3", "Prefix digit 3"},
+    [ACT_DIGIT_4] = {ACT_DIGIT_4, 0, '4', false, false, "DIGIT_4", "4", "Prefix digit 4"},
+    [ACT_DIGIT_5] = {ACT_DIGIT_5, 0, '5', false, false, "DIGIT_5", "5", "Prefix digit 5"},
+    [ACT_DIGIT_6] = {ACT_DIGIT_6, 0, '6', false, false, "DIGIT_6", "6", "Prefix digit 6"},
+    [ACT_DIGIT_7] = {ACT_DIGIT_7, 0, '7', false, false, "DIGIT_7", "7", "Prefix digit 7"},
+    [ACT_DIGIT_8] = {ACT_DIGIT_8, 0, '8', false, false, "DIGIT_8", "8", "Prefix digit 8"},
+    [ACT_DIGIT_9] = {ACT_DIGIT_9, 0, '9', false, false, "DIGIT_9", "9", "Prefix digit 9"},
+
+    [ACT_UNDO] = {ACT_UNDO, 0, 21, false, true, "UNDO", "Undo", "Undo last change (Ctrl+U)"},
+    [ACT_REDO] = {ACT_REDO, 0, 18, false, true, "REDO", "Redo", "Redo last change (Ctrl+R)"},
+    [ACT_DELETE_LINE] = {ACT_DELETE_LINE, 0, 11, false, true, "DELETE_LINE", "Delete Line", "Delete the current line (Ctrl+K)"},
+    [ACT_JUMP_BRACKET] = {ACT_JUMP_BRACKET, 0, '%', false, false, "JUMP_BRACKET", "Jump Bracket", "Jump to matching bracket"},
+    [ACT_MACRO_RECORD] = {ACT_MACRO_RECORD, 0, 'q', false, false, "MACRO_REC", "Record Macro", "Start/Stop recording macro"},
+    [ACT_MACRO_PLAY] = {ACT_MACRO_PLAY, 0, '@', false, false, "MACRO_PLAY", "Play Macro", "Execute a recorded macro"},
+    
     // File
     [ACT_SAVE_FILE] = {ACT_SAVE_FILE, 0, 'W', true, false, "SAVE_FILE", "Save", "Save the current file"},
     [ACT_OPENS_RECENT] = {ACT_OPENS_RECENT, 0, 'b', true, false, "OPEN_RECENT", "Recent Files", "List the recently open files"},
