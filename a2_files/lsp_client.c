@@ -815,7 +815,7 @@ void lsp_initialize(EditorState *state) {
     }
 
     // Spell Check Policy
-    bool enable_spell_check = (ext && strcmp(ext, ".txt") == 0) || !lsp_will_be_enabled;
+    bool enable_spell_check = ((ext && strcmp(ext, ".txt") == 0) || !lsp_will_be_enabled) && global_config.spell_checker_enabled;
 
     if (enable_spell_check && global_config.default_spell_lang[0] != '\0') {
         spell_checker_load_dict(&state->spell_checker, global_config.default_spell_lang);
@@ -824,7 +824,7 @@ void lsp_initialize(EditorState *state) {
     }
 
     // Now, proceed with LSP initialization if needed
-    if (!lsp_will_be_enabled) {
+    if (!lsp_will_be_enabled || !global_config.lsp_enabled) {
         free(state->lsp_client->languageId);
         free(state->lsp_client);
         state->lsp_client = NULL;

@@ -708,27 +708,35 @@ void editor_redraw(WINDOW *win, EditorState *state) {
         int visual_col = get_visual_col(state->lines[state->current_line], state->current_col);
         int diag_count = (state->lsp_document) ? state->lsp_document->diagnostics_count : -1;
 
-        // ---- LÓGICA CONDICIONAL ----
-        if (state->status_bar_mode == 1) { // Novo estilo robusto
+        if (state->status_bar_mode == 1) { // New robust style
             char left_bar[200];
             char right_bar[100];
 
             snprintf(left_bar, sizeof(left_bar), "WS %d | %s | %s%s",
-                gerenciador_workspaces.workspace_ativo_idx + 1, mode_str, display_filename, state->buffer_modified ? "*" : "");
+            gerenciador_workspaces.workspace_ativo_idx + 1, mode_str, display_filename, state->buffer_modified ? "*" : "");
+            
+            time_t c_time = time(NULL);
+            struct tm *info = localtime(&c_time);
+            
+            // using strftime to format
+            char buffer[80];
+            strftime(buffer, sizeof(buffer), "%H:%M:%S", info);
 
-            snprintf(right_bar, sizeof(right_bar), "Diags: %d | Line %d/%d, Col %d",
-                diag_count, state->current_line + 1, state->num_lines, visual_col + 1);
+            snprintf(right_bar, sizeof(right_bar), " %s | Line %d/%d, Col %d",
+            buffer, state->current_line + 1, state->num_lines, visual_col + 1);
 
             mvwprintw(win, rows - 1, 1, "%s", left_bar);
-
+            
             int right_bar_len = strlen(right_bar);
             mvwprintw(win, rows - 1, cols - 1 - right_bar_len, "%s", right_bar);
 
             int left_len = strlen(left_bar);
             int available_space = (cols - 1 - right_bar_len) - (left_len + 3);
+            
             if (available_space > 5 && state->status_msg[0] != '\0') {
                 mvwprintw(win, rows - 1, left_len + 2, "| %.*s", available_space - 2, state->status_msg);
             }
+            
             } else { // Estilo clássico (antigo)
                 char final_bar[cols + 1];
                 // Estilo 0 simplificado para ser visualmente distinto
@@ -740,7 +748,6 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                 mvwprintw(win, rows - 1, 1, "%.*s", print_width, final_bar);
             }    }
     wattroff(win, COLOR_PAIR(color_pair));
-
     wnoutrefresh(win);
 }
 
