@@ -309,6 +309,7 @@ typedef struct {
     bool expand_tab;
     int status_bar_mode;
     char default_spell_lang[128];
+    bool spell_checker_enabled;
     bool show_line_numbers;
     bool relative_line_numbers;
 } A2Config;
