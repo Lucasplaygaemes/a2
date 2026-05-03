@@ -575,7 +575,22 @@ int main(int argc, char *argv[]) {
     redesenhar_todas_as_janelas();
     bool should_exit = false;
     int check_counter = 0;
+    time_t last_second = time(NULL);
     while (!should_exit) {
+        // Force redraw if second changed (for the clock)
+        time_t current_time_now = time(NULL);
+        if (current_time_now != last_second) {
+            last_second = current_time_now;
+            if (gerenciador_workspaces.num_workspaces > 0) {
+                GerenciadorJanelas *ws = ACTIVE_WS;
+                for (int i = 0; i < ws->num_janelas; i++) {
+                    if (ws->janelas[i]->tipo == TIPOJANELA_EDITOR && ws->janelas[i]->estado) {
+                        ws->janelas[i]->estado->is_dirty = true;
+                    }
+                }
+            }
+        }
+
         if (gerenciador_workspaces.num_workspaces == 0) {
             should_exit = true;
             continue;
