@@ -16,6 +16,7 @@
 #include "defs.h"
 #include "spell.h"
 #include "others.h"
+#include "lsp_client.h"
 
 A2Config global_config = {
     .word_wrap = true,
@@ -29,6 +30,7 @@ A2Config global_config = {
     .expand_tab = true,
     .status_bar_mode = 1,
     .default_spell_lang = "",
+    .spell_checker_enabled = true,
     .show_line_numbers = false
 };
 
@@ -327,6 +329,7 @@ void save_global_config() {
         fprintf(f, "tab_size=%d\n", global_config.tab_size);
         fprintf(f, "expand_tab=%d\n", global_config.expand_tab);
         fprintf(f, "status_bar_mode=%d\n", global_config.status_bar_mode);
+        fprintf(f, "spell_checker_enabled=%d\n", global_config.spell_checker_enabled);
         fprintf(f, "show_line_numbers=%d\n", global_config.show_line_numbers);
         fprintf(f, "relative_line_numbers=%d\n", global_config.relative_line_numbers);
         fprintf(f, "lsp_diagnostics=%d\n", global_config.lsp_diagnostics);
@@ -355,6 +358,7 @@ void load_global_config() {
         else if (sscanf(line, "tab_size=%d", &val) == 1) global_config.tab_size = val;
         else if (sscanf(line, "expand_tab=%d", &val) == 1) global_config.expand_tab = val;
         else if (sscanf(line, "status_bar_mode=%d", &val) == 1) global_config.status_bar_mode = val;
+        else if (sscanf(line, "spell_checker_enabled=%d", &val) == 1) global_config.spell_checker_enabled = val;
         else if (sscanf(line, "show_line_numbers=%d", &val) == 1) global_config.show_line_numbers = val;
         else if (sscanf(line, "relative_line_numbers=%d", &val) == 1) global_config.relative_line_numbers = val;
         else if (sscanf(line, "lsp_diagnostics=%d", &val) == 1) global_config.lsp_diagnostics = val;
@@ -369,6 +373,59 @@ void load_global_config() {
 }
 
 // --- Helper Functions ---
+
+void apply_settings_globally() {
+    for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {
+        GerenciadorJanelas *ws = gerenciador_workspaces.workspaces[i];
+        for (int j = 0; j < ws->num_janelas; j++) {
+            JanelaEditor *jw = ws->janelas[j];
+            if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
+                EditorState *state = jw->estado;
+                
+                state->word_wrap_enabled = global_config.word_wrap;
+                state->auto_indent_on_newline = global_config.auto_indent;
+                state->paste_mode = global_config.paste_mode;
+                state->status_bar_mode = global_config.status_bar_mode;
+                state->show_line_numbers = global_config.show_line_numbers;
+                
+                // LSP Global Toggle
+                if (!global_config.lsp_enabled) {
+                    if (state->lsp_client) {
+                        lsp_shutdown(state);
+                    }
+                } else if (global_config.lsp_enabled && !state->lsp_client) {
+                    // Re-initialize might start LSP if supported
+                    lsp_initialize(state);
+                }
+                
+                // Spell Checker Global Toggle
+                if (!global_config.spell_checker_enabled) {
+                    if (state->spell_checker.enabled) {
+                        spell_checker_unload_dict(&state->spell_checker);
+                    }
+                } else if (global_config.spell_checker_enabled && !state->spell_checker.enabled) {
+                    // Logic similar to lsp_initialize spell check policy
+                    const char *ext = strrchr(state->filename, '.');
+                    bool lsp_will_be_enabled = false;
+                    if (ext) {
+                        if (strcmp(ext, ".c") == 0 || strcmp(ext, ".h") == 0 ||
+                            strcmp(ext, ".cpp") == 0 || strcmp(ext, ".hpp") == 0 ||
+                            strcmp(ext, ".py") == 0) {
+                            lsp_will_be_enabled = true;
+                        }
+                    }
+                    bool enable_spell_check = (ext && strcmp(ext, ".txt") == 0) || !lsp_will_be_enabled;
+                    if (enable_spell_check && global_config.default_spell_lang[0] != '\0') {
+                        spell_checker_load_dict(&state->spell_checker, global_config.default_spell_lang);
+                    }
+                }
+                
+                state->is_dirty = true;
+                mark_all_lines_dirty(state);
+            }
+        }
+    }
+}
 
 // Find the first available editor state to read current settings from
 static EditorState* get_any_editor_state() {
@@ -500,15 +557,31 @@ void draw_spell_settings(JanelaEditor *jw) {
     (void)rows;
     
     draw_settings_header(jw->win, "SETTINGS > SPELL CHECKER", cols);
-    mvwprintw(jw->win, 2, 4, "Default Language:");
+    
+    // Toggle global enable
+    if (state->current_selection == 0) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
+    mvwprintw(jw->win, 2, 4, " Spell Checker : ");
+    if (global_config.spell_checker_enabled) {
+        wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
+        wprintw(jw->win, "[ ENABLED ]");
+        wattroff(jw->win, PAIR_DIFF_ADD | A_BOLD);
+    } else {
+        wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+        wprintw(jw->win, "[ DISABLED ]");
+        wattroff(jw->win, PAIR_ERROR | A_BOLD);
+    }
+    if (state->current_selection == 0) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
+
+    mvwprintw(jw->win, 4, 4, "Default Language:");
 
     for (int i = 0; i < num_spell_languages; i++) {
+        int display_idx = i + 1;
         bool is_default = (strcmp(global_config.default_spell_lang, spell_languages[i].lang_code) == 0);
         bool is_downloaded = spell_checker_is_downloaded(spell_languages[i].lang_code);
         
-        if (i == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
+        if (display_idx == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
         
-        mvwprintw(jw->win, 4 + i, 6, " %-20s ", spell_languages[i].display_name);
+        mvwprintw(jw->win, 6 + i, 6, " %-20s ", spell_languages[i].display_name);
         
         if (is_default) {
             wattron(jw->win, COLOR_PAIR(PAIR_KEYWORD) | A_BOLD);
@@ -522,7 +595,7 @@ void draw_spell_settings(JanelaEditor *jw) {
             wattroff(jw->win, PAIR_COMMENT);
         }
 
-        if (i == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
+        if (display_idx == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
 }
 
@@ -818,21 +891,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                         }
                     }
                     save_global_config(); // Salva no disco
-
-                    // Aplica nas janelas abertas
-                    for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {
-                        for (int j = 0; j < gerenciador_workspaces.workspaces[i]->num_janelas; j++) {
-                            JanelaEditor *editor_jw = gerenciador_workspaces.workspaces[i]->janelas[j];
-                            if (editor_jw->tipo == TIPOJANELA_EDITOR && editor_jw->estado) {
-                                editor_jw->estado->word_wrap_enabled = global_config.word_wrap;
-                                editor_jw->estado->auto_indent_on_newline = global_config.auto_indent;
-                                editor_jw->estado->paste_mode = global_config.paste_mode;
-                                editor_jw->estado->status_bar_mode = global_config.status_bar_mode;
-                                editor_jw->estado->show_line_numbers = global_config.show_line_numbers;
-                                editor_jw->estado->is_dirty = true;
-                            }
-                        }
-                    }
+                    apply_settings_globally();
                     break;
             }
             break;
@@ -874,12 +933,12 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                 case 'q':
                 case 27: // ESC
                     state->current_view = SETTINGS_VIEW_MAIN;
-                    state->current_selection = 0;
+                    state->current_selection = 2; // Selection was 'Spell Checker'
                     break;
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; proxima_janela(); break;
                 case 'j':
                 case KEY_DOWN:
-                    if (state->current_selection < num_spell_languages - 1) {
+                    if (state->current_selection < num_spell_languages) {
                         state->current_selection++;
                     }
                     break;
@@ -892,53 +951,60 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                 case KEY_ENTER:
                 case '\n':
                     {
-                        const char *lang_code = spell_languages[state->current_selection].lang_code;
-                        
-                        // Always set as default immediately
-                        strncpy(global_config.default_spell_lang, lang_code, sizeof(global_config.default_spell_lang) - 1);
-                        global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
-                        save_global_config(); // Save new default language
-
-                        // Check if curl is available before doing anything with downloads
-                        if (system("which curl > /dev/null 2>&1") != 0) {
-                            char *const err_cmd[] = {"/bin/sh", "-c", "echo 'Error: the curl command isn't installed, install it to download the dictionarys.'; read -n 1 - r - p 'Press any key to continue...'", NULL};
-                            criar_janela_terminal_generica(err_cmd);
-                            // Set status message if no curl
-                            EditorState* current_editor = get_any_editor_state();
-                            if (current_editor) {
-                                editor_set_status_msg(current_editor, "Error: curl not found. Cannot download dictionaries.");
-                            }
-                            break; // Exit early if no curl
-                        }
-                        
-                        if (spell_checker_is_downloaded(lang_code)) {
-                            // Dictionary already downloaded, just set status message
-                            EditorState* current_editor = get_any_editor_state();
-                            if (current_editor) {
-                                editor_set_status_msg(current_editor, "Default spell language set to %s (already downloaded).", lang_code);
-                            }
+                        if (state->current_selection == 0) {
+                            global_config.spell_checker_enabled = !global_config.spell_checker_enabled;
+                            save_global_config();
+                            apply_settings_globally();
                         } else {
-                            // Dictionary not downloaded, proceed with download logic
-                            char command[2048];
-                            const char *base_url = "https://cgit.freedesktop.org/libreoffice/dictionaries/plain";
-                            char download_dir[1024];
-                            snprintf(download_dir, sizeof(download_dir), "%s/.config/a2/hunspell", getenv("HOME"));
+                            const char *lang_code = spell_languages[state->current_selection - 1].lang_code;
                             
-                            snprintf(command, sizeof(command),
-                            "set -e; " 
-                            "mkdir -p %s; "
-                            "echo 'Downloading %s.aff...'; "
-                            "curl --fail -L '%s/%s/%s.aff' -o '%s/%s.aff' || { echo 'Fail downloading the .aff'; exit 1; }; "
-                            "echo 'Downloading %s.dic...'; "
-                            "curl --fail -L '%s/%s/%s.dic' -o '%s/%s.dic' || { echo 'Fail donwloading the .dic'; exit 1; }; "
-                            "echo ''; "
-                            "echo 'Success! The dictionary for %s is downloaded.' ; "
-                            "echo 'It is now your default language. Open a new file or use :set spelllang %s'; ",
-                            download_dir, lang_code, base_url, lang_code, lang_code, download_dir, lang_code, lang_code, base_url, lang_code, lang_code, download_dir, lang_code, lang_code, lang_code
-                            );
+                            // Always set as default immediately
+                            strncpy(global_config.default_spell_lang, lang_code, sizeof(global_config.default_spell_lang) - 1);
+                            global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
+                            save_global_config(); // Save new default language
+
+                            // Check if curl is available before doing anything with downloads
+                            if (system("which curl > /dev/null 2>&1") != 0) {
+                                char *const err_cmd[] = {"/bin/sh", "-c", "echo 'Error: the curl command isn't installed, install it to download the dictionarys.'; read -n 1 - r - p 'Press any key to continue...'", NULL};
+                                criar_janela_terminal_generica(err_cmd);
+                                // Set status message if no curl
+                                EditorState* current_editor = get_any_editor_state();
+                                if (current_editor) {
+                                    editor_set_status_msg(current_editor, "Error: curl not found. Cannot download dictionaries.");
+                                }
+                                break; // Exit early if no curl
+                            }
                             
-                            char *const shell_cmd[] = {"/bin/sh", "-c", command, NULL};
-                            criar_janela_terminal_generica(shell_cmd);
+                            if (spell_checker_is_downloaded(lang_code)) {
+                                // Dictionary already downloaded, just set status message
+                                EditorState* current_editor = get_any_editor_state();
+                                if (current_editor) {
+                                    editor_set_status_msg(current_editor, "Default spell language set to %s (already downloaded).", lang_code);
+                                }
+                                apply_settings_globally();
+                            } else {
+                                // Dictionary not downloaded, proceed with download logic
+                                char command[2048];
+                                const char *base_url = "https://cgit.freedesktop.org/libreoffice/dictionaries/plain";
+                                char download_dir[1024];
+                                snprintf(download_dir, sizeof(download_dir), "%s/.config/a2/hunspell", getenv("HOME"));
+                                
+                                snprintf(command, sizeof(command),
+                                "set -e; " 
+                                "mkdir -p %s; "
+                                "echo 'Downloading %s.aff...'; "
+                                "curl --fail -L '%s/%s/%s.aff' -o '%s/%s.aff' || { echo 'Fail downloading the .aff'; exit 1; }; "
+                                "echo 'Downloading %s.dic...'; "
+                                "curl --fail -L '%s/%s/%s.dic' -o '%s/%s.dic' || { echo 'Fail donwloading the .dic'; exit 1; }; "
+                                "echo ''; "
+                                "echo 'Success! The dictionary for %s is downloaded.' ; "
+                                "echo 'It is now your default language. Open a new file or use :set spelllang %s'; ",
+                                download_dir, lang_code, base_url, lang_code, lang_code, download_dir, lang_code, lang_code, base_url, lang_code, lang_code, download_dir, lang_code, lang_code, lang_code
+                                );
+                                
+                                char *const shell_cmd[] = {"/bin/sh", "-c", command, NULL};
+                                criar_janela_terminal_generica(shell_cmd);
+                            }
                         }
                     }
                     break;
@@ -971,6 +1037,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                         if (editor_state) process_lsp_restart(editor_state);
                     }
                     save_global_config();
+                    apply_settings_globally();
                     break;
             }
             break;
