@@ -566,11 +566,11 @@ void recalcular_layout_janelas() {
         // 4. updating the terminal, vterm
         if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.vterm) {
             int content_h = jw->altura - (2 * border_offset);
-            int content_w = jw->altura - (2 * border_offset);
+            int content_w = jw->largura - (2 * border_offset);
             
             // pass the content_win to vterm
             vterm_wnd_set(jw->term.vterm, jw->content_win);
-            vterm_resize(jw->term.vterm, content_h > 0 ? content_h : 1, content_w > 0 ? content_w : 1);
+            vterm_resize(jw->term.vterm, content_w > 0 ? content_w : 1, content_h > 0 ? content_h : 1);
             atualizar_tamanho_pty(jw);
         }
     }
