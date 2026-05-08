@@ -70,30 +70,39 @@ bool load_theme(const char* theme_name) {
         fclose(config_file);
     }
 
-    // 1. Try custom path
+    // 1. Try custom path from .a2_themedir
     if (custom_theme_dir[0] != '\0') {
         snprintf(path, sizeof(path), "%s/%s", custom_theme_dir, theme_name);
         f = fopen(path, "r");
     }
 
-    // 2. Try absolute path first, or path relative to CWD
+    // 2. Try global default (~/.a2/themes)
+    if (!f) {
+        const char* home = getenv("HOME");
+        if (home) {
+            snprintf(path, sizeof(path), "%s/.a2/themes/%s", home, theme_name);
+            f = fopen(path, "r");
+        }
+    }
+
+    // 3. Try absolute path first, or path relative to CWD
     if (!f) {
         f = fopen(theme_name, "r");
     }
 
-    // 3. Try system-wide install path
+    // 4. Try system-wide install path
     if (!f) {
         snprintf(path, sizeof(path), "/usr/local/share/a2/themes/%s", theme_name);
         f = fopen(path, "r");
     }
 
-    // 4. If not found, try path relative to executable's themes directory
+    // 5. If not found, try path relative to executable's themes directory
     if (!f && executable_dir[0] != '\0') {
         snprintf(path, sizeof(path), "%s/themes/%s", executable_dir, theme_name);
         f = fopen(path, "r");
     }
 
-    // 5. If still not found, try path relative to CWD's themes directory
+    // 6. If still not found, try path relative to CWD's themes directory
     if (!f) {
         snprintf(path, sizeof(path), "themes/%s", theme_name);
         f = fopen(path, "r");
