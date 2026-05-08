@@ -44,6 +44,7 @@ BoolSetting editor_bool_settings[] = {
     {"Auto Indent", &global_config.auto_indent},
     {"Paste Mode", &global_config.paste_mode},
     {"Show Line Numbers", &global_config.show_line_numbers},
+    {"Show Scrollbar", &global_config.show_scrollbar},
     {"Expand Tab", &global_config.expand_tab},
     {"Relative Lines", &global_config.relative_line_numbers}
 };
@@ -331,6 +332,7 @@ void save_global_config() {
         fprintf(f, "status_bar_mode=%d\n", global_config.status_bar_mode);
         fprintf(f, "spell_checker_enabled=%d\n", global_config.spell_checker_enabled);
         fprintf(f, "show_line_numbers=%d\n", global_config.show_line_numbers);
+        fprintf(f, "show_scrollbar=%d\n", global_config.show_scrollbar);
         fprintf(f, "relative_line_numbers=%d\n", global_config.relative_line_numbers);
         fprintf(f, "lsp_diagnostics=%d\n", global_config.lsp_diagnostics);
         fprintf(f, "lsp_completion=%d\n", global_config.lsp_completion);
@@ -360,6 +362,7 @@ void load_global_config() {
         else if (sscanf(line, "status_bar_mode=%d", &val) == 1) global_config.status_bar_mode = val;
         else if (sscanf(line, "spell_checker_enabled=%d", &val) == 1) global_config.spell_checker_enabled = val;
         else if (sscanf(line, "show_line_numbers=%d", &val) == 1) global_config.show_line_numbers = val;
+        else if (sscanf(line, "show_scrollbar=%d", &val) == 1) global_config.show_scrollbar = val;
         else if (sscanf(line, "relative_line_numbers=%d", &val) == 1) global_config.relative_line_numbers = val;
         else if (sscanf(line, "lsp_diagnostics=%d", &val) == 1) global_config.lsp_diagnostics = val;
         else if (sscanf(line, "lsp_completion=%d", &val) == 1) global_config.lsp_completion = val;
@@ -387,6 +390,7 @@ void apply_settings_globally() {
                 state->paste_mode = global_config.paste_mode;
                 state->status_bar_mode = global_config.status_bar_mode;
                 state->show_line_numbers = global_config.show_line_numbers;
+                state->show_scrollbar = global_config.show_scrollbar;
                 
                 // LSP Global Toggle
                 if (!global_config.lsp_enabled) {
@@ -505,16 +509,54 @@ void populate_theme_list(SettingsPanelState *state) {
     if (state->theme_list) return;
     
     state->num_themes = 0;
-    state->theme_list = malloc(sizeof(char*) * 100); // space 100 themes
+    state->theme_list = malloc(sizeof(char*) * 200); // Increased space
     
-    const char* dirs_to_check[] = { "themes", "/usr/local/share/a2/themes" };
-    for (int i = 0; i < 2; i++) {
+    char custom_theme_dir[PATH_MAX] = {0};
+    char config_path[PATH_MAX];
+    get_theme_config_path(config_path, sizeof(config_path));
+    FILE* config_file = fopen(config_path, "r");
+    if (config_file) {
+        if (fgets(custom_theme_dir, sizeof(custom_theme_dir), config_file) != NULL) {
+            custom_theme_dir[strcspn(custom_theme_dir, "\n")] = 0;
+        }
+        fclose(config_file);
+    }
+
+    char global_theme_dir[PATH_MAX] = {0};
+    const char* home = getenv("HOME");
+    if (home) {
+        snprintf(global_theme_dir, sizeof(global_theme_dir), "%s/.a2/themes", home);
+    }
+
+    char exec_theme_path[PATH_MAX] = {0};
+    if (executable_dir[0] != '\0') {
+        snprintf(exec_theme_path, sizeof(exec_theme_path), "%s/themes", executable_dir);
+    }
+
+    const char* dirs_to_check[] = { 
+        custom_theme_dir, 
+        global_theme_dir, 
+        "themes", 
+        "/usr/local/share/a2/themes",
+        exec_theme_path
+    };
+
+    for (int i = 0; i < 5; i++) {
+        if (dirs_to_check[i][0] == '\0') continue;
+        
         DIR *d = opendir(dirs_to_check[i]);
         if (d) {
             struct dirent *dir;
-            while ((dir = readdir(d)) != NULL && state->num_themes < 100) {
+            while ((dir = readdir(d)) != NULL && state->num_themes < 200) {
                 if (strstr(dir->d_name, ".theme")) {
-                    state->theme_list[state->num_themes++] = strdup(dir->d_name);
+                    // Avoid duplicates
+                    bool exists = false;
+                    for(int j=0; j<state->num_themes; j++) {
+                        if(strcmp(state->theme_list[j], dir->d_name) == 0) {
+                            exists = true; break;
+                        }
+                    }
+                    if(!exists) state->theme_list[state->num_themes++] = strdup(dir->d_name);
                 }
             }
             closedir(d);
