@@ -309,7 +309,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             }
             
             if (highlight_this_line) {
-                wattron(win, COLOR_PAIR(2));
+                wattron(win, COLOR_PAIR(12));
             }
             
             int line_len = strlen(line);
@@ -436,13 +436,13 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                                     }
                                 }
                             }
-                            if (color_pair) wattron(win, COLOR_PAIR(color_pair));
+                            if (color_pair && !highlight_this_line) wattron(win, COLOR_PAIR(color_pair));
                             if (color_pair == PAIR_SPELL_ERROR) wattron(win, A_UNDERLINE);
                             int remaining_width = (cols - 1 - border_offset) - getcurx(win);
                             if (token_len > remaining_width) token_len = remaining_width;
                             if (token_len > 0) wprintw(win, "%.*s", token_len, token_ptr);
                             if (color_pair == PAIR_SPELL_ERROR) wattroff(win, A_UNDERLINE);
-                            if (color_pair) wattroff(win, COLOR_PAIR(color_pair));
+                            if (color_pair && !highlight_this_line) wattroff(win, COLOR_PAIR(color_pair));
                         }
                     }
                     int y, x;
@@ -615,7 +615,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         }
                     }
 
-                    if (color_pair) wattron(win, COLOR_PAIR(color_pair));
+                    if (color_pair && !highlight_this_line) wattron(win, COLOR_PAIR(color_pair));
                     if (color_pair == PAIR_SPELL_ERROR) wattron(win, A_UNDERLINE);
 
                     int remaining_width = (cols - 1 - border_offset) - getcurx(win);
@@ -623,7 +623,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     if (token_len > 0) wprintw(win, "%.*s", token_len, token_ptr);
 
                     if (color_pair == PAIR_SPELL_ERROR) wattroff(win, A_UNDERLINE);
-                    if (color_pair) wattroff(win, COLOR_PAIR(color_pair));
+                    if (color_pair && !highlight_this_line) wattroff(win, COLOR_PAIR(color_pair));
                     
                     current_col += token_len;
                 }
@@ -667,6 +667,33 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                 }
             }
         }
+    }
+
+    // logic for the scrollbar
+    if (state->show_scrollbar) {
+        int sb_rows, sb_cols;
+        getmaxyx(win, sb_rows, sb_cols);
+        int sb_content_height = sb_rows - (border_offset + 1);
+        
+        // draws the trail (option, lets a sutile line at right)
+        for (int i = 0; i < sb_content_height; i++) {
+            mvwaddch(win, i + border_offset, sb_cols - 1, ACS_VLINE | COLOR_PAIR(PAIR_BORDER_INACTIVE));
+        }
+
+        // draws error/warning markers at the trail
+        // inrs if the name is trail, lateral bar? idk
+        if (state->lsp_document) {
+            for (int i = 0; i < state->lsp_document->diagnostics_count; i++) {
+                LspDiagnostic *diag = &state->lsp_document->diagnostics[i];
+                int marker_y = (diag->range.start.line * sb_content_height) / (state->num_lines > 0 ? state->num_lines : 1);
+                int color = (diag->severity == LSP_SEVERITY_ERROR) ? 11 : 3;
+                mvwaddch(win, marker_y + border_offset, sb_cols - 1, 'o' | COLOR_PAIR(color) | A_BOLD);
+            }
+        }
+        
+        // Draws the indicatior of the current position, the "thumb"
+        int cursor_y_in_sb = (state->current_line * sb_content_height) / (state->num_lines > 0 ? state->num_lines : 1);
+        mvwaddch(win, cursor_y_in_sb + border_offset, sb_cols - 1, '█' | COLOR_PAIR(PAIR_STATUS_BAR));
     }
 
     LspDiagnostic *diag = NULL;
