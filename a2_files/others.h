@@ -94,6 +94,7 @@ void display_grep_results();
 
 // Assembly
 void build_assembly_mappings(EditorState *state, int int_source_line);
+void build_llvm_mappings(EditorState *state, int num_source_lines);
 
 
 void generic_input_msg(EditorState *state, char msg[256]);

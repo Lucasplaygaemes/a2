@@ -1923,12 +1923,13 @@ void editor_start_theme_completion(EditorState *state) {
     }
     state->num_suggestions = 0;
 
-    const char* dirs_to_check[4];
+    const char* dirs_to_check[6];
     int dir_count = 0;
-    char exec_theme_path[PATH_MAX];
+    char exec_theme_path[PATH_MAX] = {0};
     char custom_theme_dir[PATH_MAX] = {0};
+    char global_theme_dir[PATH_MAX] = {0};
 
-    // Path 1: Custom theme dir
+    // Path 1: Custom theme dir from config
     char config_path[PATH_MAX];
     get_theme_config_path(config_path, sizeof(config_path));
     FILE* config_file = fopen(config_path, "r");
@@ -1942,17 +1943,25 @@ void editor_start_theme_completion(EditorState *state) {
         fclose(config_file);
     }
 
-    // Path 2: Relative to executable
+    // Path 2: Global home dir ~/.a2/themes
+    const char* home = getenv("HOME");
+    if (home) {
+        snprintf(global_theme_dir, sizeof(global_theme_dir), "%s/.a2/themes", home);
+        dirs_to_check[dir_count++] = global_theme_dir;
+    }
+
+    // Path 3: Relative to executable
     if (executable_dir[0] != '\0') {
         snprintf(exec_theme_path, sizeof(exec_theme_path), "%s/themes", executable_dir);
         dirs_to_check[dir_count++] = exec_theme_path;
     }
-    // Path 3: Relative to CWD
+    // Path 4: Relative to CWD
     dirs_to_check[dir_count++] = "themes";
-    // Path 4: System-wide
+    // Path 5: System-wide
     dirs_to_check[dir_count++] = "/usr/local/share/a2/themes";
 
     for (int i = 0; i < dir_count; i++) {
+        if (dirs_to_check[i][0] == '\0') continue;
         DIR *d = opendir(dirs_to_check[i]);
         if (d) {
             struct dirent *dir;
@@ -2486,6 +2495,77 @@ void build_assembly_mappings(EditorState *asm_state, int num_source_lines) {
     }
 }
 
+void build_llvm_mappings(EditorState *llvm_state, int num_source_lines) {
+    if (!llvm_state) return;
+    
+    if (llvm_state->mapping) {
+        free(llvm_state->mapping->asm_to_source);
+        free(llvm_state->mapping->source_to_asm);
+        free(llvm_state->mapping);
+    }
+    llvm_state->mapping = calloc(1, sizeof(AssemblyMapping));
+    llvm_state->mapping->asm_line_count = llvm_state->num_lines;
+    llvm_state->mapping->source_line_count = num_source_lines;
+    
+    llvm_state->mapping->asm_to_source = malloc(sizeof(int) * llvm_state->num_lines);
+    llvm_state->mapping->source_to_asm = malloc(sizeof(AsmRange) * num_source_lines);
+    
+    for (int i = 0; i < num_source_lines; i++) {
+        llvm_state->mapping->source_to_asm[i].start_line = -1;
+        llvm_state->mapping->source_to_asm[i].end_line = -1;
+        llvm_state->mapping->source_to_asm[i].active = false;
+    }
+
+    // Temporary map for metadata IDs: id -> source_line
+    // LLVM metadata IDs can be large, but usually they are sequential. 
+    // We'll use a simple approach for now.
+    int max_metadata_id = 5000; 
+    int *meta_to_line = malloc(sizeof(int) * max_metadata_id);
+    for(int i=0; i<max_metadata_id; i++) meta_to_line[i] = -1;
+
+    // Pass 1: Find metadata definitions at the end of file
+    // Format: !12 = !DILocation(line: 5, ...
+    for (int i = 0; i < llvm_state->num_lines; i++) {
+        char *line = llvm_state->lines[i];
+        if (line[0] == '!') {
+            int meta_id, line_num;
+            if (sscanf(line, "!%d = !DILocation(line: %d", &meta_id, &line_num) == 2) {
+                if (meta_id < max_metadata_id) {
+                    meta_to_line[meta_id] = line_num - 1;
+                }
+            }
+        }
+    }
+
+    // Pass 2: Map instructions to source lines
+    int last_source_line = -1;
+    for (int i = 0; i < llvm_state->num_lines; i++) {
+        char *line = llvm_state->lines[i];
+        char *dbg_ptr = strstr(line, "!dbg !");
+        if (dbg_ptr) {
+            int meta_id;
+            if (sscanf(dbg_ptr, "!dbg !%d", &meta_id) == 1) {
+                if (meta_id < max_metadata_id && meta_to_line[meta_id] != -1) {
+                    last_source_line = meta_to_line[meta_id];
+                }
+            }
+        }
+        
+        llvm_state->mapping->asm_to_source[i] = last_source_line;
+        
+        if (last_source_line >= 0 && last_source_line < num_source_lines) {
+            AsmRange *range = &llvm_state->mapping->source_to_asm[last_source_line];
+            if (range->start_line == -1) {
+                range->start_line = i;
+                range->active = true;
+            }
+            range->end_line = i;
+        }
+    }
+    
+    free(meta_to_line);
+}
+
 void generic_input_msg(EditorState *state, char msg[256]) {
     
     int rows, cols;
@@ -2733,7 +2813,7 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_GDB_DEBUG: prompt_and_create_gdb_workspace(); break;
         case ACT_ASM_CONVERT: asm_convert_file(state, state->filename); break;
         case ACT_GIT_ADD_U: { char *const cmd[] = {"git", "add", "-u", NULL}; criar_janela_terminal_generica(cmd); } break;
-        case ACT_DIR_NAVIGATOR: prompt_for_directory_change(state); break;
+        case ACT_DIR_NAVIGATOR: display_directory_navigator(state); break;
         case ACT_PASTE_CLIPBOARD: paste_from_clipboard(state); break;
         case ACT_PASTE_ABOVE: { state->current_col = 0; state->ideal_col = 0; editor_handle_enter(state); state->current_line--; editor_paste(state); } break;
         case ACT_PASTE_GLOBAL_ABOVE: { state->current_col = 0; state->ideal_col = 0; editor_handle_enter(state); state->current_line--; editor_global_paste(state); } break;
