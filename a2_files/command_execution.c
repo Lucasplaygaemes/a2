@@ -193,13 +193,19 @@ void process_command(EditorState *state, bool *should_exit) {
                     editor_set_status_msg(state, "Invalid bar style. Use 0 or 1.");
                 }
             } else if (strcmp(set_cmd, "themedir") == 0 && items == 2) {
+                char abs_path[PATH_MAX];
+                if (realpath(set_val, abs_path) == NULL) {
+                    // If realpath fails (dir might not exist yet), use as is but warn
+                    strncpy(abs_path, set_val, PATH_MAX - 1);
+                }
+                
                 char config_path[PATH_MAX];
                 get_theme_config_path(config_path, sizeof(config_path));
                 FILE* f = fopen(config_path, "w");
                 if (f) {
-                    fprintf(f, "%s", set_val);
+                    fprintf(f, "%s", abs_path);
                     fclose(f);
-                    editor_set_status_msg(state, "Theme directory set to: %s", set_val);
+                    editor_set_status_msg(state, "Theme directory set to: %s", abs_path);
                 } else {
                     editor_set_status_msg(state, "Error setting theme directory.");
                 }
@@ -827,6 +833,7 @@ void compile_and_view_llvm(EditorState *state) {
         if (ws->num_janelas == 1) {
             ws->current_layout = LAYOUT_VERTICAL_SPLIT;
             criar_nova_janela(llvm_file);
+            target_idx = 1; // The newly created window
         } else {
             // Open in the next available window
             target_idx = (ws->janela_ativa_idx + 1) % ws->num_janelas;
@@ -836,8 +843,14 @@ void compile_and_view_llvm(EditorState *state) {
         ACTIVE_WS->janela_ativa_idx = target_idx;
         load_file(ws->janelas[target_idx]->estado, llvm_file);
     }
+
+    // Build mapping for the LLVM state
+    JanelaEditor *jw_llvm = ws->janelas[target_idx];
+    if (jw_llvm->tipo == TIPOJANELA_EDITOR) {
+        build_llvm_mappings(jw_llvm->estado, state->num_lines);
+    }
     
-    editor_set_status_msg(state, "LLVM IR Generated.");
+    editor_set_status_msg(state, "LLVM IR Generated and Mapped.");
     recalcular_layout_janelas();
     redesenhar_todas_as_janelas();
 }
