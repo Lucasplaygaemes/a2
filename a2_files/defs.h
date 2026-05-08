@@ -312,6 +312,7 @@ typedef struct {
     bool spell_checker_enabled;
     bool show_line_numbers;
     bool relative_line_numbers;
+    bool show_scrollbar;
 } A2Config;
 
 extern A2Config global_config;
@@ -355,6 +356,7 @@ typedef struct EditorState {
     bool paste_mode;
     bool word_wrap_enabled;
     bool show_line_numbers;
+    bool show_scrollbar;
     DirectoryInfo **recent_dirs;
     int num_recent_dirs;
     BracketInfo *unmatched_brackets;
