@@ -314,6 +314,7 @@ void criar_nova_janela(const char *filename) {
     state->auto_indent_on_newline = global_config.auto_indent;
     state->paste_mode = global_config.paste_mode;
     state->show_line_numbers = global_config.show_line_numbers;
+    state->show_scrollbar = global_config.show_scrollbar;
     state->lsp_enabled = global_config.lsp_enabled;
     state->is_dirty = true;
     state->dirty_lines = NULL;
@@ -877,7 +878,46 @@ void posicionar_cursor_ativo() {
 void proxima_janela() {
     GerenciadorJanelas *ws = ACTIVE_WS;
     if (ws->num_janelas > 1) {
+        JanelaEditor *old_jw = ws->janelas[ws->janela_ativa_idx];
         ws->janela_ativa_idx = (ws->janela_ativa_idx + 1) % ws->num_janelas;
+        JanelaEditor *new_jw = ws->janelas[ws->janela_ativa_idx];
+        
+        // Auto-sync cursor if switching between C and ASM/LLVM
+        if (old_jw->tipo == TIPOJANELA_EDITOR && new_jw->tipo == TIPOJANELA_EDITOR) {
+            EditorState *src = old_jw->estado;
+            EditorState *dst = new_jw->estado;
+            
+            // From C to ASM/LLVM
+            if (dst->mapping) {
+                EditorState *check_src = find_source_state_for_assembly(dst->filename);
+                if (check_src == src) {
+                    int line = src->current_line;
+                    if (line < dst->mapping->source_line_count) {
+                        AsmRange r = dst->mapping->source_to_asm[line];
+                        if (r.active) {
+                            dst->current_line = r.start_line;
+                            dst->ideal_col = 0;
+                            dst->current_col = 0;
+                        }
+                    }
+                }
+            }
+            // From ASM/LLVM to C
+            else if (src->mapping) {
+                EditorState *check_dst = find_source_state_for_assembly(src->filename);
+                if (check_dst == dst) {
+                    int line = src->current_line;
+                    if (line < src->mapping->asm_line_count) {
+                        int target_line = src->mapping->asm_to_source[line];
+                        if (target_line != -1) {
+                            dst->current_line = target_line;
+                            dst->ideal_col = 0;
+                            dst->current_col = 0;
+                        }
+                    }
+                }
+            }
+        }
     }
     // Set all windows in the active workspace to dirty when switching to ensure a full redraw
     for (int i = 0; i < ws->num_janelas; i++) {
@@ -892,9 +932,6 @@ void proxima_janela() {
                 jw->help_state->is_dirty = true;
             } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
                 jw->settings_state->is_dirty = true;
-            } else if (jw->tipo == TIPOJANELA_TERMINAL) {
-                // For terminals, always ensure a full redraw if switched to.
-                // This will trigger a vterm_wnd_update in redesenhar_todas_as_janelas.
             }
         }
     }
@@ -904,7 +941,42 @@ void proxima_janela() {
 void janela_anterior() {
     GerenciadorJanelas *ws = ACTIVE_WS;
     if (ws->num_janelas > 1) {
+        JanelaEditor *old_jw = ws->janelas[ws->janela_ativa_idx];
         ws->janela_ativa_idx = (ws->janela_ativa_idx - 1 + ws->num_janelas) % ws->num_janelas;
+        JanelaEditor *new_jw = ws->janelas[ws->janela_ativa_idx];
+
+        // Auto-sync cursor if switching between C and ASM/LLVM
+        if (old_jw->tipo == TIPOJANELA_EDITOR && new_jw->tipo == TIPOJANELA_EDITOR) {
+            EditorState *src = old_jw->estado;
+            EditorState *dst = new_jw->estado;
+            
+            if (dst->mapping) {
+                EditorState *check_src = find_source_state_for_assembly(dst->filename);
+                if (check_src == src) {
+                    int line = src->current_line;
+                    if (line < dst->mapping->source_line_count) {
+                        AsmRange r = dst->mapping->source_to_asm[line];
+                        if (r.active) {
+                            dst->current_line = r.start_line;
+                            dst->ideal_col = 0; dst->current_col = 0;
+                        }
+                    }
+                }
+            }
+            else if (src->mapping) {
+                EditorState *check_dst = find_source_state_for_assembly(src->filename);
+                if (check_dst == dst) {
+                    int line = src->current_line;
+                    if (line < src->mapping->asm_line_count) {
+                        int target_line = src->mapping->asm_to_source[line];
+                        if (target_line != -1) {
+                            dst->current_line = target_line;
+                            dst->ideal_col = 0; dst->current_col = 0;
+                        }
+                    }
+                }
+            }
+        }
     }
     // Set all windows in the active workspace to dirty when switching to ensure a full redraw
     for (int i = 0; i < ws->num_janelas; i++) {
@@ -919,9 +991,6 @@ void janela_anterior() {
                 jw->help_state->is_dirty = true;
             } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
                 jw->settings_state->is_dirty = true;
-            } else if (jw->tipo == TIPOJANELA_TERMINAL) {
-                // For terminals, always ensure a full redraw if switched to.
-                // This will trigger a vterm_wnd_update in redesenhar_todas_as_janelas.
             }
         }
     }
@@ -1963,21 +2032,14 @@ EditorState *find_source_state_for_assembly(const char *asm_filename) {
     strncpy(source_guess, asm_filename, PATH_MAX - 1);
     source_guess[PATH_MAX - 1] = '\0';
     
-    // swap the .s for .c
     char *dot = strrchr(source_guess, '.');
-    if (dot && strcmp(dot, ".s") == 0) {
+    if (dot && (strcmp(dot, ".s") == 0 || strcmp(dot, ".ll") == 0)) {
         *dot = '\0';
-        // try the .c, cpp later
         strcat(source_guess, ".c");
         
-        // search in the open windwos
         for (int i = 0; i < gerenciador_workspaces.workspaces[gerenciador_workspaces.workspace_ativo_idx]->num_janelas; i++) {
             JanelaEditor *jw = gerenciador_workspaces.workspaces[gerenciador_workspaces.workspace_ativo_idx]->janelas[i];
             if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-                
-                // TODO
-                // Make this comparison better 
-                
                 if (strcmp(jw->estado->filename, source_guess) == 0) {
                     return jw->estado;
                 }
@@ -1988,22 +2050,24 @@ EditorState *find_source_state_for_assembly(const char *asm_filename) {
 }
 
 EditorState *find_assembly_state_for_source(const char *source_filename) {
-    char asm_guess[PATH_MAX];
-    strncpy(asm_guess, source_filename, PATH_MAX - 1);
-    asm_guess[PATH_MAX - 1] = '\0';
+    char base_name[PATH_MAX];
+    strncpy(base_name, source_filename, PATH_MAX - 1);
+    base_name[PATH_MAX - 1] = '\0';
     
-    // try to change the .s extension
-    char *dot = strrchr(asm_guess, '.');
+    char *dot = strrchr(base_name, '.');
     if (dot) {
         *dot = '\0';
-        strcat(asm_guess, ".s");
         
-        // search for the open windows of the active workspace
+        char asm_guess[PATH_MAX];
+        char llvm_guess[PATH_MAX];
+        snprintf(asm_guess, sizeof(asm_guess), "%s.s", base_name);
+        snprintf(llvm_guess, sizeof(llvm_guess), "%s.ll", base_name);
+        
         GerenciadorJanelas *ws = gerenciador_workspaces.workspaces[gerenciador_workspaces.workspace_ativo_idx];
         for (int i = 0; i < ws->num_janelas; i++) {
             JanelaEditor *jw = ws->janelas[i];
             if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-                if (strcmp(jw->estado->filename, asm_guess) == 0){
+                if (strcmp(jw->estado->filename, asm_guess) == 0 || strcmp(jw->estado->filename, llvm_guess) == 0){
                     return jw->estado;
                 }
             }
