@@ -800,7 +800,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                     nodelay(jw->win, FALSE);
                     
                     if (next != ERR) {
-                        if (confirm_action("Use as Leader Key for sequence?")) {
+                        if (ui_confirm("Use as Leader Key for sequence?")) {
                             global_bindings[target_idx].leader = next;
                             state->assigning_stage = 1;
                             editor_set_status_msg(get_any_editor_state(), "Leader set. Press second key.");
@@ -888,7 +888,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                             if (strlen(state->search_term) == 0 || strcasestr(global_bindings[i].name, state->search_term) || strcasestr(global_bindings[i].desc, state->search_term)) total_items++;
                         }
                         if (state->current_selection == total_items) {
-                            if (confirm_action("Restore all keybindings to default?")) {
+                            if (ui_confirm("Restore all keybindings to default?")) {
                                 reset_bindings_to_default();
                                 save_keybindings();
                                 editor_set_status_msg(get_any_editor_state(), "Keybindings restored to default.");

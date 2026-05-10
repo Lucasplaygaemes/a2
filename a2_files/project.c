@@ -174,7 +174,7 @@ void project_startup_check() {
         return;
     }
 
-    if (confirm_action("Project session found. Load it?")) {
+    if (ui_confirm("Project session found. Load it?")) {
         project_load_session("session");
     }
 }

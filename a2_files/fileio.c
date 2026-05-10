@@ -211,7 +211,7 @@ void save_file(EditorState *state) {
     } else { 
         if (errno == EACCES) {
            // access denied, offers to use sudo
-           if (confirm_action("Permission denied. Save with sudo?")) {
+           if (ui_confirm("Permission denied. Save with sudo?")) {
                // create the name of the temporary file
                char *temp_filename = get_cache_filename("a2_sudo_save.XXXXXX");
                if (!temp_filename) {
@@ -324,9 +324,9 @@ void check_external_modification(EditorState *state) {
     if (on_disk_mod_time != 0 && on_disk_mod_time != state->last_file_mod_time) {
         bool decision = false;
         if (state->buffer_modified) {
-            decision = confirm_action("File on disk changed! Discard your changes and reload?");
+            decision = ui_confirm("File on disk changed! Discard your changes and reload?");
         } else {
-            decision = confirm_action("File on disk changed. Reload?");
+            decision = ui_confirm("File on disk changed. Reload?");
         }
 
         if (decision) {

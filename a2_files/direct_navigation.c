@@ -349,45 +349,18 @@ end_nav:
 
 void prompt_for_directory_change(EditorState *state) {
     if (state->buffer_modified) {
-        editor_set_status_msg(state, "Unsaved changes. Proceed with directory change? (y/n)");
-        redraw_all_windows();
-        wint_t ch;
-        wget_wch(ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win, &ch);
-        if (tolower(ch) != 'y') {
+        if (!ui_confirm("Unsaved changes. Proceed with directory change?")) {
             editor_set_status_msg(state, "Cancelled.");
-            redraw_all_windows();
             return;
         }
     }
 
-    int rows, cols; getmaxyx(stdscr, rows, cols);
-    int win_h = 5; int win_w = cols - 20; if (win_w < 50) win_w = 50;
-    int win_y = (rows - win_h) / 2; int win_x = (cols - win_w) / 2;
-    WINDOW *input_win = newwin(win_h, win_w, win_y, win_x);
-    keypad(input_win, TRUE);
-    wbkgd(input_win, COLOR_PAIR(9));
-    box(input_win, 0, 0);
-
-    mvwprintw(input_win, 1, 2, "Change to directory:");
-    wrefresh(input_win);
-
     char path_buffer[1024] = {0};
-    curs_set(1); echo(); 
-    wmove(input_win, 2, 2);
-    wgetnstr(input_win, path_buffer, sizeof(path_buffer) - 1);
-    noecho(); curs_set(0);
-
-    delwin(input_win);
-    touchwin(stdscr);
-
-    if (strlen(path_buffer) > 0) {
+    if (ui_ask_input("Change to directory:", path_buffer, sizeof(path_buffer))) {
         change_directory(state, path_buffer);
-    }
-    else {
+    } else {
         editor_set_status_msg(state, "No path entered. Cancelled.");
     }
-    
-    redraw_all_windows();
 }
 
 void get_file_history_filename(char *buffer, size_t size) {

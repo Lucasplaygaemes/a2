@@ -1279,7 +1279,7 @@ void display_recent_files() {
                             touchwin(stdscr);
                             redraw_all_windows();
 
-                            if (!confirm_action("Unsaved changes. Open file anyway?")) {
+                            if (!ui_confirm("Unsaved changes. Open file anyway?")) {
                                 goto end_switcher;
                             }
                         }
@@ -1904,7 +1904,7 @@ void *display_fuzzy_finder(EditorState *state) {
                         delwin(finder_win);
                         touchwin(stdscr);
                         redraw_all_windows();
-                        if (!confirm_action("Unsaved changes. Open file anyway?")) {
+                        if (!ui_confirm("Unsaved changes. Open file anyway?")) {
                              goto end_finder;
                         }
                     }

@@ -8,52 +8,12 @@
 #include <stdio.h>
 #include <unistd.h>
 
-static bool get_filename_input(const char *prompt, char *buffer, int max_len) {
-    int rows, cols;
-    getmaxyx(stdscr, rows, cols);
-    
-    int win_h = 3;
-    int win_w = 60;
-    if (win_w > cols) win_w = cols - 2;
-    
-    int win_y = (rows - win_h) / 2;
-    int win_x = (cols - win_w) / 2;
-    
-    WINDOW *input_win = newwin(win_h, win_w, win_y, win_x);
-    keypad(input_win, TRUE);
-    wbkgd(input_win, COLOR_PAIR(9));
-    box(input_win, 0 ,0);
-    
-    mvwprintw(input_win, 1, 2, "%s", prompt);
-    wrefresh(input_win);
-    
-    curs_set(1); 
-    echo();
-    
-    // clean the buffer
-    buffer[0] = '\0';
-    
-    // Move the cursor to after the prompt
-    wmove(input_win, 1, strlen(prompt) + 3);
-    wgetnstr(input_win, buffer, max_len - 1);
-    
-    noecho();
-    curs_set(0);
-    delwin(input_win);
-    
-    // Restore main windows
-    touchwin(stdscr);
-    redraw_all_windows();
-    
-    return strlen(buffer) > 0;
-}
-
 void start_interactive_diff(EditorState *state) {
     char file1[PATH_MAX] = {0};
     char file2[PATH_MAX] = {0};
     
     // firts file
-    if (!get_filename_input("Diff File 1:", file1, sizeof(file1))) {
+    if (!ui_ask_input("Diff File 1:", file1, sizeof(file1))) {
         editor_set_status_msg(state, "Diff cancelled.");
         return;
     }
@@ -65,7 +25,7 @@ void start_interactive_diff(EditorState *state) {
     }
 
     // seconde one
-    if (!get_filename_input("Diff File 2:", file2, sizeof(file2))) {
+    if (!ui_ask_input("Diff File 2:", file2, sizeof(file2))) {
         editor_set_status_msg(state, "Diff cancelled.");
         return;
     }
