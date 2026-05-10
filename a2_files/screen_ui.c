@@ -751,7 +751,9 @@ void editor_redraw(WINDOW *win, EditorState *state) {
         
         // Draws the indicatior of the current position, the "thumb"
         int cursor_y_in_sb = (state->current_line * sb_content_height) / (state->num_lines > 0 ? state->num_lines : 1);
-        mvwaddch(win, cursor_y_in_sb + border_offset, sb_cols - 1, '█' | COLOR_PAIR(PAIR_STATUS_BAR));
+        wattron(win, COLOR_PAIR(PAIR_STATUS_BAR));
+        mvwprintw(win, cursor_y_in_sb + border_offset, sb_cols - 1, "█");
+        wattroff(win, COLOR_PAIR(PAIR_STATUS_BAR));
     }
 
     LspDiagnostic *diag = NULL;

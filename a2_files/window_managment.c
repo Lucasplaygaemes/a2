@@ -755,10 +755,6 @@ void redraw_all_windows() {
                 jw->settings_state->is_dirty = false;
             } else if (jw->type == WINDOW_TYPE_TERMINAL && jw->term.vterm) {
                 // Terminal drawing is special, it's always "dirty" from our perspective
-                if (jw->content_win != jw->win) werase(jw->content_win);
-                
-                else werase(jw->win); // Clear the window before drawing to prevent artifacts
-                
                 vterm_wnd_update(jw->term.vterm, -1, 0, VTERM_WND_RENDER_ALL);
                 
                 if (ws->num_windows > 1) {

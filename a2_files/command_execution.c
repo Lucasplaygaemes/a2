@@ -65,6 +65,8 @@ void process_command(EditorState *state, bool *should_exit) {
             }
     } else if (strcmp(command, "help") == 0) {
         display_help_viewer("a2_help.txt");
+    } else if (strcmp(command, "about") == 0) {
+        display_help_viewer("about.txt");
     } else if (strcmp(command, "ksc") == 0) {
         display_dynamic_ksc();
     } else if (strcmp(command, "gstatus") == 0) {

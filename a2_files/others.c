@@ -40,7 +40,7 @@ void editor_set_status_msg(EditorState *state, const char *format, ...) {
 #define CTRL_L 12
 
 const char *editor_commands[] = {
-    "q", "q!", "w", "wq", "help", "gcc", "rc", "rc!", "open", "new", "timer", "diff", "set",
+    "q", "q!", "w", "wq", "help", "about", "gcc", "rc", "rc!", "open", "new", "timer", "diff", "set",
     "lsp-restart", "lsp-diag", "lsp-definition", "lsp-references", "lsp-rename",
     "lsp-status", "lsp-hover", "lsp-symbols", "lsp-refresh", "lsp-check", "lsp-debug",
     "lsp-list", "toggle_auto_indent", "llvm"
@@ -789,6 +789,7 @@ void ensure_cursor_in_bounds(EditorState *state) {
 }
 
 void editor_move_to_next_word(EditorState *state) {
+    if (!state) return;
     char *line = state->lines[state->current_line]; if (!line) return;
     int len = strlen(line);
     while (state->current_col < len && isspace(line[state->current_col])) state->current_col++;
@@ -2625,6 +2626,13 @@ bool is_leader_key(int ch) {
 void execute_action(EditorAction action, EditorState *state, bool *should_exit) {
     if (action == ACT_NONE) return;
     
+    // Actions that DO NOT need an active file state (work in terminals/explorer/etc)
+    bool is_global_manager_action = (action >= ACT_NEW_WINDOW && action <= ACT_ROTATE_WINDOWS) || 
+                                    (action >= ACT_SWITCH_TO_WS_1 && action <= ACT_MOVE_WIN_TO_POS_9) ||
+                                    (action == ACT_SETTINGS || action == ACT_HELP || action == ACT_KSC || action == ACT_TIMER_REPORT);
+    
+    if (!state && !is_global_manager_action) return;
+    
     switch (action) {
         case ACT_INSERT_MODE: state->mode = INSERT; state->is_dirty = true; break;
         case ACT_NORMAL_MODE: state->mode = NORMAL; state->is_dirty = true; break;
@@ -2637,6 +2645,7 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
             state->prefix_count = 0; state->current_col = state->ideal_col; state->is_dirty = true;
         } break;
         case ACT_MOVE_DOWN: {
+            if (!state) return;
             int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
             for (int i = 0; i < repeat; i++) if (state->current_line < state->num_lines - 1) state->current_line++;
             state->prefix_count = 0; state->current_col = state->ideal_col; state->is_dirty = true;
@@ -2668,7 +2677,7 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_MOVE_PAGE_DOWN: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; state->is_dirty = true; break;
         case ACT_MOVE_TOP: state->current_line = 0; state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
         case ACT_MOVE_BOTTOM: state->current_line = state->num_lines - 1; state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
-        case ACT_SCROLL_UP: for (int i = 0; i < 10; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; state->is_dirty = true; break;
+        case ACT_SCROLL_UP: if (!state) { return; } for (int i = 0; i < 10; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; state->is_dirty = true; break;
         case ACT_SCROLL_DOWN: for (int i = 0; i < 10; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; state->is_dirty = true; break;
         
         case ACT_DIGIT_0:
@@ -2684,6 +2693,7 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_UNDO: do_undo(state); break;
         case ACT_REDO: do_redo(state); break;
         case ACT_DELETE_LINE: {
+            if (!state) return;
             int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
             for (int i = 0; i < repeat; i++) editor_delete_line(state);
             state->prefix_count = 0;
