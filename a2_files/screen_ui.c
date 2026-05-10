@@ -34,13 +34,13 @@ bool confirm_action(const char *prompt) {
         if (ch == 'y' || ch == 'Y') {
             delwin(confirm_win);
             touchwin(stdscr);
-            redesenhar_todas_as_janelas();
+            redraw_all_windows();
             return true;
         }
         if (ch == 'n' || ch == 'N' || ch == 27) {
             delwin(confirm_win);
             touchwin(stdscr);
-            redesenhar_todas_as_janelas();
+            redraw_all_windows();
             return false;
         }
     }
@@ -169,7 +169,7 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
     int visual_y, visual_x;
     get_visual_pos(main_win, state, &visual_y, &visual_x);
     
-    int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
+    int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
     
     int line_number_width = 0;
     if (state->show_line_numbers) {
@@ -231,7 +231,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
 
     int rows, cols;
     getmaxyx(win, rows, cols);
-    int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
+    int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
     
     int line_number_width = 0;
     if (state->show_line_numbers) {
@@ -252,7 +252,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
     }
 
     if (border_offset) {
-        if (ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->estado == state) {
+        if (ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->state == state) {
             wattron(win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
             box(win, 0, 0);
             wattroff(win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
@@ -740,7 +740,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             char right_bar[100];
 
             snprintf(left_bar, sizeof(left_bar), "WS %d | %s | %s%s",
-            gerenciador_workspaces.workspace_ativo_idx + 1, mode_str, display_filename, state->buffer_modified ? "*" : "");
+            workspace_manager.active_workspace_idx + 1, mode_str, display_filename, state->buffer_modified ? "*" : "");
             
             time_t c_time = time(NULL);
             struct tm *info = localtime(&c_time);
@@ -783,7 +783,7 @@ void adjust_viewport(WINDOW *win, EditorState *state) {
     int rows, cols;
     getmaxyx(win, rows, cols);
     
-    int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
+    int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
     
     int line_number_width = 0;
     if (state->show_line_numbers) {
@@ -826,7 +826,7 @@ void get_visual_pos(WINDOW *win, EditorState *state, int *visual_y, int *visual_
     getmaxyx(win, rows, cols);
     (void)rows;
 
-    int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
+    int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
     
     int line_number_width = 0;
     if (state->show_line_numbers) {
@@ -1040,11 +1040,11 @@ void display_output_screen(const char *title, const char *filename) {
         }
     }
     end_viewer:
-    for (int i = 0; i < ACTIVE_WS->num_janelas; i++) {
-        JanelaEditor *jw = ACTIVE_WS->janelas[i];
-        if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) jw->estado->is_dirty = true;
-        else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) jw->explorer_state->is_dirty = true;
-        else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) jw->help_state->is_dirty = true;
+    for (int i = 0; i < ACTIVE_WS->num_windows; i++) {
+        EditorWindow *jw = ACTIVE_WS->windows[i];
+        if (jw->type == WINDOW_TYPE_EDITOR && jw->state) jw->state->is_dirty = true;
+        else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) jw->explorer_state->is_dirty = true;
+        else if (jw->type == WINDOW_TYPE_HELP && jw->help_state) jw->help_state->is_dirty = true;
     }
     delwin(output_win);
     destroy_file_viewer(viewer);
@@ -1301,7 +1301,7 @@ void help_viewer_perform_search(HelpViewerState *state) {
 }
 
 // function to draw help view
-void help_viewer_redraw(JanelaEditor *jw) {
+void help_viewer_redraw(EditorWindow *jw) {
     HelpViewerState *state = jw->help_state;
     werase(jw->win);
     box(jw->win, 0, 0);
@@ -1419,7 +1419,7 @@ void help_viewer_redraw(JanelaEditor *jw) {
     wnoutrefresh(jw->win);
 }
 
-void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
+void help_viewer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
     HelpViewerState *state = jw->help_state;
     int rows, cols;
     getmaxyx(jw->win, rows, cols);
@@ -1466,7 +1466,7 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
     // Normal key processing
     switch(ch) {
         case 'q':
-            fechar_janela_ativa(should_exit);
+            close_active_window(should_exit);
             return; // State is now invalid, exit function immediately
         case '/':
             state->search_mode = true;
@@ -1493,11 +1493,11 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
             
             break;
         case KEY_CTRL_RIGHT_BRACKET:
-            proxima_janela();
+            next_window();
             break;
         case 'b':
         case KEY_CTRL_LEFT_BRACKET:
-            janela_anterior();
+            previous_window();
             break;
         case KEY_UP:
         case 'k':
