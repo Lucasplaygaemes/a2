@@ -37,8 +37,8 @@ void project_save_session(const char *project_name) {
     json_object_set_new(root, "root_path", json_string(project_path));
 
     json_t *workspaces_array = json_array();
-    for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {
-        GerenciadorJanelas *ws = gerenciador_workspaces.workspaces[i];
+    for (int i = 0; i < workspace_manager.num_workspaces; i++) {
+        Workspace *ws = workspace_manager.workspaces[i];
         json_t *ws_obj = json_object();
 
         const char *layout_str = "vertical";
@@ -46,21 +46,21 @@ void project_save_session(const char *project_name) {
         if (ws->current_layout == LAYOUT_MAIN_AND_STACK) layout_str = "main_stack";
         if (ws->current_layout == LAYOUT_GRID) layout_str = "grid";
         json_object_set_new(ws_obj, "layout", json_string(layout_str));
-        json_object_set_new(ws_obj, "active_window_idx", json_integer(ws->janela_ativa_idx));
+        json_object_set_new(ws_obj, "active_window_idx", json_integer(ws->active_window_idx));
 
         json_t *windows_array = json_array();
-        for (int j = 0; j < ws->num_janelas; j++) {
-            JanelaEditor *jw = ws->janelas[j];
+        for (int j = 0; j < ws->num_windows; j++) {
+            EditorWindow *jw = ws->windows[j];
             json_t *win_obj = json_object();
 
-            if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-                EditorState *state = jw->estado;
+            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                EditorState *state = jw->state;
                 json_object_set_new(win_obj, "type", json_string("editor"));
                 json_object_set_new(win_obj, "filepath", json_string(state->filename));
                 json_object_set_new(win_obj, "cursor_line", json_integer(state->current_line));
                 json_object_set_new(win_obj, "cursor_col", json_integer(state->current_col));
                 json_object_set_new(win_obj, "top_line", json_integer(state->top_line));
-            } else if (jw->tipo == TIPOJANELA_TERMINAL) {
+            } else if (jw->type == WINDOW_TYPE_TERMINAL) {
                 json_object_set_new(win_obj, "type", json_string("terminal"));
             }
             json_array_append_new(windows_array, win_obj);
@@ -73,7 +73,7 @@ void project_save_session(const char *project_name) {
     json_dump_file(root, session_file_path, JSON_INDENT(2));
     json_decref(root);
 
-    EditorState *active_state = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->estado;
+    EditorState *active_state = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->state;
     if (active_state) {
         editor_set_status_msg(active_state, "Project session '%s' saved.", final_project_name);
     }
@@ -95,26 +95,26 @@ bool project_load_session(const char *project_name) {
 
     if (!root) return false;
 
-    for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {
-        free_workspace(gerenciador_workspaces.workspaces[i]);
+    for (int i = 0; i < workspace_manager.num_workspaces; i++) {
+        free_workspace(workspace_manager.workspaces[i]);
     }
-    free(gerenciador_workspaces.workspaces);
-    gerenciador_workspaces.workspaces = NULL;
-    gerenciador_workspaces.num_workspaces = 0;
-    gerenciador_workspaces.workspace_ativo_idx = -1;
+    free(workspace_manager.workspaces);
+    workspace_manager.workspaces = NULL;
+    workspace_manager.num_workspaces = 0;
+    workspace_manager.active_workspace_idx = -1;
 
     json_t *workspaces_array = json_object_get(root, "workspaces");
     if (!json_is_array(workspaces_array)) {
         json_decref(root);
-        inicializar_workspaces();
+        initialize_workspaces();
         return false;
     }
 
     size_t ws_index;
     json_t *ws_value;
     json_array_foreach(workspaces_array, ws_index, ws_value) {
-        criar_novo_workspace_vazio();
-        GerenciadorJanelas *current_ws = ACTIVE_WS;
+        create_new_empty_workspace();
+        Workspace *current_ws = ACTIVE_WS;
 
         const char *layout_str = json_string_value(json_object_get(ws_value, "layout"));
         if (layout_str) {
@@ -138,33 +138,33 @@ bool project_load_session(const char *project_name) {
                 json_t *filepath_json = json_object_get(win_value, "filepath");
                 if (!json_is_string(filepath_json)) continue;
                 const char *filepath = json_string_value(filepath_json);
-                criar_nova_janela(filepath);
-                EditorState *state = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->estado;
+                create_new_window(filepath);
+                EditorState *state = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->state;
                 if (!state) continue;
                 state->current_line = json_integer_value(json_object_get(win_value, "cursor_line"));
                 state->current_col = json_integer_value(json_object_get(win_value, "cursor_col"));
                 state->top_line = json_integer_value(json_object_get(win_value, "top_line"));
                 state->ideal_col = state->current_col;
             } else if (strcmp(type, "terminal") == 0) {
-                executar_comando_no_terminal("");
+                execute_command_in_terminal("");
             }
         }
         json_t *active_idx_json = json_object_get(ws_value, "active_window_idx");
         if (active_idx_json && json_is_integer(active_idx_json)) {
              int idx = (int)json_integer_value(active_idx_json);
-             if (idx >= 0 && idx < current_ws->num_janelas) {
-                 current_ws->janela_ativa_idx = idx;
+             if (idx >= 0 && idx < current_ws->num_windows) {
+                 current_ws->active_window_idx = idx;
              }
         }
     }
 
-    if (gerenciador_workspaces.num_workspaces == 0) {
-        inicializar_workspaces();
+    if (workspace_manager.num_workspaces == 0) {
+        initialize_workspaces();
     }
 
     json_decref(root);
-    recalcular_layout_janelas();
-    redesenhar_todas_as_janelas();
+    recalculate_window_layout();
+    redraw_all_windows();
     return true;
 }
 
