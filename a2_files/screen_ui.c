@@ -12,43 +12,101 @@
 
 extern const int ansi_to_ncurses_map[16];
 
-bool confirm_action(const char *prompt) {
+// Implementação da nova UI Unificada
+
+bool ui_confirm(const char *prompt) {
     int rows, cols;
     getmaxyx(stdscr, rows, cols);
     int win_h = 3;
-    int win_w = strlen(prompt) + 8;
+    int win_w = strlen(prompt) + 10;
     int win_y = (rows - win_h) / 2;
     int win_x = (cols - win_w) / 2;
-
-    WINDOW *confirm_win = newwin(win_h, win_w, win_y, win_x);
-    wbkgd(confirm_win, COLOR_PAIR(8)); 
-    box(confirm_win, 0, 0);
-    mvwprintw(confirm_win, 1, 2, "%s (y/n)", prompt);
-    wrefresh(confirm_win);
-
-    wint_t ch;
-    keypad(confirm_win, TRUE);
+    
+    WINDOW *win = newwin(win_h, win_w, win_y, win_x);
+    wbkgd(win, COLOR_PAIR(PAIR_POPUP)); // Color pairs standardized
+    box(win, 0, 0);
+    mvwprintw(win, 1, 2, "%s (y/n)", prompt);
+    wrefresh(win);
+    
+    bool result = false;
     curs_set(0);
+    
     while(1) {
-        wget_wch(confirm_win, &ch);
-        if (ch == 'y' || ch == 'Y') {
-            delwin(confirm_win);
-            touchwin(stdscr);
+        int ch = wgetch(win);
+        if (ch == 'y' || ch == 'Y') { result = true; break; }
+        if (ch == 'n' || ch == 'N' || ch == 27) { result = false; break; }
+    }
+    delwin(win);
+    redraw_all_windows();
+    return result;
+}
+
+bool ui_ask_input(const char *prompt, char *buffer, int max_len) {
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+    int win_h = 4;
+    int win_w = (cols > 60) ? 60 : cols - 4;
+    int win_y = (rows - win_h) / 2;
+    int win_x = (cols - win_w) / 2;
+    
+    WINDOW *win = newwin(win_h, win_w, win_y, win_x);
+    keypad(win, TRUE);
+    wbkgd(win, COLOR_PAIR(PAIR_POPUP));
+    box(win, 0, 0);
+    mvwprintw(win, 1, 2, "%s", prompt);
+    
+    int input_y = 2, input_x = 2;
+    int pos = 0;
+    buffer[0] = '\0';
+    
+    curs_set(1);
+    while (1) {
+        // Draw the input field
+        mvwprintw(win, input_y, input_x, "%-*s", win_w - 4, ""); // cleans the line
+        
+        mvwprintw(win, input_y, input_x, "%s", buffer);
+        wmove(win, input_y, input_x + pos);
+        wrefresh(win);
+        
+        int ch = wgetch(win);
+        if (ch == '\n' || ch == KEY_ENTER) {
+            buffer[pos] = '\0';
+            curs_set(0);
+            delwin(win);
             redraw_all_windows();
-            return true;
+            return (pos > 0);
         }
-        if (ch == 'n' || ch == 'N' || ch == 27) {
-            delwin(confirm_win);
-            touchwin(stdscr);
+        if (ch == 27) { // ESC
+            buffer[0] = '\0';
+            curs_set(0);
+            delwin(win);
             redraw_all_windows();
             return false;
+        }
+        if ((ch == KEY_BACKSPACE || ch == 127 || ch == 8) && pos > 0) {
+            buffer[--pos] = '\0';
+        } else if (isprint(ch) && pos < max_len - 1 && pos < win_w - 6) {
+            buffer[pos++] = (char)ch;
+            buffer[pos] = '\0';
         }
     }
 }
 
-// ===================================================================
-// Screen & UI
-// ===================================================================
+void ui_show_message(const char *title, const char *message) {
+    WINDOW *pop = draw_pop_up(message, -1, -1);
+    if (pop) {
+        if (title) {
+            wattron(pop, A_BOLD);
+            mvwprintw(pop, 0, 2, " %s ", title);
+            wattroff(pop, A_BOLD);
+        }
+        wrefresh(pop);
+        wgetch(pop);
+        delwin(pop);
+        redraw_all_windows();
+    }
+}
+
 WINDOW *draw_pop_up(const char *message, int y, int x) {
     if (!message || !*message) {
         return NULL;

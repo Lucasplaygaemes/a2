@@ -15,7 +15,7 @@ FileViewer* create_file_viewer(const char* filename);
 void destroy_file_viewer(FileViewer* viewer);
 WINDOW* draw_pop_up(const char *message, int y, int x);
 bool is_selected(EditorState *state, int line_idx, int col_idx);
-bool confirm_action(const char *prompt);
+bool ui_confirm(const char *prompt);
 void display_macros_list(EditorState *state);
 
 void search_in_file(const char *file_path, const char *pattern, ContentSearchResult **results, int *count, int *capacity);
@@ -23,5 +23,15 @@ void recursive_content_search(const char *base_path, const char *pattern, Conten
 
 void help_viewer_redraw(EditorWindow *jw);
 void help_viewer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit);
+
+// Functions for the new UI unified
+bool ui_confirm(const char *prompt);
+// Asks for a confirmation Yes/No (to substitute the the old ui_confirm)
+
+// Return true if user send Enter and cancel if send ESC
+bool ui_ask_input(const char *prompt, char *buffer, int max_len);
+
+// Shows a message of warning/information centralized
+void ui_show_message(const char *title, const char *message);
 
 #endif // SCREEN_UI_H
