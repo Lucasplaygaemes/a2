@@ -28,43 +28,43 @@
 #include <sys/ioctl.h>
 
 
-#define ACTIVE_WS (gerenciador_workspaces.workspaces[gerenciador_workspaces.workspace_ativo_idx])
+#define ACTIVE_WS (workspace_manager.workspaces[workspace_manager.active_workspace_idx])
 
-void desenhar_janela_terminal(JanelaEditor *jw);
-void criar_novo_workspace_vazio();
+void draw_terminal_window(EditorWindow *jw);
+void create_new_empty_workspace();
 
-void atualizar_tamanho_pty(JanelaEditor *jw) {
-    if (jw->tipo != TIPOJANELA_TERMINAL || jw->term.pty_fd == -1) return;
+void atualizar_tamanho_pty(EditorWindow *jw) {
+    if (jw->type != WINDOW_TYPE_TERMINAL || jw->term.pty_fd == -1) return;
 
-    int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
+    int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
     struct winsize ws;
-    ws.ws_row = jw->altura - (2 * border_offset);
-    ws.ws_col = jw->largura - (2 * border_offset);
+    ws.ws_row = jw->height - (2 * border_offset);
+    ws.ws_col = jw->width - (2 * border_offset);
     ws.ws_xpixel = 0;
     ws.ws_ypixel = 0;
     
     ioctl(jw->term.pty_fd, TIOCSWINSZ, &ws);
 }
 
-void criar_janela_terminal_generica(char *const argv[]) {
+void create_generic_terminal_window(char *const argv[]) {
     if (!argv || !argv[0]) return;
 
-    GerenciadorJanelas *ws = ACTIVE_WS;
-    ws->num_janelas++;
-    ws->janelas = realloc(ws->janelas, sizeof(JanelaEditor*) * ws->num_janelas);
-    if (!ws->janelas) { perror("realloc failed"); ws->num_janelas--; exit(1); }
+    Workspace *ws = ACTIVE_WS;
+    ws->num_windows++;
+    ws->windows = realloc(ws->windows, sizeof(EditorWindow*) * ws->num_windows);
+    if (!ws->windows) { perror("realloc failed"); ws->num_windows--; exit(1); }
 
-    JanelaEditor *jw = calloc(1, sizeof(JanelaEditor));
-    if (!jw) { perror("calloc failed"); ws->num_janelas--; exit(1); }
-    ws->janelas[ws->num_janelas - 1] = jw;
-    ws->janela_ativa_idx = ws->num_janelas - 1;
+    EditorWindow *jw = calloc(1, sizeof(EditorWindow));
+    if (!jw) { perror("calloc failed"); ws->num_windows--; exit(1); }
+    ws->windows[ws->num_windows - 1] = jw;
+    ws->active_window_idx = ws->num_windows - 1;
 
     int master_fd;
     pid_t pid = forkpty(&master_fd, NULL, NULL, NULL);
 
     if (pid < 0) {
         perror("forkpty failed");
-        ws->num_janelas--; free(jw); return;
+        ws->num_windows--; free(jw); return;
     }
     if (pid == 0) {
         setenv("TERM", "xterm-256color", 1);
@@ -72,16 +72,16 @@ void criar_janela_terminal_generica(char *const argv[]) {
         exit(127);
     }
     
-    recalcular_layout_janelas();
+    recalculate_window_layout();
     
-    jw->tipo = TIPOJANELA_TERMINAL;
+    jw->type = WINDOW_TYPE_TERMINAL;
     jw->term.pid = pid;
     jw->term.pty_fd = master_fd;
     fcntl(master_fd, F_SETFL, O_NONBLOCK);
 
     int rows, cols;
     getmaxyx(jw->win, rows, cols);
-    int border_offset = ws->num_janelas > 1 ? 1 : 0;
+    int border_offset = ws->num_windows > 1 ? 1 : 0;
     
     // make sure the content_win exist
     
@@ -95,7 +95,7 @@ void criar_janela_terminal_generica(char *const argv[]) {
 
     vterm_resize(jw->term.vterm, cols - 2 * border_offset, rows - 2 * border_offset);
     atualizar_tamanho_pty(jw);
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
 }
 
 void handle_gdb_session(int pty_fd, pid_t child_pid);
@@ -167,22 +167,22 @@ void free_editor_state(EditorState* state) {
     free(state);
 }
 
-void free_janela_editor(JanelaEditor* jw) {
+void free_editor_window(EditorWindow* jw) {
     if (!jw) return;
 
-    if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-        free_editor_state(jw->estado);
-    } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
+    if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+        free_editor_state(jw->state);
+    } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
         free_explorer_state(jw->explorer_state);
-    } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
+    } else if (jw->type == WINDOW_TYPE_HELP && jw->help_state) {
         for (int i = 0; i < jw->help_state->num_lines; i++) free(jw->help_state->lines[i]);
         for (int i = 0; i < jw->help_state->history_count; i++) free(jw->help_state->history[i]);
         free(jw->help_state->lines);
         if (jw->help_state->match_lines) free(jw->help_state->match_lines);
         free(jw->help_state);
-    } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+    } else if (jw->type == WINDOW_TYPE_SETTINGS_PANEL && jw->settings_state) {
         free_settings_panel_state(jw->settings_state);
-    } else if (jw->tipo == TIPOJANELA_TERMINAL) {
+    } else if (jw->type == WINDOW_TYPE_TERMINAL) {
         if (jw->term.pid > 0) { kill(jw->term.pid, SIGKILL); waitpid(jw->term.pid, NULL, 0); }
         if (jw->term.pty_fd != -1) close(jw->term.pty_fd);
         if (jw->term.vterm) vterm_destroy(jw->term.vterm);
@@ -194,115 +194,115 @@ void free_janela_editor(JanelaEditor* jw) {
 }
 
 
-void inicializar_workspaces() {
-    gerenciador_workspaces.workspaces = NULL;
-    gerenciador_workspaces.num_workspaces = 0;
-    gerenciador_workspaces.workspace_ativo_idx = -1;
-    criar_novo_workspace();
+void initialize_workspaces() {
+    workspace_manager.workspaces = NULL;
+    workspace_manager.num_workspaces = 0;
+    workspace_manager.active_workspace_idx = -1;
+    create_new_workspace();
 }
 
-void criar_novo_workspace() {
-    gerenciador_workspaces.num_workspaces++;
-    gerenciador_workspaces.workspaces = realloc(gerenciador_workspaces.workspaces, sizeof(GerenciadorJanelas*) * gerenciador_workspaces.num_workspaces);
+void create_new_workspace() {
+    workspace_manager.num_workspaces++;
+    workspace_manager.workspaces = realloc(workspace_manager.workspaces, sizeof(Workspace*) * workspace_manager.num_workspaces);
 
-    GerenciadorJanelas *novo_ws = calloc(1, sizeof(GerenciadorJanelas));
-    novo_ws->janelas = NULL;
-    novo_ws->num_janelas = 0;
-    novo_ws->janela_ativa_idx = -1;
+    Workspace *novo_ws = calloc(1, sizeof(Workspace));
+    novo_ws->windows = NULL;
+    novo_ws->num_windows = 0;
+    novo_ws->active_window_idx = -1;
     novo_ws->current_layout = LAYOUT_VERTICAL_SPLIT;
 
-    gerenciador_workspaces.workspaces[gerenciador_workspaces.num_workspaces - 1] = novo_ws;
-    gerenciador_workspaces.workspace_ativo_idx = gerenciador_workspaces.num_workspaces - 1;
+    workspace_manager.workspaces[workspace_manager.num_workspaces - 1] = novo_ws;
+    workspace_manager.active_workspace_idx = workspace_manager.num_workspaces - 1;
 
-    criar_nova_janela(NULL);
+    create_new_window(NULL);
 }
 
-void ciclar_workspaces(int direcao) {
-    if (gerenciador_workspaces.num_workspaces <= 1) return;
+void cycle_workspaces(int direcao) {
+    if (workspace_manager.num_workspaces <= 1) return;
 
-    gerenciador_workspaces.workspace_ativo_idx += direcao;
+    workspace_manager.active_workspace_idx += direcao;
 
-    if (gerenciador_workspaces.workspace_ativo_idx >= gerenciador_workspaces.num_workspaces) {
-        gerenciador_workspaces.workspace_ativo_idx = 0;
+    if (workspace_manager.active_workspace_idx >= workspace_manager.num_workspaces) {
+        workspace_manager.active_workspace_idx = 0;
     }
-    if (gerenciador_workspaces.workspace_ativo_idx < 0) {
-        gerenciador_workspaces.workspace_ativo_idx = gerenciador_workspaces.num_workspaces - 1;
+    if (workspace_manager.active_workspace_idx < 0) {
+        workspace_manager.active_workspace_idx = workspace_manager.num_workspaces - 1;
     }
 
-    recalcular_layout_janelas();
-    redesenhar_todas_as_janelas();
+    recalculate_window_layout();
+    redraw_all_windows();
 }
 
-void mover_janela_para_workspace(int target_idx) {
-    if (target_idx < 0 || target_idx >= gerenciador_workspaces.num_workspaces || target_idx == gerenciador_workspaces.workspace_ativo_idx) {
+void move_window_to_workspace(int target_idx) {
+    if (target_idx < 0 || target_idx >= workspace_manager.num_workspaces || target_idx == workspace_manager.active_workspace_idx) {
         return;
     }
-    if (ACTIVE_WS->num_janelas <= 1) {
-        editor_set_status_msg(ACTIVE_WS->janelas[0]->estado, "Cannot move the last window of a workspace.");
+    if (ACTIVE_WS->num_windows <= 1) {
+        editor_set_status_msg(ACTIVE_WS->windows[0]->state, "Cannot move the last window of a workspace.");
         return;
     }
 
-    GerenciadorJanelas *source_ws = ACTIVE_WS;
-    GerenciadorJanelas *dest_ws = gerenciador_workspaces.workspaces[target_idx];
-    int active_win_idx = source_ws->janela_ativa_idx;
-    JanelaEditor *win_to_move = source_ws->janelas[active_win_idx];
+    Workspace *source_ws = ACTIVE_WS;
+    Workspace *dest_ws = workspace_manager.workspaces[target_idx];
+    int active_win_idx = source_ws->active_window_idx;
+    EditorWindow *win_to_move = source_ws->windows[active_win_idx];
 
-    dest_ws->num_janelas++;
-    dest_ws->janelas = realloc(dest_ws->janelas, sizeof(JanelaEditor*) * dest_ws->num_janelas);
-    dest_ws->janelas[dest_ws->num_janelas - 1] = win_to_move;
+    dest_ws->num_windows++;
+    dest_ws->windows = realloc(dest_ws->windows, sizeof(EditorWindow*) * dest_ws->num_windows);
+    dest_ws->windows[dest_ws->num_windows - 1] = win_to_move;
 
-    for (int i = active_win_idx; i < source_ws->num_janelas - 1; i++) {
-        source_ws->janelas[i] = source_ws->janelas[i+1];
+    for (int i = active_win_idx; i < source_ws->num_windows - 1; i++) {
+        source_ws->windows[i] = source_ws->windows[i+1];
     }
-    source_ws->num_janelas--;
-    if (source_ws->num_janelas > 0) {
-        source_ws->janelas = realloc(source_ws->janelas, sizeof(JanelaEditor*) * source_ws->num_janelas);
+    source_ws->num_windows--;
+    if (source_ws->num_windows > 0) {
+        source_ws->windows = realloc(source_ws->windows, sizeof(EditorWindow*) * source_ws->num_windows);
     } else {
-        free(source_ws->janelas);
-        source_ws->janelas = NULL;
+        free(source_ws->windows);
+        source_ws->windows = NULL;
     }
     
-    if (source_ws->janela_ativa_idx >= source_ws->num_janelas) {
-        source_ws->janela_ativa_idx = source_ws->num_janelas - 1;
+    if (source_ws->active_window_idx >= source_ws->num_windows) {
+        source_ws->active_window_idx = source_ws->num_windows - 1;
     }
     
     // Cleanup logic for state->mapping removed from here, to be placed in free_editor_state
     
 
-    recalcular_layout_janelas();
-    redesenhar_todas_as_janelas();
+    recalculate_window_layout();
+    redraw_all_windows();
 }
 
-void criar_janela_explorer() {
-    GerenciadorJanelas *ws = ACTIVE_WS;
-    ws->num_janelas++;
-    ws->janelas = realloc(ws->janelas, sizeof(JanelaEditor*) * ws->num_janelas);
+void create_explorer_window() {
+    Workspace *ws = ACTIVE_WS;
+    ws->num_windows++;
+    ws->windows = realloc(ws->windows, sizeof(EditorWindow*) * ws->num_windows);
 
-    JanelaEditor *nova_janela = calloc(1, sizeof(JanelaEditor));
-    nova_janela->tipo = TIPOJANELA_EXPLORER;
-    nova_janela->explorer_state = calloc(1, sizeof(ExplorerState));
-    nova_janela->explorer_state->is_dirty = true;
-    nova_janela->explorer_state->show_hidden = false; // for defalut hide the hidden
+    EditorWindow *new_window = calloc(1, sizeof(EditorWindow));
+    new_window->type = WINDOW_TYPE_EXPLORER;
+    new_window->explorer_state = calloc(1, sizeof(ExplorerState));
+    new_window->explorer_state->is_dirty = true;
+    new_window->explorer_state->show_hidden = false; // for defalut hide the hidden
     
-    if (getcwd(nova_janela->explorer_state->current_path, PATH_MAX) == NULL) {
-        strcpy(nova_janela->explorer_state->current_path, ".");
+    if (getcwd(new_window->explorer_state->current_path, PATH_MAX) == NULL) {
+        strcpy(new_window->explorer_state->current_path, ".");
     }
 
-    ws->janelas[ws->num_janelas - 1] = nova_janela;
-    ws->janela_ativa_idx = ws->num_janelas - 1;
+    ws->windows[ws->num_windows - 1] = new_window;
+    ws->active_window_idx = ws->num_windows - 1;
 
-    explorer_reload_entries(nova_janela->explorer_state);
-    recalcular_layout_janelas();
+    explorer_reload_entries(new_window->explorer_state);
+    recalculate_window_layout();
 }
 
-void criar_nova_janela(const char *filename) {
-    GerenciadorJanelas *ws = ACTIVE_WS;
-    ws->num_janelas++;
-    ws->janelas = realloc(ws->janelas, sizeof(JanelaEditor*) * ws->num_janelas);
+void create_new_window(const char *filename) {
+    Workspace *ws = ACTIVE_WS;
+    ws->num_windows++;
+    ws->windows = realloc(ws->windows, sizeof(EditorWindow*) * ws->num_windows);
 
-    JanelaEditor *nova_janela = calloc(1, sizeof(JanelaEditor));
-    nova_janela->estado = calloc(1, sizeof(EditorState));
-    EditorState *state = nova_janela->estado;
+    EditorWindow *new_window = calloc(1, sizeof(EditorWindow));
+    new_window->state = calloc(1, sizeof(EditorState));
+    EditorState *state = new_window->state;
 
     strcpy(state->filename, "[No Name]");
     state->mode = NORMAL;
@@ -338,10 +338,10 @@ void criar_nova_janela(const char *filename) {
     state->search_history_count = 0;
     state->search_history_pos = 0;
     
-    ws->janelas[ws->num_janelas - 1] = nova_janela;
-    ws->janela_ativa_idx = ws->num_janelas - 1;
+    ws->windows[ws->num_windows - 1] = new_window;
+    ws->active_window_idx = ws->num_windows - 1;
 
-    recalcular_layout_janelas();
+    recalculate_window_layout();
 
     if (filename) {
         load_file(state, filename);
@@ -353,174 +353,174 @@ void criar_nova_janela(const char *filename) {
     push_undo(state);
 }
 
-void fechar_janela_ativa(bool *should_exit) {
-    GerenciadorJanelas *ws = ACTIVE_WS;
-    if (ws->num_janelas == 0) return;
+void close_active_window(bool *should_exit) {
+    Workspace *ws = ACTIVE_WS;
+    if (ws->num_windows == 0) return;
 
-    int idx = ws->janela_ativa_idx;
+    int idx = ws->active_window_idx;
     
     // Check for unsaved changes only if it's an editor window
-    if (ws->janelas[idx]->tipo == TIPOJANELA_EDITOR && ws->janelas[idx]->estado && ws->janelas[idx]->estado->buffer_modified) {
-        editor_set_status_msg(ws->janelas[idx]->estado, "Warning: Unsaved changes! Use :q! to force quit.");
+    if (ws->windows[idx]->type == WINDOW_TYPE_EDITOR && ws->windows[idx]->state && ws->windows[idx]->state->buffer_modified) {
+        editor_set_status_msg(ws->windows[idx]->state, "Warning: Unsaved changes! Use :q! to force quit.");
         return;
     }
 
-    if (ws->num_janelas == 1) {
-        fechar_workspace_ativo(should_exit);
+    if (ws->num_windows == 1) {
+        close_active_workspace(should_exit);
         return;
     }
 
     // Save the pointer to the window that will be closed
-    JanelaEditor *janela_para_fechar = ws->janelas[idx];
+    EditorWindow *window_to_close = ws->windows[idx];
 
     // Shift the array to remove the pointer
-    for (int i = idx; i < ws->num_janelas - 1; i++) {
-        ws->janelas[i] = ws->janelas[i+1];
+    for (int i = idx; i < ws->num_windows - 1; i++) {
+        ws->windows[i] = ws->windows[i+1];
     }
-    ws->num_janelas--;
+    ws->num_windows--;
     
-    JanelaEditor **new_janelas = realloc(ws->janelas, sizeof(JanelaEditor*) * ws->num_janelas);
-    if (ws->num_janelas > 0 && !new_janelas) {
+    EditorWindow **new_janelas = realloc(ws->windows, sizeof(EditorWindow*) * ws->num_windows);
+    if (ws->num_windows > 0 && !new_janelas) {
         perror("realloc failed when closing window");
-        ws->num_janelas++; 
+        ws->num_windows++; 
         return;
     }
-    ws->janelas = new_janelas;
+    ws->windows = new_janelas;
 
     // Update the active index
-    if (ws->janela_ativa_idx >= ws->num_janelas) {
-        ws->janela_ativa_idx = ws->num_janelas - 1;
+    if (ws->active_window_idx >= ws->num_windows) {
+        ws->active_window_idx = ws->num_windows - 1;
     }
 
     // Now it is safe to free the memory for the closed window
-    free_janela_editor(janela_para_fechar);
+    free_editor_window(window_to_close);
 
-    recalcular_layout_janelas();
-    redesenhar_todas_as_janelas();
+    recalculate_window_layout();
+    redraw_all_windows();
 }
 
-void fechar_workspace_ativo(bool *should_exit) {
-    if (gerenciador_workspaces.num_workspaces == 0) return;
+void close_active_workspace(bool *should_exit) {
+    if (workspace_manager.num_workspaces == 0) return;
 
-    if (gerenciador_workspaces.num_workspaces == 1) {
-        EditorState *last_state = ACTIVE_WS->janelas[0]->estado;
+    if (workspace_manager.num_workspaces == 1) {
+        EditorState *last_state = ACTIVE_WS->windows[0]->state;
         if (last_state && last_state->buffer_modified) {
             editor_set_status_msg(last_state, "Warning: Unsaved changes! Use :q! to force quit.");
             return;
         }
-        free_workspace(gerenciador_workspaces.workspaces[0]);
-        gerenciador_workspaces.workspaces[0] = NULL;
-        gerenciador_workspaces.num_workspaces = 0;
+        free_workspace(workspace_manager.workspaces[0]);
+        workspace_manager.workspaces[0] = NULL;
+        workspace_manager.num_workspaces = 0;
         *should_exit = true;
         return;
     }
 
-    int idx_to_close = gerenciador_workspaces.workspace_ativo_idx;
-    GerenciadorJanelas *ws_to_free = gerenciador_workspaces.workspaces[idx_to_close];
+    int idx_to_close = workspace_manager.active_workspace_idx;
+    Workspace *ws_to_free = workspace_manager.workspaces[idx_to_close];
 
     // Shift the array to remove the pointer
-    for (int i = idx_to_close; i < gerenciador_workspaces.num_workspaces - 1; i++) {
-        gerenciador_workspaces.workspaces[i] = gerenciador_workspaces.workspaces[i+1];
+    for (int i = idx_to_close; i < workspace_manager.num_workspaces - 1; i++) {
+        workspace_manager.workspaces[i] = workspace_manager.workspaces[i+1];
     }
-    gerenciador_workspaces.num_workspaces--;
+    workspace_manager.num_workspaces--;
     
     // Safely reallocate the array, checking for errors.
-    GerenciadorJanelas **new_workspaces = realloc(gerenciador_workspaces.workspaces, sizeof(GerenciadorJanelas*) * gerenciador_workspaces.num_workspaces);
+    Workspace **new_workspaces = realloc(workspace_manager.workspaces, sizeof(Workspace*) * workspace_manager.num_workspaces);
     if (!new_workspaces) {
         perror("realloc failed when closing workspace");
         exit(EXIT_FAILURE);
     }
-    gerenciador_workspaces.workspaces = new_workspaces;
+    workspace_manager.workspaces = new_workspaces;
 
     // Update active index
-    if (gerenciador_workspaces.workspace_ativo_idx >= gerenciador_workspaces.num_workspaces) {
-        gerenciador_workspaces.workspace_ativo_idx = gerenciador_workspaces.num_workspaces - 1;
+    if (workspace_manager.active_workspace_idx >= workspace_manager.num_workspaces) {
+        workspace_manager.active_workspace_idx = workspace_manager.num_workspaces - 1;
     }
     
     // Now it's safe to free the memory of the closed workspace
     free_workspace(ws_to_free);
     
     // Redraw the UI with the remaining workspaces
-    if (gerenciador_workspaces.num_workspaces > 0) {
-        recalcular_layout_janelas();
-        redesenhar_todas_as_janelas();
+    if (workspace_manager.num_workspaces > 0) {
+        recalculate_window_layout();
+        redraw_all_windows();
     }
 }
 
-void recalcular_layout_janelas() {
-    GerenciadorJanelas *ws = ACTIVE_WS;
+void recalculate_window_layout() {
+    Workspace *ws = ACTIVE_WS;
     int screen_rows, screen_cols;
     getmaxyx(stdscr, screen_rows, screen_cols);
 
-    if (ws->num_janelas == 0) return;
+    if (ws->num_windows == 0) return;
 
-    if ((ws->num_janelas != 2 && ws->current_layout == LAYOUT_HORIZONTAL_SPLIT) ||
-        (ws->num_janelas != 3 && ws->current_layout == LAYOUT_MAIN_AND_STACK) ||
-        (ws->num_janelas != 4 && ws->current_layout == LAYOUT_GRID)) {
+    if ((ws->num_windows != 2 && ws->current_layout == LAYOUT_HORIZONTAL_SPLIT) ||
+        (ws->num_windows != 3 && ws->current_layout == LAYOUT_MAIN_AND_STACK) ||
+        (ws->num_windows != 4 && ws->current_layout == LAYOUT_GRID)) {
         ws->current_layout = LAYOUT_VERTICAL_SPLIT;
     }
 
     switch (ws->current_layout) {
         case LAYOUT_HORIZONTAL_SPLIT:
-            if (ws->num_janelas == 2) {
-                int altura_janela = screen_rows / 2;
+            if (ws->num_windows == 2) {
+                int window_height = screen_rows / 2;
                 for (int i = 0; i < 2; i++) {
-                    ws->janelas[i]->y = i * altura_janela;
-                    ws->janelas[i]->x = 0;
-                    ws->janelas[i]->largura = screen_cols;
-                    ws->janelas[i]->altura = (i == 1) ? (screen_rows - altura_janela) : altura_janela;
+                    ws->windows[i]->y = i * window_height;
+                    ws->windows[i]->x = 0;
+                    ws->windows[i]->width = screen_cols;
+                    ws->windows[i]->height = (i == 1) ? (screen_rows - window_height) : window_height;
                 }
             }
             break;
         case LAYOUT_MAIN_AND_STACK:
-            if (ws->num_janelas == 3) {
+            if (ws->num_windows == 3) {
                 int main_width = screen_cols / 2;
                 int stack_width = screen_cols - main_width;
                 int stack_height = screen_rows / 2;
-                ws->janelas[0]->y = 0;
-                ws->janelas[0]->x = 0;
-                ws->janelas[0]->largura = main_width;
-                ws->janelas[0]->altura = screen_rows;
-                ws->janelas[1]->y = 0;
-                ws->janelas[1]->x = main_width;
-                ws->janelas[1]->largura = stack_width;
-                ws->janelas[1]->altura = stack_height;
-                ws->janelas[2]->y = stack_height;
-                ws->janelas[2]->x = main_width;
-                ws->janelas[2]->largura = stack_width;
-                ws->janelas[2]->altura = screen_rows - stack_height;
+                ws->windows[0]->y = 0;
+                ws->windows[0]->x = 0;
+                ws->windows[0]->width = main_width;
+                ws->windows[0]->height = screen_rows;
+                ws->windows[1]->y = 0;
+                ws->windows[1]->x = main_width;
+                ws->windows[1]->width = stack_width;
+                ws->windows[1]->height = stack_height;
+                ws->windows[2]->y = stack_height;
+                ws->windows[2]->x = main_width;
+                ws->windows[2]->width = stack_width;
+                ws->windows[2]->height = screen_rows - stack_height;
             }
             break;
         case LAYOUT_GRID:
-            if (ws->num_janelas == 4) {
+            if (ws->num_windows == 4) {
                 int win_w = screen_cols / 2;
                 int win_h = screen_rows / 2;
-                ws->janelas[0]->y = 0;     ws->janelas[0]->x = 0;
-                ws->janelas[1]->y = 0;     ws->janelas[1]->x = win_w;
-                ws->janelas[2]->y = win_h; ws->janelas[2]->x = 0;
-                ws->janelas[3]->y = win_h; ws->janelas[3]->x = win_w;
+                ws->windows[0]->y = 0;     ws->windows[0]->x = 0;
+                ws->windows[1]->y = 0;     ws->windows[1]->x = win_w;
+                ws->windows[2]->y = win_h; ws->windows[2]->x = 0;
+                ws->windows[3]->y = win_h; ws->windows[3]->x = win_w;
                 for(int i=0; i<4; i++) {
-                    ws->janelas[i]->altura = (i >= 2) ? screen_rows - win_h : win_h;
-                    ws->janelas[i]->largura = (i % 2 != 0) ? screen_cols - win_w : win_w;
+                    ws->windows[i]->height = (i >= 2) ? screen_rows - win_h : win_h;
+                    ws->windows[i]->width = (i % 2 != 0) ? screen_cols - win_w : win_w;
                 }
             }
             break;
         case LAYOUT_VERTICAL_SPLIT:
         default: {
-            int largura_janela = screen_cols / ws->num_janelas;
-            for (int i = 0; i < ws->num_janelas; i++) {
-                ws->janelas[i]->y = 0;
-                ws->janelas[i]->x = i * largura_janela;
-                ws->janelas[i]->altura = screen_rows;
-                ws->janelas[i]->largura = (i == ws->num_janelas - 1) ? (screen_cols - ws->janelas[i]->x) : largura_janela;
+            int window_width = screen_cols / ws->num_windows;
+            for (int i = 0; i < ws->num_windows; i++) {
+                ws->windows[i]->y = 0;
+                ws->windows[i]->x = i * window_width;
+                ws->windows[i]->height = screen_rows;
+                ws->windows[i]->width = (i == ws->num_windows - 1) ? (screen_cols - ws->windows[i]->x) : window_width;
             }
             break;
         }
     }
 
 
-    for (int i = 0; i < ws->num_janelas; i++) {
-        JanelaEditor *jw = ws->janelas[i];
+    for (int i = 0; i < ws->num_windows; i++) {
+        EditorWindow *jw = ws->windows[i];
         
         // 1. safe clean
         if (jw->content_win && jw->content_win != jw->win) {
@@ -531,16 +531,16 @@ void recalcular_layout_janelas() {
         if (jw->win) delwin(jw->win);
         
         // 2. creation of the main window (container)
-        jw->win = newwin(jw->altura, jw->largura, jw->y, jw->x);
+        jw->win = newwin(jw->height, jw->width, jw->y, jw->x);
         keypad(jw->win, TRUE);
         scrollok(jw->win, FALSE);
         
         // 3. creation of the sub-window of the content (safe area)
-        int border_offset = ws->num_janelas > 1 ? 1 : 0;
+        int border_offset = ws->num_windows > 1 ? 1 : 0;
         
         if (border_offset) {
             // create a windows derivate that, start in 1,1 and its smaller in then the main
-            jw->content_win = derwin(jw->win, jw->altura - 2, jw->largura - 2, 1, 1);
+            jw->content_win = derwin(jw->win, jw->height - 2, jw->width - 2, 1, 1);
         } else {
             // if dont't have border, the content occupies all
             jw->content_win = jw->win;
@@ -553,21 +553,21 @@ void recalcular_layout_janelas() {
             touchwin(jw->win); // makes the border to be draw
         }
         
-        if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-            jw->estado->is_dirty = true;
-            mark_all_lines_dirty(jw->estado);
-        } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
+        if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+            jw->state->is_dirty = true;
+            mark_all_lines_dirty(jw->state);
+        } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
             jw->explorer_state->is_dirty = true;
-        } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
+        } else if (jw->type == WINDOW_TYPE_HELP && jw->help_state) {
             jw->help_state->is_dirty = true;
-        } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+        } else if (jw->type == WINDOW_TYPE_SETTINGS_PANEL && jw->settings_state) {
             jw->settings_state->is_dirty = true;
         }
         
         // 4. updating the terminal, vterm
-        if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.vterm) {
-            int content_h = jw->altura - (2 * border_offset);
-            int content_w = jw->largura - (2 * border_offset);
+        if (jw->type == WINDOW_TYPE_TERMINAL && jw->term.vterm) {
+            int content_h = jw->height - (2 * border_offset);
+            int content_w = jw->width - (2 * border_offset);
             
             // pass the content_win to vterm
             vterm_wnd_set(jw->term.vterm, jw->content_win);
@@ -580,26 +580,26 @@ void recalcular_layout_janelas() {
         if (jw->win) {
             delwin(jw->win);
         }
-        jw->win = newwin(jw->altura, jw->largura, jw->y, jw->x);
+        jw->win = newwin(jw->height, jw->width, jw->y, jw->x);
         keypad(jw->win, TRUE);
         scrollok(jw->win, FALSE);
 
-        if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-            jw->estado->is_dirty = true;
-            mark_all_lines_dirty(jw->estado);
-        } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
+        if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+            jw->state->is_dirty = true;
+            mark_all_lines_dirty(jw->state);
+        } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
             jw->explorer_state->is_dirty = true;
-        } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
+        } else if (jw->type == WINDOW_TYPE_HELP && jw->help_state) {
             jw->help_state->is_dirty = true;
-        } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+        } else if (jw->type == WINDOW_TYPE_SETTINGS_PANEL && jw->settings_state) {
             jw->settings_state->is_dirty = true;
         }
         
         // If it's a terminal, we need to resize it and update its window pointer
-        if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.vterm) {
-            int border_offset = ws->num_janelas > 1 ? 1 : 0;
-            int content_h = jw->altura - (2 * border_offset);
-            int content_w = jw->largura - (2 * border_offset);
+        if (jw->type == WINDOW_TYPE_TERMINAL && jw->term.vterm) {
+            int border_offset = ws->num_windows > 1 ? 1 : 0;
+            int content_h = jw->height - (2 * border_offset);
+            int content_w = jw->width - (2 * border_offset);
             
             vterm_wnd_set(jw->term.vterm, jw->win); // Associate new window with vterm
             vterm_resize(jw->term.vterm, content_h > 0 ? content_h : 1, content_w > 0 ? content_w : 1);
@@ -609,11 +609,11 @@ void recalcular_layout_janelas() {
 }
 */
 
-void executar_comando_no_terminal(const char *comando_str) {
+void execute_command_in_terminal(const char *comando_str) {
     // If no command is specified, open a default shell
     if (strlen(comando_str) == 0) {
         char *const cmd[] = {"/bin/bash", NULL};
-        criar_janela_terminal_generica(cmd);
+        create_generic_terminal_window(cmd);
         return;
     }
 
@@ -641,7 +641,7 @@ void executar_comando_no_terminal(const char *comando_str) {
 
     // Call our magic function that is already prepared!
     if (argv) {
-        criar_janela_terminal_generica(argv);
+        create_generic_terminal_window(argv);
     }
 
     // Free the memory we allocated
@@ -649,12 +649,12 @@ void executar_comando_no_terminal(const char *comando_str) {
     free(argv);
 }
 
-void executar_comando_em_novo_workspace(const char *comando_str) {
-    criar_novo_workspace_vazio();
+void execute_command_in_new_workspace(const char *comando_str) {
+    create_new_empty_workspace();
 
     if (strlen(comando_str) == 0) {
         char *const cmd[] = {"/bin/bash", NULL};
-        criar_janela_terminal_generica(cmd);
+        create_generic_terminal_window(cmd);
         return;
     }
 
@@ -677,47 +677,47 @@ void executar_comando_em_novo_workspace(const char *comando_str) {
     argv[argc - 1] = NULL;
 
     if (argv) {
-        criar_janela_terminal_generica(argv);
+        create_generic_terminal_window(argv);
     }
 
     free(str_copia);
     free(argv);
 }
 
-void free_workspace(GerenciadorJanelas *ws) {
+void free_workspace(Workspace *ws) {
     if (!ws) return;
-    for (int i = 0; i < ws->num_janelas; i++) {
-        free_janela_editor(ws->janelas[i]);
+    for (int i = 0; i < ws->num_windows; i++) {
+        free_editor_window(ws->windows[i]);
     }
-    free(ws->janelas);
+    free(ws->windows);
     free(ws);
 }
 
-void redesenhar_todas_as_janelas() {
-    if (gerenciador_workspaces.num_workspaces == 0) return;
+void redraw_all_windows() {
+    if (workspace_manager.num_workspaces == 0) return;
 
-    GerenciadorJanelas *ws = ACTIVE_WS;    
+    Workspace *ws = ACTIVE_WS;    
     bool any_dirty = false;
 
     // First, check if anything at all needs to be redrawn.
-    for (int i = 0; i < ws->num_janelas; i++) {
-        JanelaEditor *jw = ws->janelas[i];
+    for (int i = 0; i < ws->num_windows; i++) {
+        EditorWindow *jw = ws->windows[i];
         if (!jw) continue;
 
-        switch (jw->tipo) {
-            case TIPOJANELA_EDITOR:
-                if (jw->estado && jw->estado->is_dirty) any_dirty = true;
+        switch (jw->type) {
+            case WINDOW_TYPE_EDITOR:
+                if (jw->state && jw->state->is_dirty) any_dirty = true;
                 break;
-            case TIPOJANELA_EXPLORER:
+            case WINDOW_TYPE_EXPLORER:
                 if (jw->explorer_state && jw->explorer_state->is_dirty) any_dirty = true;
                 break;
-            case TIPOJANELA_HELP:
+            case WINDOW_TYPE_HELP:
                 if (jw->help_state && jw->help_state->is_dirty) any_dirty = true;
                 break;
-            case TIPOJANELA_SETTINGS_PANEL:
+            case WINDOW_TYPE_SETTINGS_PANEL:
                 if (jw->settings_state && jw->settings_state->is_dirty) any_dirty = true;
                 break;
-            case TIPOJANELA_TERMINAL:
+            case WINDOW_TYPE_TERMINAL:
                 any_dirty = true; // Terminals are always considered dirty
                 break;
         }
@@ -726,7 +726,7 @@ void redesenhar_todas_as_janelas() {
 
     // If no windows are dirty, we can often just reposition the cursor and do a minimal update.
     if (!any_dirty) {
-        posicionar_cursor_ativo();
+        position_active_cursor();
         doupdate();
         return;
     }
@@ -737,32 +737,28 @@ void redesenhar_todas_as_janelas() {
     wnoutrefresh(stdscr);
 
     // 1. Draw all main windows first
-    for (int i = 0; i < ws->num_janelas; i++) {
-        JanelaEditor *jw = ws->janelas[i];
+    for (int i = 0; i < ws->num_windows; i++) {
+        EditorWindow *jw = ws->windows[i];
         if (jw) {
             // Prepare the window content to be drawn
-            if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-                editor_redraw(jw->win, jw->estado);
-                jw->estado->is_dirty = false; // Reset the flag after drawing
+            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                editor_redraw(jw->win, jw->state);
+                jw->state->is_dirty = false; // Reset the flag after drawing
                 
-            } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
+            } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
                 explorer_redraw(jw); 
-            } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
+            } else if (jw->type == WINDOW_TYPE_HELP && jw->help_state) {
                 help_viewer_redraw(jw);
                 jw->help_state->is_dirty = false;
-            } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+            } else if (jw->type == WINDOW_TYPE_SETTINGS_PANEL && jw->settings_state) {
                 settings_panel_redraw(jw);
                 jw->settings_state->is_dirty = false;
-            } else if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.vterm) {
+            } else if (jw->type == WINDOW_TYPE_TERMINAL && jw->term.vterm) {
                 // Terminal drawing is special, it's always "dirty" from our perspective
-                if (jw->content_win != jw->win) werase(jw->content_win);
-                
-                else werase(jw->win); // Clear the window before drawing to prevent artifacts
-                
                 vterm_wnd_update(jw->term.vterm, -1, 0, VTERM_WND_RENDER_ALL);
                 
-                if (ws->num_janelas > 1) {
-                    if (i == ws->janela_ativa_idx) {
+                if (ws->num_windows > 1) {
+                    if (i == ws->active_window_idx) {
                         wattron(jw->win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
                         box(jw->win, 0, 0);
                         wattroff(jw->win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
@@ -779,10 +775,10 @@ void redesenhar_todas_as_janelas() {
         }
     }
 
-    if (ws->num_janelas > 0) {
-        JanelaEditor *active_jw = ws->janelas[ws->janela_ativa_idx];
-        if (active_jw->tipo == TIPOJANELA_EDITOR && active_jw->estado) {
-            EditorState *state = active_jw->estado;
+    if (ws->num_windows > 0) {
+        EditorWindow *active_jw = ws->windows[ws->active_window_idx];
+        if (active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
+            EditorState *state = active_jw->state;
             // Draw spell-checker hover popup
             if (state->spell_hover_message) {
                 draw_diagnostic_popup(active_jw->win, state, state->spell_hover_message);
@@ -794,7 +790,7 @@ void redesenhar_todas_as_janelas() {
                     draw_diagnostic_popup(active_jw->win, state, diag->message);
                 }
             }
-        } else if (active_jw->tipo == TIPOJANELA_SETTINGS_PANEL && active_jw->settings_state) {
+        } else if (active_jw->type == WINDOW_TYPE_SETTINGS_PANEL && active_jw->settings_state) {
             if (active_jw->settings_state->is_assigning_key) {
                 const char *msg = (active_jw->settings_state->assigning_stage == 0) ? 
                                   " PRESS THE NEW KEY COMBINATION " : 
@@ -809,34 +805,34 @@ void redesenhar_todas_as_janelas() {
     }
 
     // 3. Position the cursor and update the physical screen
-    posicionar_cursor_ativo();
+    position_active_cursor();
     doupdate();
 }
 
-void posicionar_cursor_ativo() {
-    if (gerenciador_workspaces.num_workspaces == 0 || ACTIVE_WS->num_janelas == 0) {
+void position_active_cursor() {
+    if (workspace_manager.num_workspaces == 0 || ACTIVE_WS->num_windows == 0) {
         curs_set(0);
         return;
     }
 
-    GerenciadorJanelas *ws = ACTIVE_WS;
-    if (ws->num_janelas == 0) { curs_set(0); return; };
+    Workspace *ws = ACTIVE_WS;
+    if (ws->num_windows == 0) { curs_set(0); return; };
 
-    JanelaEditor* active_jw = ws->janelas[ACTIVE_WS->janela_ativa_idx];
+    EditorWindow* active_jw = ws->windows[ACTIVE_WS->active_window_idx];
     
     // If the window is a terminal, libvterm handles the cursor. We do nothing.
-    if (active_jw->tipo == TIPOJANELA_TERMINAL) {
+    if (active_jw->type == WINDOW_TYPE_TERMINAL) {
         // libvterm has already positioned the cursor during vterm_render or vterm_wnd_update.
         // We just ensure it is visible if the process is active.
         curs_set(active_jw->term.pid != -1 ? 1 : 0);
-    } else if (active_jw->tipo == TIPOJANELA_EXPLORER) {
+    } else if (active_jw->type == WINDOW_TYPE_EXPLORER) {
         curs_set(0); // The explorer does not need a cursor
-    } else if (active_jw->tipo == TIPOJANELA_SETTINGS_PANEL) {
+    } else if (active_jw->type == WINDOW_TYPE_SETTINGS_PANEL) {
         curs_set(0); // The settings panel does not need a cursor
     } 
     // If the window is an editor, we handle the cursor manually.
-    else if (active_jw->tipo == TIPOJANELA_EDITOR) {
-        EditorState* state = active_jw->estado;
+    else if (active_jw->type == WINDOW_TYPE_EDITOR) {
+        EditorState* state = active_jw->state;
         if (!state) { curs_set(0); return; }
         
         WINDOW* win = active_jw->win;
@@ -859,7 +855,7 @@ void posicionar_cursor_ativo() {
                 
                 int visual_y, visual_x;
                 get_visual_pos(win, state, &visual_y, &visual_x);
-                int border_offset = ws->num_janelas > 1 ? 1 : 0;
+                int border_offset = ws->num_windows > 1 ? 1 : 0;
                 int screen_y = visual_y - state->top_line + border_offset;
                 int screen_x = visual_x - state->left_col + border_offset + line_number_width;
                 int max_y, max_x;
@@ -875,17 +871,17 @@ void posicionar_cursor_ativo() {
     wnoutrefresh(active_jw->win);
 }
 
-void proxima_janela() {
-    GerenciadorJanelas *ws = ACTIVE_WS;
-    if (ws->num_janelas > 1) {
-        JanelaEditor *old_jw = ws->janelas[ws->janela_ativa_idx];
-        ws->janela_ativa_idx = (ws->janela_ativa_idx + 1) % ws->num_janelas;
-        JanelaEditor *new_jw = ws->janelas[ws->janela_ativa_idx];
+void next_window() {
+    Workspace *ws = ACTIVE_WS;
+    if (ws->num_windows > 1) {
+        EditorWindow *old_jw = ws->windows[ws->active_window_idx];
+        ws->active_window_idx = (ws->active_window_idx + 1) % ws->num_windows;
+        EditorWindow *new_jw = ws->windows[ws->active_window_idx];
         
         // Auto-sync cursor if switching between C and ASM/LLVM
-        if (old_jw->tipo == TIPOJANELA_EDITOR && new_jw->tipo == TIPOJANELA_EDITOR) {
-            EditorState *src = old_jw->estado;
-            EditorState *dst = new_jw->estado;
+        if (old_jw->type == WINDOW_TYPE_EDITOR && new_jw->type == WINDOW_TYPE_EDITOR) {
+            EditorState *src = old_jw->state;
+            EditorState *dst = new_jw->state;
             
             // From C to ASM/LLVM
             if (dst->mapping) {
@@ -920,35 +916,35 @@ void proxima_janela() {
         }
     }
     // Set all windows in the active workspace to dirty when switching to ensure a full redraw
-    for (int i = 0; i < ws->num_janelas; i++) {
-        JanelaEditor *jw = ws->janelas[i];
+    for (int i = 0; i < ws->num_windows; i++) {
+        EditorWindow *jw = ws->windows[i];
         if (jw) {
-            if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-                jw->estado->is_dirty = true;
-                mark_all_lines_dirty(jw->estado);
-            } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
+            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                jw->state->is_dirty = true;
+                mark_all_lines_dirty(jw->state);
+            } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
                 jw->explorer_state->is_dirty = true;
-            } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
+            } else if (jw->type == WINDOW_TYPE_HELP && jw->help_state) {
                 jw->help_state->is_dirty = true;
-            } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+            } else if (jw->type == WINDOW_TYPE_SETTINGS_PANEL && jw->settings_state) {
                 jw->settings_state->is_dirty = true;
             }
         }
     }
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
 }
 
-void janela_anterior() {
-    GerenciadorJanelas *ws = ACTIVE_WS;
-    if (ws->num_janelas > 1) {
-        JanelaEditor *old_jw = ws->janelas[ws->janela_ativa_idx];
-        ws->janela_ativa_idx = (ws->janela_ativa_idx - 1 + ws->num_janelas) % ws->num_janelas;
-        JanelaEditor *new_jw = ws->janelas[ws->janela_ativa_idx];
+void previous_window() {
+    Workspace *ws = ACTIVE_WS;
+    if (ws->num_windows > 1) {
+        EditorWindow *old_jw = ws->windows[ws->active_window_idx];
+        ws->active_window_idx = (ws->active_window_idx - 1 + ws->num_windows) % ws->num_windows;
+        EditorWindow *new_jw = ws->windows[ws->active_window_idx];
 
         // Auto-sync cursor if switching between C and ASM/LLVM
-        if (old_jw->tipo == TIPOJANELA_EDITOR && new_jw->tipo == TIPOJANELA_EDITOR) {
-            EditorState *src = old_jw->estado;
-            EditorState *dst = new_jw->estado;
+        if (old_jw->type == WINDOW_TYPE_EDITOR && new_jw->type == WINDOW_TYPE_EDITOR) {
+            EditorState *src = old_jw->state;
+            EditorState *dst = new_jw->state;
             
             if (dst->mapping) {
                 EditorState *check_src = find_source_state_for_assembly(dst->filename);
@@ -979,29 +975,29 @@ void janela_anterior() {
         }
     }
     // Set all windows in the active workspace to dirty when switching to ensure a full redraw
-    for (int i = 0; i < ws->num_janelas; i++) {
-        JanelaEditor *jw = ws->janelas[i];
+    for (int i = 0; i < ws->num_windows; i++) {
+        EditorWindow *jw = ws->windows[i];
         if (jw) {
-            if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-                jw->estado->is_dirty = true;
-                mark_all_lines_dirty(jw->estado);
-            } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
+            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                jw->state->is_dirty = true;
+                mark_all_lines_dirty(jw->state);
+            } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
                 jw->explorer_state->is_dirty = true;
-            } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
+            } else if (jw->type == WINDOW_TYPE_HELP && jw->help_state) {
                 jw->help_state->is_dirty = true;
-            } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+            } else if (jw->type == WINDOW_TYPE_SETTINGS_PANEL && jw->settings_state) {
                 jw->settings_state->is_dirty = true;
             }
         }
     }
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
 }
 
-void ciclar_layout() {
-    GerenciadorJanelas *ws = ACTIVE_WS;
-    if (ws->num_janelas <= 1) return;
+void cycle_layout() {
+    Workspace *ws = ACTIVE_WS;
+    if (ws->num_windows <= 1) return;
 
-    switch (ws->num_janelas) {
+    switch (ws->num_windows) {
         case 2:
             if (ws->current_layout == LAYOUT_VERTICAL_SPLIT) {
                 ws->current_layout = LAYOUT_HORIZONTAL_SPLIT;
@@ -1028,69 +1024,69 @@ void ciclar_layout() {
             break;
     }
 
-    recalcular_layout_janelas();
-    redesenhar_todas_as_janelas();
+    recalculate_window_layout();
+    redraw_all_windows();
 }
 
-void rotacionar_janelas() {
-    GerenciadorJanelas *ws = ACTIVE_WS;
-    if (ws->num_janelas <= 1) return;
-    JanelaEditor *ultima_janela = ws->janelas[ws->num_janelas - 1];
-    for (int i = ws->num_janelas - 1; i > 0; i--) {
-        ws->janelas[i] = ws->janelas[i - 1];
+void rotate_windows() {
+    Workspace *ws = ACTIVE_WS;
+    if (ws->num_windows <= 1) return;
+    EditorWindow *ultima_janela = ws->windows[ws->num_windows - 1];
+    for (int i = ws->num_windows - 1; i > 0; i--) {
+        ws->windows[i] = ws->windows[i - 1];
     }
-    ws->janelas[0] = ultima_janela;
-    ws->janela_ativa_idx = (ws->janela_ativa_idx + 1) % ws->num_janelas;
+    ws->windows[0] = ultima_janela;
+    ws->active_window_idx = (ws->active_window_idx + 1) % ws->num_windows;
     // Mark all windows dirty after rotation to force a full redraw
-    for (int i = 0; i < ws->num_janelas; i++) {
-        JanelaEditor *jw = ws->janelas[i];
+    for (int i = 0; i < ws->num_windows; i++) {
+        EditorWindow *jw = ws->windows[i];
         if (jw) {
-            if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-                jw->estado->is_dirty = true;
-                mark_all_lines_dirty(jw->estado);
-            } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
+            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                jw->state->is_dirty = true;
+                mark_all_lines_dirty(jw->state);
+            } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
                 jw->explorer_state->is_dirty = true;
-            } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
+            } else if (jw->type == WINDOW_TYPE_HELP && jw->help_state) {
                 jw->help_state->is_dirty = true;
-            } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+            } else if (jw->type == WINDOW_TYPE_SETTINGS_PANEL && jw->settings_state) {
                 jw->settings_state->is_dirty = true;
-            } else if (jw->tipo == TIPOJANELA_TERMINAL) {
+            } else if (jw->type == WINDOW_TYPE_TERMINAL) {
                 // Terminals should always be fully redrawn on major layout changes.
             }
         }
     }
-    recalcular_layout_janelas();
-    redesenhar_todas_as_janelas();
+    recalculate_window_layout();
+    redraw_all_windows();
 }
 
-void mover_janela_para_posicao(int target_idx) {
-    GerenciadorJanelas *ws = ACTIVE_WS;
-    int active_idx = ws->janela_ativa_idx;
-    if (ws->num_janelas <= 1 || target_idx < 0 || target_idx >= ws->num_janelas || target_idx == active_idx) return;
-    JanelaEditor *janela_ativa_ptr = ws->janelas[active_idx];
-    ws->janelas[active_idx] = ws->janelas[target_idx];
-    ws->janelas[target_idx] = janela_ativa_ptr;
-    ws->janela_ativa_idx = target_idx;
+void move_window_to_position(int target_idx) {
+    Workspace *ws = ACTIVE_WS;
+    int active_idx = ws->active_window_idx;
+    if (ws->num_windows <= 1 || target_idx < 0 || target_idx >= ws->num_windows || target_idx == active_idx) return;
+    EditorWindow *active_window_ptr = ws->windows[active_idx];
+    ws->windows[active_idx] = ws->windows[target_idx];
+    ws->windows[target_idx] = active_window_ptr;
+    ws->active_window_idx = target_idx;
     // Mark all windows dirty after movement to force a full redraw
-    for (int i = 0; i < ws->num_janelas; i++) {
-        JanelaEditor *jw = ws->janelas[i];
+    for (int i = 0; i < ws->num_windows; i++) {
+        EditorWindow *jw = ws->windows[i];
         if (jw) {
-            if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-                jw->estado->is_dirty = true;
-                mark_all_lines_dirty(jw->estado);
-            } else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) {
+            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                jw->state->is_dirty = true;
+                mark_all_lines_dirty(jw->state);
+            } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
                 jw->explorer_state->is_dirty = true;
-            } else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) {
+            } else if (jw->type == WINDOW_TYPE_HELP && jw->help_state) {
                 jw->help_state->is_dirty = true;
-            } else if (jw->tipo == TIPOJANELA_SETTINGS_PANEL && jw->settings_state) {
+            } else if (jw->type == WINDOW_TYPE_SETTINGS_PANEL && jw->settings_state) {
                 jw->settings_state->is_dirty = true;
-            } else if (jw->tipo == TIPOJANELA_TERMINAL) {
+            } else if (jw->type == WINDOW_TYPE_TERMINAL) {
                 // Terminals should always be fully redrawn on major layout changes.
             }
         }
     }
-    recalcular_layout_janelas();
-    redesenhar_todas_as_janelas();
+    recalculate_window_layout();
+    redraw_all_windows();
 }
 
 typedef struct {
@@ -1099,7 +1095,7 @@ typedef struct {
 } SearchResult;
 
 void display_recent_files() {
-    EditorState *active_state = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->estado;
+    EditorState *active_state = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->state;
     
     WINDOW *switcher_win;
     int rows, cols;
@@ -1246,7 +1242,7 @@ void display_recent_files() {
                 mvwin(switcher_win, win_y, win_x);
 
                 touchwin(stdscr);
-                redesenhar_todas_as_janelas();
+                redraw_all_windows();
                 break;
             case KEY_UP: case 'k':
                 if (current_selection > 0) current_selection--;
@@ -1277,9 +1273,9 @@ void display_recent_files() {
                         if (active_state->buffer_modified) {
                             delwin(switcher_win);
                             touchwin(stdscr);
-                            redesenhar_todas_as_janelas();
+                            redraw_all_windows();
 
-                            if (!confirm_action("Unsaved changes. Open file anyway?")) {
+                            if (!ui_confirm("Unsaved changes. Open file anyway?")) {
                                 goto end_switcher;
                             }
                         }
@@ -1328,22 +1324,22 @@ end_switcher:
     free(results);
     delwin(switcher_win);
     touchwin(stdscr);
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
     active_state->is_dirty = true;
 }
 
-void criar_novo_workspace_vazio() {
-    gerenciador_workspaces.num_workspaces++;
-    gerenciador_workspaces.workspaces = realloc(gerenciador_workspaces.workspaces, sizeof(GerenciadorJanelas*) * gerenciador_workspaces.num_workspaces);
+void create_new_empty_workspace() {
+    workspace_manager.num_workspaces++;
+    workspace_manager.workspaces = realloc(workspace_manager.workspaces, sizeof(Workspace*) * workspace_manager.num_workspaces);
 
-    GerenciadorJanelas *novo_ws = calloc(1, sizeof(GerenciadorJanelas));
-    novo_ws->janelas = NULL;
-    novo_ws->num_janelas = 0;
-    novo_ws->janela_ativa_idx = -1;
+    Workspace *novo_ws = calloc(1, sizeof(Workspace));
+    novo_ws->windows = NULL;
+    novo_ws->num_windows = 0;
+    novo_ws->active_window_idx = -1;
     novo_ws->current_layout = LAYOUT_VERTICAL_SPLIT;
 
-    gerenciador_workspaces.workspaces[gerenciador_workspaces.num_workspaces - 1] = novo_ws;
-    gerenciador_workspaces.workspace_ativo_idx = gerenciador_workspaces.num_workspaces - 1;
+    workspace_manager.workspaces[workspace_manager.num_workspaces - 1] = novo_ws;
+    workspace_manager.active_workspace_idx = workspace_manager.num_workspaces - 1;
 }
 
 void prompt_and_create_gdb_workspace() {
@@ -1372,12 +1368,12 @@ void prompt_and_create_gdb_workspace() {
     curs_set(0);
     delwin(input_win);
     touchwin(stdscr);
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
 
     if (strlen(path_buffer) > 0) {
-        criar_novo_workspace_vazio();
+        create_new_empty_workspace();
         char *const cmd[] = {"gdb", "-tui", path_buffer, NULL};
-        criar_janela_terminal_generica(cmd);
+        create_generic_terminal_window(cmd);
     }
 }
 
@@ -1434,7 +1430,7 @@ void gf2_starter() {
     // You can add a prompt for the user to type the filename,
     // or pass a fixed argument.
     char *const cmd[] = {"gf2", NULL};
-    criar_janela_terminal_generica(cmd);
+    create_generic_terminal_window(cmd);
 }
 
 
@@ -1534,7 +1530,7 @@ void display_content_search(EditorState *state, const char* prefilled_term) {
         noecho(); curs_set(0);
         delwin(input_win);
         touchwin(stdscr);
-        redesenhar_todas_as_janelas();
+        redraw_all_windows();
     }
 
     if (strlen(search_term) == 0) return;
@@ -1630,7 +1626,7 @@ void display_command_palette(EditorState *state) {
     keypad(palette_win, TRUE);
     wbkgd(palette_win, COLOR_PAIR(9));
 
-    // 3. Variáveis de estado do loop
+    // 3. Variáveis de state do loop
     int current_selection = 0;
     int top_of_list = 0;
     char search_term[100] = {0};
@@ -1805,7 +1801,7 @@ end_palette:
     delwin(palette_win);
     touchwin(stdscr);
     state->is_dirty = true;
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
     curs_set(1);
 }
 
@@ -1903,8 +1899,8 @@ void *display_fuzzy_finder(EditorState *state) {
                     if (state->buffer_modified) {
                         delwin(finder_win);
                         touchwin(stdscr);
-                        redesenhar_todas_as_janelas();
-                        if (!confirm_action("Unsaved changes. Open file anyway?")) {
+                        redraw_all_windows();
+                        if (!ui_confirm("Unsaved changes. Open file anyway?")) {
                              goto end_finder;
                         }
                     }
@@ -1941,34 +1937,34 @@ end_finder:
     delwin(finder_win);
     touchwin(stdscr);
     state->is_dirty = true;
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
     curs_set(1);
     return NULL;
 }
 
 void display_help_viewer(const char* filename) {
-    if (gerenciador_workspaces.num_workspaces == 0 || gerenciador_workspaces.workspace_ativo_idx == -1) return;
-    GerenciadorJanelas *ws = ACTIVE_WS;
+    if (workspace_manager.num_workspaces == 0 || workspace_manager.active_workspace_idx == -1) return;
+    Workspace *ws = ACTIVE_WS;
     if (!ws) return;
 
-    JanelaEditor **new_janelas = realloc(ws->janelas, sizeof(JanelaEditor*) * (ws->num_janelas + 1));
+    EditorWindow **new_janelas = realloc(ws->windows, sizeof(EditorWindow*) * (ws->num_windows + 1));
     if (!new_janelas) return;
-    ws->janelas = new_janelas;
+    ws->windows = new_janelas;
 
-    JanelaEditor *nova_janela = calloc(1, sizeof(JanelaEditor));
-    if (!nova_janela) return;
+    EditorWindow *new_window = calloc(1, sizeof(EditorWindow));
+    if (!new_window) return;
 
-    nova_janela->tipo = TIPOJANELA_HELP;
-    nova_janela->help_state = calloc(1, sizeof(HelpViewerState));
-    if (!nova_janela->help_state) {
-        free(nova_janela);
+    new_window->type = WINDOW_TYPE_HELP;
+    new_window->help_state = calloc(1, sizeof(HelpViewerState));
+    if (!new_window->help_state) {
+        free(new_window);
         return;
     }
     
-    ws->num_janelas++;
-    nova_janela->help_state->is_dirty = true;
+    ws->num_windows++;
+    new_window->help_state->is_dirty = true;
     
-    HelpViewerState *state = nova_janela->help_state;
+    HelpViewerState *state = new_window->help_state;
     state->lines = NULL;
     state->num_lines = 0;
     state->top_line = 0;
@@ -2021,10 +2017,10 @@ void display_help_viewer(const char* filename) {
     }
     strncpy(state->current_file, filename, sizeof(state->current_file) - 1);
 
-    ws->janelas[ws->num_janelas - 1] = nova_janela;
-    ws->janela_ativa_idx = ws->num_janelas - 1;
+    ws->windows[ws->num_windows - 1] = new_window;
+    ws->active_window_idx = ws->num_windows - 1;
 
-    recalcular_layout_janelas();
+    recalculate_window_layout();
 }
 
 EditorState *find_source_state_for_assembly(const char *asm_filename) {
@@ -2037,11 +2033,11 @@ EditorState *find_source_state_for_assembly(const char *asm_filename) {
         *dot = '\0';
         strcat(source_guess, ".c");
         
-        for (int i = 0; i < gerenciador_workspaces.workspaces[gerenciador_workspaces.workspace_ativo_idx]->num_janelas; i++) {
-            JanelaEditor *jw = gerenciador_workspaces.workspaces[gerenciador_workspaces.workspace_ativo_idx]->janelas[i];
-            if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-                if (strcmp(jw->estado->filename, source_guess) == 0) {
-                    return jw->estado;
+        for (int i = 0; i < workspace_manager.workspaces[workspace_manager.active_workspace_idx]->num_windows; i++) {
+            EditorWindow *jw = workspace_manager.workspaces[workspace_manager.active_workspace_idx]->windows[i];
+            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                if (strcmp(jw->state->filename, source_guess) == 0) {
+                    return jw->state;
                 }
             }
         }
@@ -2063,12 +2059,12 @@ EditorState *find_assembly_state_for_source(const char *source_filename) {
         snprintf(asm_guess, sizeof(asm_guess), "%s.s", base_name);
         snprintf(llvm_guess, sizeof(llvm_guess), "%s.ll", base_name);
         
-        GerenciadorJanelas *ws = gerenciador_workspaces.workspaces[gerenciador_workspaces.workspace_ativo_idx];
-        for (int i = 0; i < ws->num_janelas; i++) {
-            JanelaEditor *jw = ws->janelas[i];
-            if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-                if (strcmp(jw->estado->filename, asm_guess) == 0 || strcmp(jw->estado->filename, llvm_guess) == 0){
-                    return jw->estado;
+        Workspace *ws = workspace_manager.workspaces[workspace_manager.active_workspace_idx];
+        for (int i = 0; i < ws->num_windows; i++) {
+            EditorWindow *jw = ws->windows[i];
+            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                if (strcmp(jw->state->filename, asm_guess) == 0 || strcmp(jw->state->filename, llvm_guess) == 0){
+                    return jw->state;
                 }
             }
         }
@@ -2077,11 +2073,11 @@ EditorState *find_assembly_state_for_source(const char *source_filename) {
     return NULL;
 }
 
-void sync_scroll(JanelaEditor *active_jw) {
-    if (!active_jw || active_jw->tipo != TIPOJANELA_EDITOR || !active_jw->estado) return;
+void sync_scroll(EditorWindow *active_jw) {
+    if (!active_jw || active_jw->type != WINDOW_TYPE_EDITOR || !active_jw->state) return;
     
-    EditorState *active_state = active_jw->estado;
-    JanelaEditor *target_jw = NULL;
+    EditorState *active_state = active_jw->state;
+    EditorWindow *target_jw = NULL;
     EditorState *target_state = NULL;
     int target_line = -1;
     
@@ -2090,10 +2086,10 @@ void sync_scroll(JanelaEditor *active_jw) {
         // Tentar achar C
         target_state = find_source_state_for_assembly(active_state->filename);
         if (target_state) {
-            GerenciadorJanelas *ws = ACTIVE_WS;
-            for(int i = 0; i<ws->num_janelas; i++) {
-                if (ws->janelas[i]->estado == target_state) {
-                    target_jw = ws->janelas[i];
+            Workspace *ws = ACTIVE_WS;
+            for(int i = 0; i<ws->num_windows; i++) {
+                if (ws->windows[i]->state == target_state) {
+                    target_jw = ws->windows[i];
                     break;
                 }
                 if (target_jw) {
@@ -2111,11 +2107,11 @@ void sync_scroll(JanelaEditor *active_jw) {
             target_state = find_assembly_state_for_source(active_state->filename);
             
             if (target_state && target_state->mapping) {
-                GerenciadorJanelas *ws = ACTIVE_WS;
-                for (int i = 0; i < ws->num_janelas; i++) {
-                    if (ws->janelas[i]->estado == target_state) {
+                Workspace *ws = ACTIVE_WS;
+                for (int i = 0; i < ws->num_windows; i++) {
+                    if (ws->windows[i]->state == target_state) {
                         
-                        target_jw = ws->janelas[i];
+                        target_jw = ws->windows[i];
                         break;
                     }
                 }
@@ -2136,7 +2132,7 @@ void sync_scroll(JanelaEditor *active_jw) {
         if (target_jw && target_line != -1) {
             int rows, cols;
             getmaxyx(target_jw->win, rows, cols);
-            int content_height = rows - (ACTIVE_WS->num_janelas > 1 ? 2 : 0);
+            int content_height = rows - (ACTIVE_WS->num_windows > 1 ? 2 : 0);
             
             // If the target line is out of the vision
             
@@ -2153,19 +2149,19 @@ void sync_scroll(JanelaEditor *active_jw) {
 }
 
 
-void criar_janela_settings_panel() {
-    GerenciadorJanelas *ws = ACTIVE_WS;
-    ws->num_janelas++;
-    ws->janelas = realloc(ws->janelas, sizeof(JanelaEditor) * ws->num_janelas);
+void create_settings_panel_window() {
+    Workspace *ws = ACTIVE_WS;
+    ws->num_windows++;
+    ws->windows = realloc(ws->windows, sizeof(EditorWindow) * ws->num_windows);
     
-    JanelaEditor *nova_janela = calloc(1, sizeof(JanelaEditor));
-        nova_janela->tipo = TIPOJANELA_SETTINGS_PANEL;
-            nova_janela->settings_state = calloc(1, sizeof(SettingsPanelState));
-            nova_janela->settings_state->current_selection = 0;
-            nova_janela->settings_state->scroll_top = 0;
-            nova_janela->settings_state->is_dirty = true;
-            nova_janela->settings_state->current_view = SETTINGS_VIEW_MAIN;
+    EditorWindow *new_window = calloc(1, sizeof(EditorWindow));
+        new_window->type = WINDOW_TYPE_SETTINGS_PANEL;
+            new_window->settings_state = calloc(1, sizeof(SettingsPanelState));
+            new_window->settings_state->current_selection = 0;
+            new_window->settings_state->scroll_top = 0;
+            new_window->settings_state->is_dirty = true;
+            new_window->settings_state->current_view = SETTINGS_VIEW_MAIN;
         
-            ws->janelas[ws->num_janelas - 1] = nova_janela;
-            ws->janela_ativa_idx = ws->num_janelas - 1;    recalcular_layout_janelas();
+            ws->windows[ws->num_windows - 1] = new_window;
+            ws->active_window_idx = ws->num_windows - 1;    recalculate_window_layout();
 }

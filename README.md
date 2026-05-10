@@ -36,7 +36,17 @@ This is a things that i made mostly of fun and learning experience!
 
 # Multiplatform?
 a2 isn't compatible with windows, and probably not with mac too.
-a2 should be compatible with theoretically every distr
+a2 should be compatible with theoretically every distro.
+
+## Built With
+The a2 editor is built upon these excellent open-source libraries:
+* **Ncurses** - Terminal UI and input management.
+* **Libvterm** - Integrated terminal emulation.
+* **Hunspell** - Robust spell checking.
+* **Jansson** - JSON support for LSP and sessions.
+* **Libcurl** - Network capabilities for dictionary downloads.
+
+*Full license details for a2 and its dependencies can be found in the [LICENSE](./LICENSE) file.*
 
 ## Contributing
 Contributions are welcome! Whether it's fixing bugs, improving documentation, or refactoring code, feel free to open a Pull Request. Since this is a learning project, feedback on C best practices is especially appreciated.

@@ -1,6 +1,6 @@
 #define _GNU_SOURCE
 #include "settings.h"
-#include "window_managment.h" // for the fechar_janela_ativa (close_current_window)
+#include "window_managment.h" // for the close_active_window (close_current_window)
 #include "fileio.h"
 #include "themes.h"
 #include "cache.h"
@@ -267,7 +267,7 @@ bool is_key_duplicate(int idx) {
     return false;
 }
 
-void draw_keybinding_settings(JanelaEditor *jw) {
+void draw_keybinding_settings(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     int rows, cols;
     getmaxyx(jw->win, rows, cols);
@@ -378,12 +378,12 @@ void load_global_config() {
 // --- Helper Functions ---
 
 void apply_settings_globally() {
-    for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {
-        GerenciadorJanelas *ws = gerenciador_workspaces.workspaces[i];
-        for (int j = 0; j < ws->num_janelas; j++) {
-            JanelaEditor *jw = ws->janelas[j];
-            if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-                EditorState *state = jw->estado;
+    for (int i = 0; i < workspace_manager.num_workspaces; i++) {
+        Workspace *ws = workspace_manager.workspaces[i];
+        for (int j = 0; j < ws->num_windows; j++) {
+            EditorWindow *jw = ws->windows[j];
+            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                EditorState *state = jw->state;
                 
                 state->word_wrap_enabled = global_config.word_wrap;
                 state->auto_indent_on_newline = global_config.auto_indent;
@@ -433,11 +433,11 @@ void apply_settings_globally() {
 
 // Find the first available editor state to read current settings from
 static EditorState* get_any_editor_state() {
-    for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {
-        for (int j = 0; j < gerenciador_workspaces.workspaces[i]->num_janelas; j++) {
-            JanelaEditor *jw = gerenciador_workspaces.workspaces[i]->janelas[j];
-            if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) {
-                return jw->estado;
+    for (int i = 0; i < workspace_manager.num_workspaces; i++) {
+        for (int j = 0; j < workspace_manager.workspaces[i]->num_windows; j++) {
+            EditorWindow *jw = workspace_manager.workspaces[i]->windows[j];
+            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                return jw->state;
             }
         }
     }
@@ -447,7 +447,7 @@ static EditorState* get_any_editor_state() {
 
 // --- Drawing functions for each view ---
 
-void draw_main_menu(JanelaEditor *jw) {
+void draw_main_menu(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     int rows, cols;
     getmaxyx(jw->win, rows, cols);
@@ -468,7 +468,7 @@ void draw_main_menu(JanelaEditor *jw) {
     }
 }
 
-void draw_editor_settings(JanelaEditor *jw) {
+void draw_editor_settings(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     int rows, cols;
     getmaxyx(jw->win, rows, cols);
@@ -564,7 +564,7 @@ void populate_theme_list(SettingsPanelState *state) {
     }
 }
 
-void draw_theme_settings(JanelaEditor *jw) {
+void draw_theme_settings(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     populate_theme_list(state);
     int rows, cols;
@@ -592,7 +592,7 @@ void draw_theme_settings(JanelaEditor *jw) {
     }
 }
 
-void draw_spell_settings(JanelaEditor *jw) {
+void draw_spell_settings(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     int rows, cols;
     getmaxyx(jw->win, rows, cols);
@@ -641,7 +641,7 @@ void draw_spell_settings(JanelaEditor *jw) {
     }
 }
 
-void draw_lsp_settings(JanelaEditor *jw) {
+void draw_lsp_settings(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     int rows, cols;
     getmaxyx(jw->win, rows, cols);
@@ -685,7 +685,7 @@ void draw_lsp_settings(JanelaEditor *jw) {
     }
 }
 
-void settings_panel_redraw(JanelaEditor *jw) {
+void settings_panel_redraw(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     werase(jw->win);
     box(jw->win, 0, 0);
@@ -725,7 +725,7 @@ void settings_panel_redraw(JanelaEditor *jw) {
     wnoutrefresh(jw->win);
 }
 
-void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
+void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
     SettingsPanelState *state = jw->settings_state;
     state->is_dirty = true;
 
@@ -751,9 +751,9 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
             switch(ch) {
                 case 'q':
                 case 27: // ESC / Ctrl+[
-                    fechar_janela_ativa(should_exit);
+                    close_active_window(should_exit);
                     break;
-                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; proxima_janela(); break;
+                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
                 case 'j':
                 case KEY_DOWN:
                     if (state->current_selection < num_main_menu_items - 1) {
@@ -800,7 +800,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                     nodelay(jw->win, FALSE);
                     
                     if (next != ERR) {
-                        if (confirm_action("Use as Leader Key for sequence?")) {
+                        if (ui_confirm("Use as Leader Key for sequence?")) {
                             global_bindings[target_idx].leader = next;
                             state->assigning_stage = 1;
                             editor_set_status_msg(get_any_editor_state(), "Leader set. Press second key.");
@@ -888,7 +888,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                             if (strlen(state->search_term) == 0 || strcasestr(global_bindings[i].name, state->search_term) || strcasestr(global_bindings[i].desc, state->search_term)) total_items++;
                         }
                         if (state->current_selection == total_items) {
-                            if (confirm_action("Restore all keybindings to default?")) {
+                            if (ui_confirm("Restore all keybindings to default?")) {
                                 reset_bindings_to_default();
                                 save_keybindings();
                                 editor_set_status_msg(get_any_editor_state(), "Keybindings restored to default.");
@@ -907,7 +907,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                     state->current_view = SETTINGS_VIEW_MAIN;
                     state->current_selection = 0;
                     break;
-                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; proxima_janela(); break;
+                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
                 case 'j':
                 case KEY_DOWN:
                     if (state->current_selection < num_bool_settings + num_int_settings - 1) {
@@ -945,7 +945,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                     state->current_selection = 0; 
                     state->scroll_top = 0;
                     break;
-                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; proxima_janela(); break;
+                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
                 case 'j': case KEY_DOWN:
                     if (state->current_selection < state->num_themes - 1) {
                         state->current_selection++;
@@ -963,7 +963,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                         if (load_theme(state->theme_list[state->current_selection])) {
                             apply_theme();
                             save_default_theme(state->theme_list[state->current_selection]);
-                            redesenhar_todas_as_janelas();
+                            redraw_all_windows();
                         }
                     }
                     break;
@@ -977,7 +977,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                     state->current_view = SETTINGS_VIEW_MAIN;
                     state->current_selection = 2; // Selection was 'Spell Checker'
                     break;
-                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; proxima_janela(); break;
+                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
                 case 'j':
                 case KEY_DOWN:
                     if (state->current_selection < num_spell_languages) {
@@ -1008,7 +1008,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                             // Check if curl is available before doing anything with downloads
                             if (system("which curl > /dev/null 2>&1") != 0) {
                                 char *const err_cmd[] = {"/bin/sh", "-c", "echo 'Error: the curl command isn't installed, install it to download the dictionarys.'; read -n 1 - r - p 'Press any key to continue...'", NULL};
-                                criar_janela_terminal_generica(err_cmd);
+                                create_generic_terminal_window(err_cmd);
                                 // Set status message if no curl
                                 EditorState* current_editor = get_any_editor_state();
                                 if (current_editor) {
@@ -1045,7 +1045,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                                 );
                                 
                                 char *const shell_cmd[] = {"/bin/sh", "-c", command, NULL};
-                                criar_janela_terminal_generica(shell_cmd);
+                                create_generic_terminal_window(shell_cmd);
                             }
                         }
                     }
@@ -1058,7 +1058,7 @@ void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit
                     state->current_view = SETTINGS_VIEW_MAIN; 
                     state->current_selection = 0; 
                     break;
-                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; proxima_janela(); break;
+                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
                 case 'j': case KEY_DOWN:
                     if (state->current_selection < 4) state->current_selection++; // Aumentado limite para 4
                     break;

@@ -77,12 +77,12 @@ typedef struct {
 #endif
 
 typedef enum {
-    TIPOJANELA_EDITOR,
-    TIPOJANELA_TERMINAL,
-    TIPOJANELA_EXPLORER,
-    TIPOJANELA_HELP,
-    TIPOJANELA_SETTINGS_PANEL
-} TipoJanela;
+    WINDOW_TYPE_EDITOR,
+    WINDOW_TYPE_TERMINAL,
+    WINDOW_TYPE_EXPLORER,
+    WINDOW_TYPE_HELP,
+    WINDOW_TYPE_SETTINGS_PANEL
+} WindowType;
 
 #ifndef SETTINGSPANELSTATE_DEFINED
 
@@ -602,18 +602,18 @@ typedef struct {
 } HelpViewerState;
 #endif
 
-#ifndef JANELA_EDITOR_DEFINED
-#define JANELA_EDITOR_DEFINED
-typedef struct JanelaEditor {
+#ifndef EDITOR_WINDOW_DEFINED
+#define EDITOR_WINDOW_DEFINED
+typedef struct EditorWindow {
     WINDOW *win;
     
     WINDOW *content_win; // sub-window for safe content
     
-    int y, x, altura, largura;
-    TipoJanela tipo;
+    int y, x, height, width;
+    WindowType type;
 
-    EditorState *estado; // Usado por TIPOJANELA_EDITOR
-    ExplorerState *explorer_state; // Usado por TIPOJANELA_EXPLORER
+    EditorState *state; // Used by WINDOW_TYPE_EDITOR
+    ExplorerState *explorer_state; // Used by WINDOW_TYPE_EXPLORER
     HelpViewerState *help_state;
     SettingsPanelState *settings_state;
 
@@ -623,7 +623,7 @@ typedef struct JanelaEditor {
         pid_t pid;       
         vterm_t *vterm;  
     } term;
-} JanelaEditor;
+} EditorWindow;
 #endif
 
 #ifndef LAYOUT_MODE_DEFINED
@@ -637,26 +637,26 @@ typedef enum {
 } LayoutMode;
 #endif
 
-#ifndef GERENCIADOR_JANELAS_DEFINED
-#define GERENCIADOR_JANELAS_DEFINED
+#ifndef WORKSPACE_DEFINED
+#define WORKSPACE_DEFINED
 typedef struct {
-    JanelaEditor **janelas;
-    int num_janelas;
-    int janela_ativa_idx;
+    EditorWindow **windows;
+    int num_windows;
+    int active_window_idx;
     LayoutMode current_layout;
-} GerenciadorJanelas;
+} Workspace;
 #endif
 
-#ifndef GERENCIADOR_WORKSPACES_DEFINED
-#define GERENCIADOR_WORKSPACES_DEFINED
+#ifndef WORKSPACE_MANAGER_DEFINED
+#define WORKSPACE_MANAGER_DEFINED
 typedef struct {
-    GerenciadorJanelas **workspaces;
+    Workspace **workspaces;
     int num_workspaces;
-    int workspace_ativo_idx;
-} GerenciadorWorkspaces;
+    int active_workspace_idx;
+} WorkspaceManager;
 #endif
 
-#define ACTIVE_WS (gerenciador_workspaces.workspaces[gerenciador_workspaces.workspace_ativo_idx])
+#define ACTIVE_WS (workspace_manager.workspaces[workspace_manager.active_workspace_idx])
 
 #ifndef COMMANDINFO_DEFINED
 #define COMMANDINFO_DEFINED
@@ -674,7 +674,7 @@ typedef struct {
 } FileViewer;
 #endif
 
-extern GerenciadorWorkspaces gerenciador_workspaces;
+extern WorkspaceManager workspace_manager;
 
 extern char executable_dir[PATH_MAX];
 extern char* global_yank_register;

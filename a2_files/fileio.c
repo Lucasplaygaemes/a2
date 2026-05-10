@@ -76,7 +76,7 @@ void asm_convert_file(EditorState *state, const char *filename) {
     strcat(output_filename, ".s");
     
     char *const cmd[] = {"gcc", "-S", (char*)filename, "-o", "-O0", output_filename, NULL};
-    criar_janela_terminal_generica(cmd);
+    create_generic_terminal_window(cmd);
     
 }
 
@@ -211,7 +211,7 @@ void save_file(EditorState *state) {
     } else { 
         if (errno == EACCES) {
            // access denied, offers to use sudo
-           if (confirm_action("Permission denied. Save with sudo?")) {
+           if (ui_confirm("Permission denied. Save with sudo?")) {
                // create the name of the temporary file
                char *temp_filename = get_cache_filename("a2_sudo_save.XXXXXX");
                if (!temp_filename) {
@@ -255,7 +255,7 @@ void save_file(EditorState *state) {
                // returns to ncusrse
                reset_prog_mode();
                refresh();
-               redesenhar_todas_as_janelas();
+               redraw_all_windows();
                
                // clena the temporary file and check the result
                
@@ -324,9 +324,9 @@ void check_external_modification(EditorState *state) {
     if (on_disk_mod_time != 0 && on_disk_mod_time != state->last_file_mod_time) {
         bool decision = false;
         if (state->buffer_modified) {
-            decision = confirm_action("File on disk changed! Discard your changes and reload?");
+            decision = ui_confirm("File on disk changed! Discard your changes and reload?");
         } else {
-            decision = confirm_action("File on disk changed. Reload?");
+            decision = ui_confirm("File on disk changed. Reload?");
         }
 
         if (decision) {
@@ -529,7 +529,7 @@ FileRecoveryChoice display_recovery_prompt(WINDOW *parent_win, EditorState *stat
 }
 
 void handle_file_recovery(EditorState *state, const char *original_filename, const char *sv_filename) {
-    WINDOW *win = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->win;
+    WINDOW *win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win;
     
     while (1) {
         FileRecoveryChoice choice = display_recovery_prompt(win, state);

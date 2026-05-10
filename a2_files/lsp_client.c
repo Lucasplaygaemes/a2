@@ -1566,13 +1566,13 @@ void lsp_handle_definition_response(EditorState *state, json_t *result) {
     }
 
     // Checa se o arquivo já está aberto em alguma janela
-    for (int i = 0; i < ACTIVE_WS->num_janelas; i++) {
-        JanelaEditor *jw = ACTIVE_WS->janelas[i];
-        if (jw->tipo == TIPOJANELA_EDITOR && strcmp(jw->estado->filename, path) == 0) {
-            ACTIVE_WS->janela_ativa_idx = i;
-            jw->estado->current_line = line;
-            jw->estado->current_col = character;
-            editor_set_status_msg(jw->estado, "Jumped to definition.");
+    for (int i = 0; i < ACTIVE_WS->num_windows; i++) {
+        EditorWindow *jw = ACTIVE_WS->windows[i];
+        if (jw->type == WINDOW_TYPE_EDITOR && strcmp(jw->state->filename, path) == 0) {
+            ACTIVE_WS->active_window_idx = i;
+            jw->state->current_line = line;
+            jw->state->current_col = character;
+            editor_set_status_msg(jw->state, "Jumped to definition.");
             return;
         }
     }

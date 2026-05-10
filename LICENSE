@@ -337,3 +337,35 @@ proprietary programs.  If your program is a subroutine library, you may
 consider it more useful to permit linking proprietary applications with the
 library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.
+
+
+---
+
+## Acknowledgements and Third-Party Licenses
+
+The a2 editor includes and links against several open-source libraries. Their respective licenses and copyrights are acknowledged below:
+
+### Ncurses
+Copyright (c) 1998-2024 Free Software Foundation, Inc.
+License: X11/MIT-style license
+https://invisible-island.net/ncurses/
+
+### Libvterm
+Copyright (c) 2011 Paul Evans
+License: MIT License
+https://www.leonerd.org.uk/code/libvterm/
+
+### Hunspell
+Copyright (c) 2003-2017 Hunspell developers
+License: MPL-1.1 / GPL-2.0 / LGPL-2.1
+https://hunspell.github.io/
+
+### Jansson
+Copyright (c) 2009-2020 Petri Lehtinen
+License: MIT License
+https://digip.org/jansson/
+
+### Libcurl
+Copyright (c) 1996-2024 Daniel Stenberg and contributors
+License: curl license
+https://curl.se/libcurl/

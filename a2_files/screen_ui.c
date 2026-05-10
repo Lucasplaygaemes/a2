@@ -12,43 +12,101 @@
 
 extern const int ansi_to_ncurses_map[16];
 
-bool confirm_action(const char *prompt) {
+// Implementação da nova UI Unificada
+
+bool ui_confirm(const char *prompt) {
     int rows, cols;
     getmaxyx(stdscr, rows, cols);
     int win_h = 3;
-    int win_w = strlen(prompt) + 8;
+    int win_w = strlen(prompt) + 10;
     int win_y = (rows - win_h) / 2;
     int win_x = (cols - win_w) / 2;
-
-    WINDOW *confirm_win = newwin(win_h, win_w, win_y, win_x);
-    wbkgd(confirm_win, COLOR_PAIR(8)); 
-    box(confirm_win, 0, 0);
-    mvwprintw(confirm_win, 1, 2, "%s (y/n)", prompt);
-    wrefresh(confirm_win);
-
-    wint_t ch;
-    keypad(confirm_win, TRUE);
+    
+    WINDOW *win = newwin(win_h, win_w, win_y, win_x);
+    wbkgd(win, COLOR_PAIR(PAIR_POPUP)); // Color pairs standardized
+    box(win, 0, 0);
+    mvwprintw(win, 1, 2, "%s (y/n)", prompt);
+    wrefresh(win);
+    
+    bool result = false;
     curs_set(0);
+    
     while(1) {
-        wget_wch(confirm_win, &ch);
-        if (ch == 'y' || ch == 'Y') {
-            delwin(confirm_win);
-            touchwin(stdscr);
-            redesenhar_todas_as_janelas();
-            return true;
+        int ch = wgetch(win);
+        if (ch == 'y' || ch == 'Y') { result = true; break; }
+        if (ch == 'n' || ch == 'N' || ch == 27) { result = false; break; }
+    }
+    delwin(win);
+    redraw_all_windows();
+    return result;
+}
+
+bool ui_ask_input(const char *prompt, char *buffer, int max_len) {
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+    int win_h = 4;
+    int win_w = (cols > 60) ? 60 : cols - 4;
+    int win_y = (rows - win_h) / 2;
+    int win_x = (cols - win_w) / 2;
+    
+    WINDOW *win = newwin(win_h, win_w, win_y, win_x);
+    keypad(win, TRUE);
+    wbkgd(win, COLOR_PAIR(PAIR_POPUP));
+    box(win, 0, 0);
+    mvwprintw(win, 1, 2, "%s", prompt);
+    
+    int input_y = 2, input_x = 2;
+    int pos = 0;
+    buffer[0] = '\0';
+    
+    curs_set(1);
+    while (1) {
+        // Draw the input field
+        mvwprintw(win, input_y, input_x, "%-*s", win_w - 4, ""); // cleans the line
+        
+        mvwprintw(win, input_y, input_x, "%s", buffer);
+        wmove(win, input_y, input_x + pos);
+        wrefresh(win);
+        
+        int ch = wgetch(win);
+        if (ch == '\n' || ch == KEY_ENTER) {
+            buffer[pos] = '\0';
+            curs_set(0);
+            delwin(win);
+            redraw_all_windows();
+            return (pos > 0);
         }
-        if (ch == 'n' || ch == 'N' || ch == 27) {
-            delwin(confirm_win);
-            touchwin(stdscr);
-            redesenhar_todas_as_janelas();
+        if (ch == 27) { // ESC
+            buffer[0] = '\0';
+            curs_set(0);
+            delwin(win);
+            redraw_all_windows();
             return false;
+        }
+        if ((ch == KEY_BACKSPACE || ch == 127 || ch == 8) && pos > 0) {
+            buffer[--pos] = '\0';
+        } else if (isprint(ch) && pos < max_len - 1 && pos < win_w - 6) {
+            buffer[pos++] = (char)ch;
+            buffer[pos] = '\0';
         }
     }
 }
 
-// ===================================================================
-// Screen & UI
-// ===================================================================
+void ui_show_message(const char *title, const char *message) {
+    WINDOW *pop = draw_pop_up(message, -1, -1);
+    if (pop) {
+        if (title) {
+            wattron(pop, A_BOLD);
+            mvwprintw(pop, 0, 2, " %s ", title);
+            wattroff(pop, A_BOLD);
+        }
+        wrefresh(pop);
+        wgetch(pop);
+        delwin(pop);
+        redraw_all_windows();
+    }
+}
+
 WINDOW *draw_pop_up(const char *message, int y, int x) {
     if (!message || !*message) {
         return NULL;
@@ -169,7 +227,7 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
     int visual_y, visual_x;
     get_visual_pos(main_win, state, &visual_y, &visual_x);
     
-    int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
+    int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
     
     int line_number_width = 0;
     if (state->show_line_numbers) {
@@ -231,7 +289,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
 
     int rows, cols;
     getmaxyx(win, rows, cols);
-    int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
+    int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
     
     int line_number_width = 0;
     if (state->show_line_numbers) {
@@ -252,7 +310,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
     }
 
     if (border_offset) {
-        if (ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->estado == state) {
+        if (ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->state == state) {
             wattron(win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
             box(win, 0, 0);
             wattroff(win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
@@ -693,7 +751,9 @@ void editor_redraw(WINDOW *win, EditorState *state) {
         
         // Draws the indicatior of the current position, the "thumb"
         int cursor_y_in_sb = (state->current_line * sb_content_height) / (state->num_lines > 0 ? state->num_lines : 1);
-        mvwaddch(win, cursor_y_in_sb + border_offset, sb_cols - 1, '█' | COLOR_PAIR(PAIR_STATUS_BAR));
+        wattron(win, COLOR_PAIR(PAIR_STATUS_BAR));
+        mvwprintw(win, cursor_y_in_sb + border_offset, sb_cols - 1, "█");
+        wattroff(win, COLOR_PAIR(PAIR_STATUS_BAR));
     }
 
     LspDiagnostic *diag = NULL;
@@ -740,7 +800,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             char right_bar[100];
 
             snprintf(left_bar, sizeof(left_bar), "WS %d | %s | %s%s",
-            gerenciador_workspaces.workspace_ativo_idx + 1, mode_str, display_filename, state->buffer_modified ? "*" : "");
+            workspace_manager.active_workspace_idx + 1, mode_str, display_filename, state->buffer_modified ? "*" : "");
             
             time_t c_time = time(NULL);
             struct tm *info = localtime(&c_time);
@@ -783,7 +843,7 @@ void adjust_viewport(WINDOW *win, EditorState *state) {
     int rows, cols;
     getmaxyx(win, rows, cols);
     
-    int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
+    int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
     
     int line_number_width = 0;
     if (state->show_line_numbers) {
@@ -826,7 +886,7 @@ void get_visual_pos(WINDOW *win, EditorState *state, int *visual_y, int *visual_
     getmaxyx(win, rows, cols);
     (void)rows;
 
-    int border_offset = ACTIVE_WS->num_janelas > 1 ? 1 : 0;
+    int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
     
     int line_number_width = 0;
     if (state->show_line_numbers) {
@@ -1040,11 +1100,11 @@ void display_output_screen(const char *title, const char *filename) {
         }
     }
     end_viewer:
-    for (int i = 0; i < ACTIVE_WS->num_janelas; i++) {
-        JanelaEditor *jw = ACTIVE_WS->janelas[i];
-        if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) jw->estado->is_dirty = true;
-        else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) jw->explorer_state->is_dirty = true;
-        else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) jw->help_state->is_dirty = true;
+    for (int i = 0; i < ACTIVE_WS->num_windows; i++) {
+        EditorWindow *jw = ACTIVE_WS->windows[i];
+        if (jw->type == WINDOW_TYPE_EDITOR && jw->state) jw->state->is_dirty = true;
+        else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) jw->explorer_state->is_dirty = true;
+        else if (jw->type == WINDOW_TYPE_HELP && jw->help_state) jw->help_state->is_dirty = true;
     }
     delwin(output_win);
     destroy_file_viewer(viewer);
@@ -1301,105 +1361,145 @@ void help_viewer_perform_search(HelpViewerState *state) {
 }
 
 // function to draw help view
-void help_viewer_redraw(JanelaEditor *jw) {
+void help_viewer_redraw(EditorWindow *jw) {
     HelpViewerState *state = jw->help_state;
     werase(jw->win);
     box(jw->win, 0, 0);
 
     int rows, cols;
     getmaxyx(jw->win, rows, cols);
+    int max_draw_y = rows - 2; 
+    int draw_y = 1;
 
     mvwprintw(jw->win, 0, 2, " Help: %s ", state->current_file);
 
-    for (int i = 0; i < rows - 2; i++) {
-        int line_idx = state->top_line + i;
-        if (line_idx >= state->num_lines) break;
+    for (int i = 0; i < state->num_lines && draw_y <= max_draw_y; i++) {
+        if (i < state->top_line) continue;
 
-        char *line = state->lines[line_idx];
+        char *line = state->lines[i];
+        int wrap_width = cols - 4;
+        if (wrap_width <= 0) wrap_width = 1;
         
-        if (line_idx == state->current_line) {
+        int line_len = strlen(line);
+        
+        // Calculate total screen lines this file line will occupy to highlight the whole block
+        if (i == state->current_line) {
             wattron(jw->win, A_REVERSE);
-            for(int k=0; k < cols; k++) mvwaddch(jw->win, i + 1, k, ' ');
+            int block_x = 2;
+            int block_y = draw_y;
+            char *p = line;
+            while (*p) {
+                wchar_t wc;
+                int bytes = mbtowc(&wc, p, MB_CUR_MAX);
+                if (bytes <= 0) { p++; continue; }
+                int w = wcwidth(wc);
+                if (w < 0) w = 1;
+                if (block_x + w > cols - 2) {
+                    block_y++;
+                    block_x = 2;
+                }
+                if (block_y > max_draw_y) break;
+                block_x += w;
+                p += bytes;
+            }
+            for (int k = draw_y; k <= block_y && k <= max_draw_y; k++) {
+                mvwprintw(jw->win, k, 1, "%*s", cols - 2, "");
+            }
         }
 
-        if (strncmp(line, "# ", 2) == 0) {
-            wattron(jw->win, A_BOLD | COLOR_PAIR(PAIR_KEYWORD));
-            mvwprintw(jw->win, i + 1, 2, "%.*s", cols - 4, line + 2);
-            wattroff(jw->win, A_BOLD | COLOR_PAIR(PAIR_KEYWORD));
-        } else if (strncmp(line, "## ", 3) == 0) {
-            wattron(jw->win, A_BOLD | COLOR_PAIR(PAIR_STD_FUNCTION));
-            mvwprintw(jw->win, i + 1, 2, "%.*s", cols - 4, line + 3);
-            wattroff(jw->win, A_BOLD | COLOR_PAIR(PAIR_STD_FUNCTION));
-        } else {
-            int x = 2;
-            char *ptr = line;
-            while (*ptr) {
-                if (x >= cols - 2) break;
-                
-                if (*ptr == '[' && strchr(ptr, ']')) {
-                    char *end_text = strstr(ptr, "]");
-                    char *start_file = strstr(end_text, "(");
-                    if (start_file && strchr(start_file, ')')) {
-                        char *link_text_ptr = ptr + 1;
-                        while (link_text_ptr < end_text) {
-                            wchar_t link_wcs[2] = {0, 0};
-                            int link_bytes = mbtowc(&link_wcs[0], link_text_ptr, MB_CUR_MAX);
-                            if (link_bytes <= 0) { link_text_ptr++; continue; }
-                            
-                            cchar_t link_cc;
-                            setcchar(&link_cc, link_wcs, A_UNDERLINE, PAIR_TYPE, NULL);
-                            mvwadd_wch(jw->win, i + 1, x++, &link_cc);
-                            
-                            link_text_ptr += link_bytes;
-                        }
-                        ptr = strchr(start_file, ')') + 1;
-                        continue;
+        int curr_x = 2;
+        char *ptr = line;
+        
+        // Header styles apply to the whole line
+        int header_color = 0;
+        if (strncmp(line, "# ", 2) == 0) header_color = PAIR_KEYWORD;
+        else if (strncmp(line, "## ", 3) == 0) header_color = PAIR_STD_FUNCTION;
+        
+        if (header_color) wattron(jw->win, A_BOLD | COLOR_PAIR(header_color));
+
+        while (*ptr && draw_y <= max_draw_y) {
+            // 1. Link Detection: [text](file)
+            if (*ptr == '[' && strchr(ptr, ']')) {
+                char *end_text = strstr(ptr, "]");
+                char *start_file = strstr(end_text, "(");
+                if (start_file && strchr(start_file, ')')) {
+                    char *link_ptr = ptr + 1;
+                    wattron(jw->win, A_UNDERLINE | COLOR_PAIR(PAIR_TYPE));
+                    while (link_ptr < end_text) {
+                        wchar_t wc;
+                        int b = mbtowc(&wc, link_ptr, MB_CUR_MAX);
+                        if (b <= 0) { link_ptr++; continue; }
+                        int w = wcwidth(wc);
+                        if (w < 0) w = 1;
+                        
+                        if (curr_x + w > cols - 2) { draw_y++; curr_x = 2; if (draw_y > max_draw_y) break; }
+                        
+                        cchar_t cc;
+                        wchar_t wcs[2] = {wc, 0};
+                        setcchar(&cc, wcs, A_UNDERLINE, PAIR_TYPE, NULL);
+                        mvwadd_wch(jw->win, draw_y, curr_x, &cc);
+                        
+                        curr_x += w;
+                        link_ptr += b;
                     }
+                    wattroff(jw->win, A_UNDERLINE | COLOR_PAIR(PAIR_TYPE));
+                    ptr = strchr(start_file, ')') + 1;
+                    continue;
                 }
-                
-                if (*ptr == '*') {
-                    char *end = strchr(ptr + 1, '*');
-                    if (end) {
-                        char* bold_text = ptr + 1;
-                        while(bold_text < end) {
-                            wchar_t bold_wcs[2] = {0, 0};
-                            int bold_bytes = mbtowc(&bold_wcs[0], bold_text, MB_CUR_MAX);
-                            if(bold_bytes <= 0) { bold_text++; continue; }
+            }
+            
+            // 2. Bold Detection: *text*
+            if (*ptr == '*') {
+                char *end_bold = strchr(ptr + 1, '*');
+                if (end_bold) {
+                    char *bold_ptr = ptr + 1;
+                    wattron(jw->win, A_BOLD);
+                    while (bold_ptr < end_bold) {
+                        wchar_t wc;
+                        int b = mbtowc(&wc, bold_ptr, MB_CUR_MAX);
+                        if (b <= 0) { bold_ptr++; continue; }
+                        int w = wcwidth(wc);
+                        if (w < 0) w = 1;
 
-                            cchar_t bold_cc;
-                            setcchar(&bold_cc, bold_wcs, A_BOLD, 0, NULL);
-                            mvwadd_wch(jw->win, i + 1, x++, &bold_cc);
-                            bold_text += bold_bytes;
-                        }
-                        ptr = end + 1;
-                        continue;
+                        if (curr_x + w > cols - 2) { draw_y++; curr_x = 2; if (draw_y > max_draw_y) break; }
+
+                        cchar_t cc;
+                        wchar_t wcs[2] = {wc, 0};
+                        setcchar(&cc, wcs, A_BOLD, 0, NULL);
+                        mvwadd_wch(jw->win, draw_y, curr_x, &cc);
+                        
+                        curr_x += w;
+                        bold_ptr += b;
                     }
+                    wattroff(jw->win, A_BOLD);
+                    ptr = end_bold + 1;
+                    continue;
                 }
+            }
 
-                wchar_t wcs[2] = {0, 0};
-                int bytes_consumed = mbtowc(&wcs[0], ptr, MB_CUR_MAX);
-                if (bytes_consumed <= 0) { ptr++; continue; }
+            // 3. Normal Character
+            wchar_t wc;
+            int b = mbtowc(&wc, ptr, MB_CUR_MAX);
+            if (b <= 0) { ptr++; continue; }
+            int w = wcwidth(wc);
+            if (w < 0) w = 1;
 
+            if (curr_x + w > cols - 2) { draw_y++; curr_x = 2; if (draw_y > max_draw_y) break; }
+
+            if (draw_y <= max_draw_y) {
                 cchar_t cc;
+                wchar_t wcs[2] = {wc, 0};
                 setcchar(&cc, wcs, A_NORMAL, 0, NULL);
-                mvwadd_wch(jw->win, i + 1, x++, &cc);
-                ptr += bytes_consumed;
+                mvwadd_wch(jw->win, draw_y, curr_x, &cc);
+                curr_x += w;
             }
+            ptr += b;
         }
 
-        // Overlay search highlight
-        if (strlen(state->search_term) > 0) {
-            char *match_ptr = strstr(line, state->search_term);
-            while (match_ptr) {
-                int start_x = 2 + (match_ptr - line);
-                mvwchgat(jw->win, i + 1, start_x, strlen(state->search_term), A_NORMAL, PAIR_WARNING, NULL);
-                match_ptr = strstr(match_ptr + 1, state->search_term);
-            }
-        }
-
-        if (line_idx == state->current_line) {
-            wattroff(jw->win, A_REVERSE);
-        }
+        if (header_color) wattroff(jw->win, A_BOLD | COLOR_PAIR(header_color));
+        if (i == state->current_line) wattroff(jw->win, A_REVERSE);
+        
+        draw_y++; // Move to next line in file
     }
 
     // Status bar and search prompt
@@ -1419,7 +1519,7 @@ void help_viewer_redraw(JanelaEditor *jw) {
     wnoutrefresh(jw->win);
 }
 
-void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
+void help_viewer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
     HelpViewerState *state = jw->help_state;
     int rows, cols;
     getmaxyx(jw->win, rows, cols);
@@ -1466,7 +1566,7 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
     // Normal key processing
     switch(ch) {
         case 'q':
-            fechar_janela_ativa(should_exit);
+            close_active_window(should_exit);
             return; // State is now invalid, exit function immediately
         case '/':
             state->search_mode = true;
@@ -1493,11 +1593,11 @@ void help_viewer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
             
             break;
         case KEY_CTRL_RIGHT_BRACKET:
-            proxima_janela();
+            next_window();
             break;
         case 'b':
         case KEY_CTRL_LEFT_BRACKET:
-            janela_anterior();
+            previous_window();
             break;
         case KEY_UP:
         case 'k':

@@ -6,7 +6,7 @@
 // Salva a sessão atual em um arquivo .json nomeado dentro da pasta .a2
 void project_save_session(const char *project_name);
 
-// Carrega uma sessão nomeada, substituindo o estado atual do editor
+// Carrega uma sessão nomeada, substituindo o state atual do editor
 bool project_load_session(const char *project_name);
 
 // Verifica na inicialização se uma sessão padrão existe e pergunta ao usuário se quer carregá-la
