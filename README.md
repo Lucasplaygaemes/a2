@@ -18,17 +18,25 @@ Then, install the dependency's and run Make with
 Documentation is in - [**Documentation**](./index.md)
 
 # News
-The a2 now has a Keybindings feature where you can delete, define, or edit keybindings, and those will be saved as custom ones, but, if necessary theres a button to reset to the default ones, the ds.a2 files is exaclty that.
-With big changes come even bigger bugs, gonna keep my eyes open.
+The a2 has undergone significant "polishing" to reach a professional standard:
+* **Nomenclature Cleanup**: The entire codebase has been standardized to English, making it more accessible and maintainable.
+* **Unified UI System**: A new dialog and input API (`ui_confirm`, `ui_ask_input`) ensures a consistent and stable experience across all pop-ups.
+* **Terminal Stability**: The integrated terminal now handles input robustly, translating keys correctly and allowing global shortcuts (like closing windows) even during active processes.
+* **Smart Help Viewer**: Commands like `:help` and `:about` now support automatic word wrap and better formatting.
+* **Keybindings**: Custom keybinding support with persistent storage and a built-in manager.
 
-# Input
-The refactoring of the input will make a lot of changes, so i made a branch and i want to start and finish it today, but i'm not sure if i can do that, so it may be a slow process.
-
-# Setting Menu
-The a2 as a settings menu, where you can personlize it's experience, it's a simple one and don't have too many options, for now at least.
+# Commands
+- `:help`: Opens the manual.
+- `:about`: Shows project information and credits.
+- `:term`: Opens the integrated terminal.
+- `:settings`: Opens the configuration panel.
+- `:ksc`: Displays dynamic shortcut list.
 
 # Refactoring
-The Firts part of the refactor was made, the input was already refactored, now the EditorState need to be done.
+The first major refactoring phases are complete:
+1. **Input Refactor**: Modularized and stabilized key processing.
+2. **Standardization**: Full transition from Portuguese to English in the core architecture.
+3. **UI Consolidation**: Unified disparate dialog systems into a single API.
 
 # Assembly!
 Because i'm learning assembly, a new function was added to the code to help me understand better what C functions turned in what in assembly, i will fix any bugs that i find.
