@@ -162,7 +162,7 @@ char *explorer_prompt_for_input(const char *prompt) {
     
     delwin(input_win);
     touchwin(stdscr);
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
     
     return input_buffer;
 }
@@ -386,24 +386,24 @@ void draw_file_preview(WINDOW *win, const char *filepath, int start_y, int start
     fclose(f);
 }
 
-void explorer_redraw(JanelaEditor *jw) {
+void explorer_redraw(EditorWindow *jw) {
     ExplorerState *state = jw->explorer_state;
     werase(jw->win);
     box(jw->win, 0, 0);
     
-    char display_path[jw->largura - 4];
+    char display_path[jw->width - 4];
     snprintf(display_path, sizeof(display_path), " %s ", state->current_path);
-    mvwprintw(jw->win, 0, 2, "%.*s", jw->largura - 4, display_path);
+    mvwprintw(jw->win, 0, 2, "%.*s", jw->width - 4, display_path);
     
     
-    int list_width = jw->largura - 2; // default width, without preview
+    int list_width = jw->width - 2; // default width, without preview
     
     // only activates if there space
-    if (state->show_preview && jw->largura > 40) {
-        list_width = (jw->largura / 2) - 1;
+    if (state->show_preview && jw->width > 40) {
+        list_width = (jw->width / 2) - 1;
     }
     
-    int viewable_lines = jw->altura - 3; // Make space for status line
+    int viewable_lines = jw->height - 3; // Make space for status line
 
     for (int i = 0; i < viewable_lines; i++) {
         int entry_idx = state->scroll_top + i;
@@ -438,11 +438,11 @@ void explorer_redraw(JanelaEditor *jw) {
         char entry_name[256];
         snprintf(entry_name, sizeof(entry_name), "%.*s", list_width - 5, state->entries[entry_idx]);
         
-        if (state->show_preview && jw->largura > 40 && state->num_entries > 0) {
+        if (state->show_preview && jw->width > 40 && state->num_entries > 0) {
             char full_path[PATH_MAX];
             snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[state->selection]);
             
-            draw_file_preview(jw->win, full_path, 1, list_width + 1, jw->altura - 2, jw->largura - list_width - 2);
+            draw_file_preview(jw->win, full_path, 1, list_width + 1, jw->height - 2, jw->width - list_width - 2);
         }
         
         bool is_marked = false; // Inicializa com false
@@ -472,10 +472,10 @@ void explorer_redraw(JanelaEditor *jw) {
     
     if (msg_to_show) {
         wattron(jw->win, A_REVERSE);
-        for (int i = 1; i < jw->largura - 1; i++) {
-            mvwaddch(jw->win, jw->altura - 2, i, ' ');
+        for (int i = 1; i < jw->width - 1; i++) {
+            mvwaddch(jw->win, jw->height - 2, i, ' ');
         }
-        mvwprintw(jw->win, jw->altura - 2, 2, "%.*s", jw->largura - 4, msg_to_show);
+        mvwprintw(jw->win, jw->height - 2, 2, "%.*s", jw->width - 4, msg_to_show);
         wattron(jw->win, A_REVERSE);
     }
     // clena the message status after using it one time
@@ -486,10 +486,10 @@ void explorer_redraw(JanelaEditor *jw) {
     state->is_dirty = false;
 }
 
-void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
+void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
     ExplorerState *state = jw->explorer_state;
     state->is_dirty = true;
-    int viewable_lines = jw->altura - 2;
+    int viewable_lines = jw->height - 2;
     char selected_path[PATH_MAX];
 
     if (state->num_entries > 0 && state->selection < state->num_entries) {
@@ -504,19 +504,19 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
 
         if (next_ch != ERR) { // This is an Alt sequence
             if (next_ch == 'x' || next_ch == 'X') {
-                fechar_janela_ativa(should_exit);
+                close_active_window(should_exit);
                 return;
             }
             if (next_ch == 'n') {
-                ciclar_workspaces(-1);
+                cycle_workspaces(-1);
                 return;
             }
             if (next_ch == 'm') {
-                ciclar_workspaces(1);
+                cycle_workspaces(1);
                 return;
             }
              if (next_ch == '.' || next_ch == '>') {
-                ciclar_layout();
+                cycle_layout();
                 return;
             }
             // If not a recognized global shortcut, ignore for now.
@@ -532,7 +532,7 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                 state->is_dirty = true;
                 return; // return to not close the windown
             } else {
-                janela_anterior();
+                previous_window();
             }
             break;
         case ' ': // toggle selection
@@ -605,7 +605,7 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                 
                 if (msg == NULL || strlen(msg) == 0) {
                     char *const cmd[] = {"git", "commit", NULL};
-                    criar_janela_terminal_generica(cmd);
+                    create_generic_terminal_window(cmd);
                     explorer_reload_entries(state);
                     // update after closing the terminal
                 }
@@ -614,7 +614,7 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                 else if (strlen(msg) > 70) {
                     if (confirm_action("Message too long (>70). Open full editor?")) {
                         char *const cmd[] = {"git", "commit", NULL};
-                        criar_janela_terminal_generica(cmd);
+                        create_generic_terminal_window(cmd);
                         
                     } else {
                         char cmd[PATH_MAX + 512]; // incrising buffer
@@ -671,10 +671,10 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
            state->is_dirty = true;
            break;
         case 'q':
-            fechar_janela_ativa(should_exit);
+            close_active_window(should_exit);
             break;
         case KEY_CTRL_RIGHT_BRACKET:
-            proxima_janela();
+            next_window();
             break;
         case KEY_UP:
         case 'k':
@@ -846,7 +846,7 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                 char cmd[PATH_MAX + 50];
                 snprintf(cmd, sizeof(cmd), "\"%s\"", selected_path);
                 // run the command in the integrated terminal
-                executar_comando_no_terminal(cmd);
+                execute_command_in_terminal(cmd);
             } else {
                 snprintf(state->status_msg, sizeof(state->status_msg), "File is not a executable.");
             }
@@ -870,15 +870,15 @@ void explorer_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit) {
                 explorer_reload_entries(state);
             } else {
                 // Open file logic
-                mvwprintw(jw->win, jw->altura - 1, 2, "Open in window [1-9]: ");
+                mvwprintw(jw->win, jw->height - 1, 2, "Open in window [1-9]: ");
                 wrefresh(jw->win);
                 wint_t target_ch;
                 wget_wch(jw->win, &target_ch);
                 if (target_ch >= '1' && target_ch <= '9') {
                     int target_idx = target_ch - '1';
-                    if (target_idx < ACTIVE_WS->num_janelas && ACTIVE_WS->janelas[target_idx]->tipo == TIPOJANELA_EDITOR) {
-                        load_file(ACTIVE_WS->janelas[target_idx]->estado, selected_path);
-                        ACTIVE_WS->janela_ativa_idx = target_idx;
+                    if (target_idx < ACTIVE_WS->num_windows && ACTIVE_WS->windows[target_idx]->type == WINDOW_TYPE_EDITOR) {
+                        load_file(ACTIVE_WS->windows[target_idx]->state, selected_path);
+                        ACTIVE_WS->active_window_idx = target_idx;
                     }
                 }
             }
