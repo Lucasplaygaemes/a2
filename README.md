@@ -38,7 +38,7 @@ This is a things that i made mostly of fun and learning experience!
 a2 isn't compatible with windows, and probably not with mac too.
 a2 should be compatible with theoretically every distro.
 
-## 🛠 Built With
+## Built With
 The a2 editor is built upon these excellent open-source libraries:
 * **Ncurses** - Terminal UI and input management.
 * **Libvterm** - Integrated terminal emulation.
