@@ -652,6 +652,33 @@ int main(int argc, char *argv[]) {
                     explorer_process_input(active_jw, ch, &should_exit);
                 }
             } else if (active_jw->type == WINDOW_TYPE_TERMINAL && active_jw->term.pty_fd != -1) {
+                wint_t ch;
+                if (wget_wch(stdscr, &ch) != ERR) {
+                    bool shortcut_consumed = false;
+                    
+                    // Process only the essetial navigation keybinds
+                    if (ch == KEY_CTRL_RIGHT_BRACKET) {
+                        next_window();
+                        shortcut_consumed = true;
+                    } else if (ch == KEY_CTRL_LEFT_BRACKET) {
+                        previous_window();
+                        shortcut_consumed = true;
+                    }
+                    
+                    // if its not a system shortcut, send it stable
+                    
+                    if (!shortcut_consumed) {
+                        char mb_buf[MB_CUR_MAX + 1];
+                        int n = wctomb(mb_buf, ch);
+                        if (n > 0) {
+                            write(active_jw->term.pty_fd, mb_buf, n);
+                        }
+                    }
+                } 
+                
+                
+
+                /*                
                 char input_buf[256];
                 ssize_t len = read(STDIN_FILENO, input_buf, sizeof(input_buf));
                 if (len > 0) {
@@ -679,6 +706,7 @@ int main(int argc, char *argv[]) {
                         write(active_jw->term.pty_fd, input_buf, len);
                     }
                 }
+                */
             } else if (active_jw->type == WINDOW_TYPE_TERMINAL && active_jw->term.pty_fd == -1) {
                 // Handle input for a "dead" terminal (process finished)
                 wint_t ch;
