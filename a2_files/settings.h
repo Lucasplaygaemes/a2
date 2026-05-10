@@ -3,8 +3,8 @@
 
 #include "defs.h"
 
-void settings_panel_redraw(JanelaEditor *jw);
-void settings_panel_process_input(JanelaEditor *jw, wint_t ch, bool *should_exit);
+void settings_panel_redraw(EditorWindow *jw);
+void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit);
 void free_settings_panel_state(SettingsPanelState *state);
 
 void key_to_string(KeyBinding *kb, char *buf, size_t size);
