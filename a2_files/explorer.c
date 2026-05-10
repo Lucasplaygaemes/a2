@@ -2,6 +2,7 @@
 #include "explorer.h"
 #include "fileio.h"
 #include "themes.h"
+#include "screen_ui.h"
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -15,7 +16,6 @@
 #include <errno.h>
 
 // Forward declare for use in explorer
-bool confirm_action(const char *prompt);
 void run_and_display_command(const char* command, const char* title);
 
 
@@ -136,35 +136,6 @@ int compare_entries_qsort(const void *a, const void *b) {
     if (!is_dir_a && is_dir_b) return 1;
 
     return strcasecmp(qsort_state_ptr->entries[idx_a], qsort_state_ptr->entries[idx_b]);
-}
-
-char *explorer_prompt_for_input(const char *prompt) {
-    int rows, cols;
-    getmaxyx(stdscr, rows, cols);
-    int win_h = 3;
-    int win_w = cols / 2;
-    int win_y = (rows - win_h) / 2;
-    int win_x = (cols - win_w) / 2;
-    
-    WINDOW  *input_win = newwin(win_h, win_w, win_y, win_x);
-    wbkgd(input_win, COLOR_PAIR(9)); // Use the color of the popup
-    box(input_win, 0, 0);
-    mvwprintw(input_win, 1, 2, "%s: ", prompt);
-    wrefresh(input_win);
-    
-    static char input_buffer[256];
-    input_buffer[0] = '\0'; // clean up the buffer
-    echo();
-    curs_set(1);
-    wgetnstr(input_win, input_buffer, sizeof(input_buffer) - 1);
-    curs_set(0);
-    noecho();
-    
-    delwin(input_win);
-    touchwin(stdscr);
-    redraw_all_windows();
-    
-    return input_buffer;
 }
 
 void free_explorer_state(ExplorerState *state) {
@@ -476,7 +447,7 @@ void explorer_redraw(EditorWindow *jw) {
             mvwaddch(jw->win, jw->height - 2, i, ' ');
         }
         mvwprintw(jw->win, jw->height - 2, 2, "%.*s", jw->width - 4, msg_to_show);
-        wattron(jw->win, A_REVERSE);
+        wattroff(jw->win, A_REVERSE);
     }
     // clena the message status after using it one time
     if (state->status_msg[0] != '\0') {
@@ -599,11 +570,12 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
             break;
         case 'C':     // commit
             {
-                char *msg = explorer_prompt_for_input("Commit Message (Enter for full editor)");
+                char msg[256];
+                bool has_input = ui_ask_input("Commit Message (Enter for full editor)", msg, 256);
                 
                 // cenary 3: empty message -> open full editro
                 
-                if (msg == NULL || strlen(msg) == 0) {
+                if (!has_input || strlen(msg) == 0) {
                     char *const cmd[] = {"git", "commit", NULL};
                     create_generic_terminal_window(cmd);
                     explorer_reload_entries(state);
@@ -612,7 +584,7 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                 
                 // cenary 2: message too long (> 70 chars)
                 else if (strlen(msg) > 70) {
-                    if (confirm_action("Message too long (>70). Open full editor?")) {
+                    if (ui_confirm("Message too long (>70). Open full editor?")) {
                         char *const cmd[] = {"git", "commit", NULL};
                         create_generic_terminal_window(cmd);
                         
@@ -757,7 +729,7 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                 char prompt[100];
                 snprintf(prompt, sizeof(prompt), "Delete %d item(s)?", items_to_delete);
                 
-                if(confirm_action(prompt)) {
+                if(ui_confirm(prompt)) {
                     if (state->num_selected > 0) {
                         // delete all the selected files
                         for (int i = 0; i < state->num_entries; i++) {
@@ -788,8 +760,8 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
 
         case 'r':  // Rename
             if (state->num_entries > 0) {
-                char *new_name = explorer_prompt_for_input("Rename to");
-                if (new_name && strlen(new_name) > 0) {
+                char new_name[256];
+                if (ui_ask_input("Rename to", new_name, 256)) {
                     char new_path[PATH_MAX];
                     snprintf(new_path, sizeof(new_path), "%s/%s", state->current_path, new_name);
                     
@@ -804,32 +776,36 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
             state->is_dirty = true;
             break;
         case 'n': // New file
-            char *file_name = explorer_prompt_for_input("New file name");
-            if (file_name && strlen(file_name) > 0) {
-                char new_file_path[PATH_MAX];
-                snprintf(new_file_path, sizeof(new_file_path), "%s/%s", state->current_path, file_name);
-                FILE *f = fopen(new_file_path, "w");
-                if (f) {
-                    fclose(f);
-                    snprintf(state->status_msg, sizeof(state->status_msg), "File '%s' created.", file_name);
-                    explorer_reload_entries(state);
-                } else {
-                    snprintf(state->status_msg, sizeof(state->status_msg), "Error creating the file: %s", strerror(errno));
+            {
+                char file_name[256];
+                if (ui_ask_input("New file name", file_name, 256)) {
+                    char new_file_path[PATH_MAX];
+                    snprintf(new_file_path, sizeof(new_file_path), "%s/%s", state->current_path, file_name);
+                    FILE *f = fopen(new_file_path, "w");
+                    if (f) {
+                        fclose(f);
+                        snprintf(state->status_msg, sizeof(state->status_msg), "File '%s' created.", file_name);
+                        explorer_reload_entries(state);
+                    } else {
+                        snprintf(state->status_msg, sizeof(state->status_msg), "Error creating the file: %s", strerror(errno));
+                    }
                 }
             }
             state->is_dirty = true;
             break;
         case 'N': // New directory
-            char *dir_name = explorer_prompt_for_input("New directory name");
-            if (dir_name && strlen(dir_name) > 0) {
-                char new_dir_path[PATH_MAX];
-                snprintf(new_dir_path, sizeof(new_dir_path), "%s/%s", state->current_path, dir_name);
-                if (mkdir(new_dir_path, 0755) == 0) {
-                    snprintf(state->status_msg, sizeof(state->status_msg), "Directory '%s' created.", dir_name);
-                    explorer_reload_entries(state);
-                } else {
-                    snprintf(state->status_msg, sizeof(state->status_msg), "Error creating the directory: %s", strerror(errno));
-                    }
+            {
+                char dir_name[256];
+                if (ui_ask_input("New directory name", dir_name, 256)) {
+                    char new_dir_path[PATH_MAX];
+                    snprintf(new_dir_path, sizeof(new_dir_path), "%s/%s", state->current_path, dir_name);
+                    if (mkdir(new_dir_path, 0755) == 0) {
+                        snprintf(state->status_msg, sizeof(state->status_msg), "Directory '%s' created.", dir_name);
+                        explorer_reload_entries(state);
+                    } else {
+                        snprintf(state->status_msg, sizeof(state->status_msg), "Error creating the directory: %s", strerror(errno));
+                        }
+                }
             }
             break;
         case 'b': // git blame

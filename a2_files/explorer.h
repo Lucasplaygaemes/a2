@@ -9,6 +9,4 @@ void explorer_redraw(EditorWindow *jw);
 void explorer_reload_entries(ExplorerState *state);
 void free_explorer_state(ExplorerState *state);
 
-char *explorer_prompt_for_input(const char *prompt);
-
 #endif // EXPLORER_H
