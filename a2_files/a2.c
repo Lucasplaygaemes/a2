@@ -442,7 +442,6 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     editor_yank_line(state);
                 }
                 
-                // state->status_msg[0] = '\0';
                 break;
             }
             case INSERT:
@@ -656,57 +655,55 @@ int main(int argc, char *argv[]) {
                 if (wget_wch(stdscr, &ch) != ERR) {
                     bool shortcut_consumed = false;
                     
-                    // Process only the essetial navigation keybinds
-                    if (ch == KEY_CTRL_RIGHT_BRACKET) {
-                        next_window();
-                        shortcut_consumed = true;
-                    } else if (ch == KEY_CTRL_LEFT_BRACKET) {
-                        previous_window();
-                        shortcut_consumed = true;
+                    // check for Alt shortcuts (ESC + key)
+                    if (ch == 27) {
+                        nodelay(stdscr, TRUE);
+                        wint_t next_ch;
+                        int res = wget_wch(stdscr, &next_ch);
+                        nodelay(stdscr, FALSE);
+                        if (res != ERR) {
+                            if (handle_global_shortcut(next_ch, true, false, &should_exit)) {
+                                shortcut_consumed = true;
+                            }
+                        }
+                    } 
+                    // check for Ctrl and other global shortcuts (exclude basic keys like Enter/Tab/BS)
+                    else if (ch > 0 && ch < 32 && ch != 10 && ch != 13 && ch != 9 && ch != 8) {
+                        if (handle_global_shortcut(ch, false, true, &should_exit)) {
+                            shortcut_consumed = true;
+                        }
                     }
-                    
-                    // if its not a system shortcut, send it stable
-                    
+                    // navigation shortcuts
+                    else if (ch == KEY_CTRL_RIGHT_BRACKET || ch == KEY_CTRL_LEFT_BRACKET) {
+                        if (handle_global_shortcut(ch, false, true, &should_exit)) {
+                            shortcut_consumed = true;
+                        }
+                    }
+
                     if (!shortcut_consumed) {
-                        char mb_buf[MB_CUR_MAX + 1];
-                        int n = wctomb(mb_buf, ch);
-                        if (n > 0) {
-                            write(active_jw->term.pty_fd, mb_buf, n);
+                        if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
+                            char b = 0x7f; // Standard terminal backspace
+                            write(active_jw->term.pty_fd, &b, 1);
+                        } else if (ch == '\n' || ch == KEY_ENTER || ch == 13) {
+                            char b = '\r'; // Terminal Enter
+                            write(active_jw->term.pty_fd, &b, 1);
+                        } else if (ch == KEY_UP) {
+                            write(active_jw->term.pty_fd, "\033[A", 3);
+                        } else if (ch == KEY_DOWN) {
+                            write(active_jw->term.pty_fd, "\033[B", 3);
+                        } else if (ch == KEY_RIGHT) {
+                            write(active_jw->term.pty_fd, "\033[C", 3);
+                        } else if (ch == KEY_LEFT) {
+                            write(active_jw->term.pty_fd, "\033[D", 3);
+                        } else {
+                            char mb_buf[MB_CUR_MAX + 1];
+                            int n = wctomb(mb_buf, ch);
+                            if (n > 0) {
+                                write(active_jw->term.pty_fd, mb_buf, n);
+                            }
                         }
                     }
                 } 
-                
-                
-
-                /*                
-                char input_buf[256];
-                ssize_t len = read(STDIN_FILENO, input_buf, sizeof(input_buf));
-                if (len > 0) {
-                    bool shortcut_consumed = false;
-                    // Check for window navigation shortcuts
-                    if (len == 1 && input_buf[0] == KEY_CTRL_RIGHT_BRACKET) {
-                        next_window();
-                        shortcut_consumed = true;
-                    } else if (len == 1 && input_buf[0] == KEY_CTRL_LEFT_BRACKET) {
-                        previous_window();
-                        shortcut_consumed = true;
-                    } 
-                    // Check for Alt shortcuts
-                    else if (len == 2 && input_buf[0] == 27) { // Check for Alt + key
-                        if (handle_global_shortcut(input_buf[1], true, false, &should_exit)) {
-                            shortcut_consumed = true;
-                        }
-                    } else if (len == 1) { // Check for Ctrl shortcuts
-                        if (handle_global_shortcut(input_buf[0], false, true, &should_exit)) {
-                            shortcut_consumed = true;
-                        }
-                    }
-
-                    if (!shortcut_consumed) {
-                        write(active_jw->term.pty_fd, input_buf, len);
-                    }
-                }
-                */
             } else if (active_jw->type == WINDOW_TYPE_TERMINAL && active_jw->term.pty_fd == -1) {
                 // Handle input for a "dead" terminal (process finished)
                 wint_t ch;
