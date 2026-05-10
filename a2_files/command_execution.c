@@ -41,16 +41,16 @@ void process_command(EditorState *state, bool *should_exit) {
     args[sizeof(args)-1] = '\0';
 
     if (strcmp(command, "q") == 0) {
-        fechar_janela_ativa(should_exit);
+        close_active_window(should_exit);
         return; 
     } else if (strcmp(command, "q!") == 0) {
         state->buffer_modified = false;
-        fechar_janela_ativa(should_exit);
+        close_active_window(should_exit);
         return;
     } else if (strcmp(command, "wq") == 0) {
         save_file(state);
         if (!state->buffer_modified) { // Only close if save was successful
-            fechar_janela_ativa(should_exit);
+            close_active_window(should_exit);
         }
         return;
     } else if (strcmp(command, "w") == 0) {
@@ -69,28 +69,28 @@ void process_command(EditorState *state, bool *should_exit) {
         display_dynamic_ksc();
     } else if (strcmp(command, "gstatus") == 0) {
         char *const cmd[] = {"git", "status", NULL};
-        criar_janela_terminal_generica(cmd);
+        create_generic_terminal_window(cmd);
     } else if (strcmp(command, "gadd") == 0) {
         if (strlen(args) > 0) {
             char *const cmd[] = {"git", "add", args, NULL};
-            criar_janela_terminal_generica(cmd);
+            create_generic_terminal_window(cmd);
         } else {
             editor_set_status_msg(state, "Usage: :gadd <file_path or .>");
         }
     } else if (strcmp(command, "gcommit") == 0) {
         if (strlen(args) > 0) {
             char *const cmd[] = {"git", "commit", "-m", args, NULL};
-            criar_janela_terminal_generica(cmd);
+            create_generic_terminal_window(cmd);
         } else {
             char *const cmd[] = {"git", "commit", NULL};
-            criar_janela_terminal_generica(cmd);
+            create_generic_terminal_window(cmd);
         }
     } else if (strcmp(command, "gpush") == 0) {
         char *const cmd[] = {"git", "push", NULL};
-        criar_janela_terminal_generica(cmd);
+        create_generic_terminal_window(cmd);
     } else if (strcmp(command, "gpull") == 0) {
         char *const cmd[] = {"git", "pull", NULL};
-        criar_janela_terminal_generica(cmd);
+        create_generic_terminal_window(cmd);
     } else if (strcmp(command, "theme") == 0) {
         if (strlen(args) > 0) {
             char theme_name[256];
@@ -102,7 +102,7 @@ void process_command(EditorState *state, bool *should_exit) {
             
             if (load_theme(theme_name)) {
                 apply_theme();
-                redesenhar_todas_as_janelas();
+                redraw_all_windows();
                 save_default_theme(theme_name);
                 editor_set_status_msg(state, "Theme set to %.100s", args);
             } else {
@@ -142,7 +142,7 @@ void process_command(EditorState *state, bool *should_exit) {
     } else if (strcmp(command, "timer") == 0) {
         display_work_summary();
     } else if (strcmp(command, "settings") == 0) {
-        criar_janela_settings_panel();
+        create_settings_panel_window();
     } else if (strcmp(command, "diff") == 0) {
         if (strlen(args) > 0) {
             diff_command(state, args);
@@ -182,10 +182,10 @@ void process_command(EditorState *state, bool *should_exit) {
             } else if (strcmp(set_cmd, "bar") == 0 && items == 2) {
                 int mode = atoi(set_val);
                 if (mode == 0 || mode == 1) {
-                    GerenciadorJanelas *ws = ACTIVE_WS;
-                    for (int i = 0; i < ws->num_janelas; i++) {
-                        if (ws->janelas[i]->tipo == TIPOJANELA_EDITOR && ws->janelas[i]->estado) {
-                            ws->janelas[i]->estado->status_bar_mode = mode;
+                    Workspace *ws = ACTIVE_WS;
+                    for (int i = 0; i < ws->num_windows; i++) {
+                        if (ws->windows[i]->type == WINDOW_TYPE_EDITOR && ws->windows[i]->state) {
+                            ws->windows[i]->state->status_bar_mode = mode;
                         }
                     }
                     editor_set_status_msg(state, "Status bar set to style %d", mode);
@@ -236,7 +236,7 @@ void process_command(EditorState *state, bool *should_exit) {
             } else if (strcmp(command, "ff") == 0) {
                 display_fuzzy_finder(state);
             } else if (strcmp(command, "explorer") == 0) {
-                    criar_janela_explorer();
+                    create_explorer_window();
             } else if (strcmp(command, "llvm") == 0) {
         compile_and_view_llvm(state);
     } else if (strcmp(command, "save-project") == 0) {
@@ -254,7 +254,7 @@ void process_command(EditorState *state, bool *should_exit) {
             } else if (strcmp(command, "list-projects") == 0) {
                 display_project_list();
             } else if (strcmp(command, "term") == 0) {
-                executar_comando_em_novo_workspace(args);
+                execute_command_in_new_workspace(args);
             
       // LSP Commands
     } else if (strncmp(command, "lsp-restart", 11) == 0) {
@@ -324,7 +324,7 @@ void process_command(EditorState *state, bool *should_exit) {
     } else if (strcmp(command, "mtw") == 0) {
         if (strlen(args) > 0) {
             int target_ws = atoi(args);
-            mover_janela_para_workspace(target_ws - 1); // Subtract 1 for 0-based index
+            move_window_to_workspace(target_ws - 1); // Subtract 1 for 0-based index
         } else {
             editor_set_status_msg(state, "Usage: :mtw <workspace_number>");
         }
@@ -752,39 +752,39 @@ void compile_and_view_assembly(EditorState *state) {
         editor_set_status_msg(state, "Assembly updated from source.");
     } else {
         // if we are in the source, open/focus in the assembly
-        GerenciadorJanelas *ws = ACTIVE_WS;
+        Workspace *ws = ACTIVE_WS;
         int target_idx = -1;
         
-        if (ws->num_janelas == 1) {
+        if (ws->num_windows == 1) {
             ws->current_layout = LAYOUT_VERTICAL_SPLIT;
-            criar_nova_janela(NULL);
+            create_new_window(NULL);
             target_idx = 1;
-            ws->janela_ativa_idx = 0; // keep the focus in the source
+            ws->active_window_idx = 0; // keep the focus in the source
         } else {
             // search for an assembly if is already open
-            for (int i = 0; i < ws->num_janelas; i++) {
-                if (ws->janelas[i]->tipo == TIPOJANELA_EDITOR && strcmp(ws->janelas[i]->estado->filename, asm_file) == 0) {
+            for (int i = 0; i < ws->num_windows; i++) {
+                if (ws->windows[i]->type == WINDOW_TYPE_EDITOR && strcmp(ws->windows[i]->state->filename, asm_file) == 0) {
                     target_idx = i;
                     break;
                 }
             }
             // if not find, use the next
             if (target_idx == -1) {
-                target_idx = (ws->janela_ativa_idx + 1) % ws->num_janelas;
+                target_idx = (ws->active_window_idx + 1) % ws->num_windows;
             }
             
         }
-        JanelaEditor *jw_asm = ws->janelas[target_idx];
-        if (jw_asm->tipo == TIPOJANELA_EDITOR) {
-            load_file(jw_asm->estado, asm_file);
-            build_assembly_mappings(jw_asm->estado, state->num_lines);
+        EditorWindow *jw_asm = ws->windows[target_idx];
+        if (jw_asm->type == WINDOW_TYPE_EDITOR) {
+            load_file(jw_asm->state, asm_file);
+            build_assembly_mappings(jw_asm->state, state->num_lines);
             editor_set_status_msg(state, "Assembly generated.");
         }
         
     }
     
-    recalcular_layout_janelas();
-    redesenhar_todas_as_janelas();
+    recalculate_window_layout();
+    redraw_all_windows();
 }
 
 void compile_and_view_llvm(EditorState *state) {
@@ -818,11 +818,11 @@ void compile_and_view_llvm(EditorState *state) {
     }
     
     // Logic to open in a new window or focus if already open
-    GerenciadorJanelas *ws = ACTIVE_WS;
+    Workspace *ws = ACTIVE_WS;
     int target_idx = -1;
     
-    for (int i = 0; i < ws->num_janelas; i++) {
-        if (ws->janelas[i]->tipo == TIPOJANELA_EDITOR && strcmp(ws->janelas[i]->estado->filename, llvm_file) == 0) {
+    for (int i = 0; i < ws->num_windows; i++) {
+        if (ws->windows[i]->type == WINDOW_TYPE_EDITOR && strcmp(ws->windows[i]->state->filename, llvm_file) == 0) {
             target_idx = i;
             break;
         }
@@ -830,27 +830,27 @@ void compile_and_view_llvm(EditorState *state) {
     
     if (target_idx == -1) {
         // If there's only 1 window, split the screen
-        if (ws->num_janelas == 1) {
+        if (ws->num_windows == 1) {
             ws->current_layout = LAYOUT_VERTICAL_SPLIT;
-            criar_nova_janela(llvm_file);
+            create_new_window(llvm_file);
             target_idx = 1; // The newly created window
         } else {
             // Open in the next available window
-            target_idx = (ws->janela_ativa_idx + 1) % ws->num_janelas;
-            load_file(ws->janelas[target_idx]->estado, llvm_file);
+            target_idx = (ws->active_window_idx + 1) % ws->num_windows;
+            load_file(ws->windows[target_idx]->state, llvm_file);
         }
     } else {
-        ACTIVE_WS->janela_ativa_idx = target_idx;
-        load_file(ws->janelas[target_idx]->estado, llvm_file);
+        ACTIVE_WS->active_window_idx = target_idx;
+        load_file(ws->windows[target_idx]->state, llvm_file);
     }
 
     // Build mapping for the LLVM state
-    JanelaEditor *jw_llvm = ws->janelas[target_idx];
-    if (jw_llvm->tipo == TIPOJANELA_EDITOR) {
-        build_llvm_mappings(jw_llvm->estado, state->num_lines);
+    EditorWindow *jw_llvm = ws->windows[target_idx];
+    if (jw_llvm->type == WINDOW_TYPE_EDITOR) {
+        build_llvm_mappings(jw_llvm->state, state->num_lines);
     }
     
     editor_set_status_msg(state, "LLVM IR Generated and Mapped.");
-    recalcular_layout_janelas();
-    redesenhar_todas_as_janelas();
+    recalculate_window_layout();
+    redraw_all_windows();
 }
