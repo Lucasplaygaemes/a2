@@ -2566,28 +2566,6 @@ void build_llvm_mappings(EditorState *llvm_state, int num_source_lines) {
     free(meta_to_line);
 }
 
-void generic_input_msg(EditorState *state, char msg[256]) {
-    
-    int rows, cols;
-    getmaxyx(stdscr, rows, cols);
-    int win_h = 3;
-    int win_w = cols / 2;
-    int win_y = (rows - win_h) / 2;
-    int win_x = (cols - win_w) / 2;
-    WINDOW *input_win = newwin(win_h, win_w, win_y, win_x);
-    keypad(input_win, TRUE);
-    wbkgd(input_win, COLOR_PAIR(9));
-    box(input_win, 0 ,0);
-    mvwprintw(input_win, 1, 2, "%s", msg);
-    wrefresh(input_win);
-    curs_set(1); echo();
-    wgetnstr(input_win, msg, sizeof(msg) - 1);
-    noecho();
-    curs_set(0);
-    touchwin(stdscr);
-    redraw_all_windows();
-}
-
 void editor_start_spell_completion(EditorState *state) {
     char word[100];
     get_word_at_cursor(state, word, sizeof(word));
@@ -2819,7 +2797,7 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_PASTE_GLOBAL_ABOVE: { state->current_col = 0; state->ideal_col = 0; editor_handle_enter(state); state->current_line--; editor_global_paste(state); } break;
         case ACT_PASTE_BELOW: { state->current_col = strlen(state->lines[state->current_line]); editor_handle_enter(state); editor_paste(state); } break;
         case ACT_PASTE_GLOBAL_BELOW: { state->current_col = strlen(state->lines[state->current_line]); editor_handle_enter(state); editor_global_paste(state); } break;
-        case ACT_GENERIC_INPUT: { char msg_buffer[256] = ""; generic_input_msg(state, msg_buffer); } break;
+        case ACT_GENERIC_INPUT: { char msg_buffer[256] = ""; ui_ask_input("Generic Input:", msg_buffer, 256); } break;
         case ACT_YANK_PARAGRAPH: editor_yank_paragraph(state); break;
         case ACT_NEXT_PARAGRAPH: {
             state->is_dirty = true;
@@ -2874,7 +2852,7 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
 
         case ACT_SAVE_PROJECT: project_save_session(NULL); break;
         case ACT_LOAD_PROJECT: project_load_session(NULL); break; // Note: NULL will prompt for name if needed or use default
-        case ACT_LSP_RENAME: { char new_name[100] = ""; generic_input_msg(state, new_name); process_lsp_rename(state, new_name); } break;
+        case ACT_LSP_RENAME: { char new_name[100] = ""; ui_ask_input("New Name:", new_name, 100); process_lsp_rename(state, new_name); } break;
         case ACT_LSP_RESTART: process_lsp_restart(state); break;
         case ACT_TIMER_REPORT: display_work_summary(); break;
         case ACT_SETTINGS: create_settings_panel_window(); break;

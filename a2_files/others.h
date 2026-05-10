@@ -96,9 +96,6 @@ void display_grep_results();
 void build_assembly_mappings(EditorState *state, int int_source_line);
 void build_llvm_mappings(EditorState *state, int num_source_lines);
 
-
-void generic_input_msg(EditorState *state, char msg[256]);
-
 void editor_start_spell_completion(EditorState *state);
 
 EditorAction get_action_from_key(int ch, bool alt, bool ctrl, int leader);
