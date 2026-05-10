@@ -1,7 +1,7 @@
 #include "defs.h"
 
 // Global variable for the window manager
-GerenciadorWorkspaces gerenciador_workspaces;
+WorkspaceManager workspace_manager;
 char executable_dir[PATH_MAX] = {0};
 char* global_yank_register = NULL;
 GrepState global_grep_state;
