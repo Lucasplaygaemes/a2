@@ -1,0 +1,23 @@
+# a2 Text Editor
+
+A2 is an extensible text editor built in C, designed for power users who appreciate the terminal.
+The project and it's design are very influenced by the wonderful projects called Vim and Emacs.
+A special thanks to the GNU community whom made most of the tools in the creation of this project.
+
+## Core Dependencies
+a2 is made possible by these incredible open-source projects:
+
+- **Ncurses**: The foundation for terminal UI and robust input.
+- **Libvterm**: Powering the integrated terminal emulation.
+- **Hunspell**: Providing high-performance spell checking.
+- **Jansson**: Handling JSON for configuration and LSP.
+- **Libcurl**: Managing network dictionary downloads.
+
+## Author
+Built with passion by Lucas.
+
+## License
+a2 is licensed under the GNU GPL v2. See the LICENSE file for more information, including third-party library licenses.
+
+---
+*Thank you for using a2!*
