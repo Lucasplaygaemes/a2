@@ -5,17 +5,19 @@ Welcome to `a2`, a lightweight, fast, and configurable modal text editor inspire
 ## Core Features
 
 - **Modal Editing:** Efficiently edit text with Normal, Insert, and Visual modes.
-- **Workspaces & Splits:** Organize your work across multiple workspaces, each with its own layout of split windows.
+- **Workspaces & Splits:** Organize your work across multiple workspaces, each with its own layout of split windows (EditorWindows).
 - **Fuzzy Finder:** Quickly find and open any file in your project with a fuzzy search (`Alt+F`).
 - **Command Palette:** A searchable command palette (`Alt+T`) for easy access to all editor commands.
 - **File Explorer:** A built-in file explorer (`:explorer`) to navigate and manage files.
 - **LSP Support:** Language Server Protocol integration for real-time diagnostics and code completion.
 - **Combined Autocompletion:** Pressing `Tab` provides a unified list of suggestions from both the LSP and local words in the buffer.
+- **Unified UI System:** A consistent dialog and input system for all editor interactions, ensuring stability and a smooth user experience.
+- **Robust Integrated Terminal:** A stable terminal emulator (`:term`) that correctly handles input translation and allows global editor shortcuts even while processes are running.
 - **Macros:** Record and play back sequences of commands (`q` and `@`) to automate repetitive tasks.
 - **Advanced Search & Replace:** A powerful `:s` command to perform targeted text substitutions.
-- **Theming:** Customize the editor's appearance with simple `.theme` files. Several themes like Solarized, Monokai, and Dracula are included.
-- **Dynamic Configuration:** Every keyboard shortcut and setting can be customized. All your personal data (macros, themes, shortcuts) is stored centrally in `~/.a2/`.
-- **Project Management:** Save and load project sessions, including open files, window layouts, and cursor positions for quick context switching.
+- **Theming:** Customize the editor's appearance with simple `.theme` files.
+- **Dynamic Configuration:** Every keyboard shortcut and setting can be customized via a built-in manager (`Alt+Shift+S`). All personal data is stored in `~/.a2/`.
+- **Project Management:** Save and load project sessions, including open files, window layouts, and cursor positions.
 
 ## Installation
 
@@ -26,7 +28,7 @@ Clone the repository and run the `make install` command.
 git clone https://github.com/Lucasplaygaemes/a2
 cd a2
 
-# Compile and install the binary and the man page
+# Compile and install the binary, man pages, and syntaxes
 sudo make install
 ```
 
@@ -40,7 +42,7 @@ a2
 # Open a specific file
 a2 path/to/your/file.c
 
-# Open a file and jump to a line
+# Open a file and jump to a specific line
 a2 path/to/your/file.c 123
 ```
 
@@ -69,7 +71,7 @@ This guide details all available commands and keybindings.
 | Command | Description |
 |---|---|
 | `:ff` | Open the **Fuzzy Finder** to search for any file in the project. |
-| `:explorer` | Open the file explorer in a new split. |
+| `:explorer` | Open the file explorer window. |
 | `:s/find/repl/` | Replace the next occurrence of `find` with `repl`. |
 | `:s/find/repl/N` | Replace the next `N` occurrences. |
 | `:s/find/repl/lN`| Replace all occurrences on line `N`. |
@@ -80,13 +82,13 @@ This guide details all available commands and keybindings.
 ### Window & Workspace Management
 | Command | Description |
 |---|---|
-| `:term [cmd]` | Open a command in a new terminal split (e.g., `:term ls -l`). |
+| `:term [cmd]` | Open a command in a new terminal window (e.g., `:term ls -l`). |
 | `:mtw <num>` | Move the current window to the specified workspace number. |
 
 ### Git Integration
 | Command | Description |
 |---|---|
-| `:gstatus` | Show the output of `git status` in a new terminal window. |
+| `:gstatus` | Show `git status` in a new terminal window. |
 | `:gadd <file>` | Stage a file. Use `.` to stage all changes. |
 | `:gcommit [msg]`| Run `git commit`. If a message is provided, uses `-m`. Otherwise, runs interactively. |
 | `:gpush` | Run `git push`. |
@@ -102,7 +104,7 @@ This guide details all available commands and keybindings.
 ### Language & Diagnostics (LSP)
 | Command | Description |
 |---|---|
-| `:lsp-status` | Check the status of the Language Server Protocol server. |
+| `:lsp-status` | Check the status of the LSP server. |
 | `:lsp-restart` | Restart the LSP server. |
 | `:lsp-definition`| Jump to the definition of the symbol under the cursor. |
 | `:lsp-references`| List all references to a symbol. |
@@ -116,17 +118,18 @@ This guide details all available commands and keybindings.
 | Command | Description |
 |---|---|
 | `![cmd]` | Execute a shell command and show output (e.g., `!ls -l`). |
-| `:help` | Show the `a2` man page in a new terminal split. |
+| `:help` | Show the `a2` manual. |
+| `:about` | Show project information, credits, and library licenses. |
 | `:ksc` | Show the keyboard shortcuts screen. |
 | `:theme <name>` | Load and apply a theme (e.g., `:theme monokai`). Use Tab to autocomplete. |
 | `:gcc [libs]` | Compile the current C/C++ file (e.g., `:gcc -lm`). |
-| `:diff [f1] [f2]`| Show difference. If args omitted, runs interactively. |
+| `:diff [f1] [f2]`| Show differences between files. If args omitted, runs interactively. |
 | `:timer` | Show the work time report. |
 | `:set paste` | Enable paste mode (disables auto-indent). |
 | `:set nopaste` | Disable paste mode. |
 | `:set wrap` | Enable word wrap. |
 | `:set nowrap` | Disable word wrap. |
-| `:set bar <0|1>` | Set status bar style (0: minimalist, 1: default). |
+| `:set bar <0|1>` | Set status bar style (0: minimalist, 1: segmented). |
 | `:set themedir <path>` | Set a persistent custom directory for themes. |
 | `:shortcuts-reset` | Reload default shortcuts from `ds.a2`. |
 | `:shortcuts-save` | Save current shortcut configuration to `~/.a2/sc.a2`. |
@@ -139,7 +142,7 @@ This guide details all available commands and keybindings.
 
 ## Keybindings
 
-> **Note:** All shortcuts below are the defaults. You can customize every action in the editor by going to `Alt+S` > `Keybindings`. Your changes will be saved to `~/.a2/sc.a2`.
+> **Note:** All shortcuts below are the defaults. You can customize every action in the editor by going to `Alt+Shift+S` > `Keybindings`. Your changes will be saved to `~/.a2/sc.a2`.
 
 ### Global
 | Shortcut | Description |
@@ -147,13 +150,14 @@ This guide details all available commands and keybindings.
 | `Alt+T` | Open the unified Command Palette. |
 | `Alt+F` | Open the Fuzzy Finder to search for project files. |
 | `Alt+B` | Show a list of recently opened files. |
-| `Alt+S` | Start a project-wide content search (grep). |
+| `Alt+s` | Start a project-wide content search (grep). |
+| `Alt+Shift+S` | Open the **Settings Panel**. |
 | `Alt+X` | Close the active window. |
-| `Alt+Enter` | Create a new empty window (vertical split). |
-| `Ctrl+]` / `Ctrl+[` | Navigate to the next/previous window (split). |
+| `Alt+Enter` | Create a new split window. |
+| `Ctrl+]` / `Ctrl+[` | Navigate to the next/previous window. |
 | `Alt+N` / `Alt+M` | Navigate to the next/previous workspace. |
 | `Ctrl+W` | Create a new empty workspace. |
-| `Alt+[1-9]` | Move the active window to the specified workspace. |
+| `Alt+[1-9]` | Switch to the specified workspace. |
 | `Alt+.` | Cycle through available window layouts. |
 | `Alt+R` | Rotate windows within the current layout. |
 
