@@ -26,7 +26,7 @@
 #include <pthread.h>
 
 #include "project.h"
-void criar_novo_workspace_vazio();
+void create_new_empty_workspace();
 void load_global_config();
 
 const int ansi_to_ncurses_map[16] = {
@@ -92,8 +92,8 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     }
 
     // Store initial window/workspace counts to detect if a window is closed.
-    int initial_num_workspaces = gerenciador_workspaces.num_workspaces;
-    int initial_num_windows = (initial_num_workspaces > 0) ? ACTIVE_WS->num_janelas : 0;
+    int initial_num_workspaces = workspace_manager.num_workspaces;
+    int initial_num_windows = (initial_num_workspaces > 0) ? ACTIVE_WS->num_windows : 0;
 
     // Detect if current key triggers macro recording to avoid recording the 'stop' key
     bool is_ctrl_tmp = (ch > 0 && ch < 32 && ch != 10 && ch != 13 && ch != 9);
@@ -117,7 +117,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
             }
         }
     }
-    JanelaEditor* active_jw = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx];
+    EditorWindow* active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
     WINDOW *active_win = active_jw->win;
     
     if (state->completion_mode != COMPLETION_NONE) {
@@ -368,8 +368,8 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             case 'v': state->mode = NORMAL; state->is_dirty = true; break;
                             case 'i': state->mode = INSERT; state->is_dirty = true; break;
                             case ':': state->mode = COMMAND; state->history_pos = state->history_count; state->command_buffer[0] = '\0'; state->command_pos = 0; state->is_dirty = true; break;
-                            case KEY_CTRL_RIGHT_BRACKET: proxima_janela(); state->is_dirty = true; break;
-                            case KEY_CTRL_LEFT_BRACKET: janela_anterior(); state->is_dirty = true; break;
+                            case KEY_CTRL_RIGHT_BRACKET: next_window(); state->is_dirty = true; break;
+                            case KEY_CTRL_LEFT_BRACKET: previous_window(); state->is_dirty = true; break;
                             case KEY_CTRL_F: editor_find(state); break;
                             case KEY_CTRL_DEL: editor_delete_line(state); break;
                             case KEY_CTRL_K: editor_delete_line(state); state->is_dirty = true; break;
@@ -456,10 +456,10 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     // After processing input, validate if the state is still valid.
     // 1. Check if the window/workspace counts changed (closed window).
     // 2. Check if the state pointer is still the active one (reloaded project).
-    if (gerenciador_workspaces.num_workspaces < initial_num_workspaces ||
-        (initial_num_workspaces > 0 && ACTIVE_WS->num_janelas < initial_num_windows) ||
-        (gerenciador_workspaces.num_workspaces > 0 && ACTIVE_WS->num_janelas > 0 && 
-         ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->estado != state)) {
+    if (workspace_manager.num_workspaces < initial_num_workspaces ||
+        (initial_num_workspaces > 0 && ACTIVE_WS->num_windows < initial_num_windows) ||
+        (workspace_manager.num_workspaces > 0 && ACTIVE_WS->num_windows > 0 && 
+         ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->state != state)) {
         return;
     }
         
@@ -485,8 +485,8 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
 bool handle_global_shortcut(int ch, bool alt, bool ctrl, bool *should_exit) {
     EditorAction action = get_action_from_key(ch, alt, ctrl, 0);
     if (action != ACT_NONE) {
-        JanelaEditor *active_jw = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx];
-        execute_action(action, active_jw->estado, should_exit);
+        EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
+        execute_action(action, active_jw->state, should_exit);
         return true;
     }
     return false;
@@ -534,26 +534,26 @@ int main(int argc, char *argv[]) {
     }
     apply_theme();
     pthread_mutex_init(&global_grep_state.mutex, NULL);
-    inicializar_workspaces();
+    initialize_workspaces();
 
     project_startup_check();
 
-    if (gerenciador_workspaces.num_workspaces > 0 && ACTIVE_WS->num_janelas > 0 && ACTIVE_WS->janelas[0]->estado) {
-        editor_set_status_msg(ACTIVE_WS->janelas[0]->estado, "Welcome to a2!");
+    if (workspace_manager.num_workspaces > 0 && ACTIVE_WS->num_windows > 0 && ACTIVE_WS->windows[0]->state) {
+        editor_set_status_msg(ACTIVE_WS->windows[0]->state, "Welcome to a2!");
     }
 
     // Automatically load macros on startup
-    load_macros(ACTIVE_WS->janelas[0]->estado);
+    load_macros(ACTIVE_WS->windows[0]->state);
 
-    EditorState *initial_state = ACTIVE_WS->janelas[0]->estado;
+    EditorState *initial_state = ACTIVE_WS->windows[0]->state;
     char cwd[PATH_MAX];
     if (getcwd(cwd, sizeof(cwd)) != NULL) {
         update_directory_access(initial_state, cwd);
     }
 
     if (argc > 1) {
-        load_file(ACTIVE_WS->janelas[0]->estado, argv[1]);
-        EditorState *state = ACTIVE_WS->janelas[0]->estado;
+        load_file(ACTIVE_WS->windows[0]->state, argv[1]);
+        EditorState *state = ACTIVE_WS->windows[0]->state;
 
         napms(100);
         lsp_initialize(state);
@@ -572,7 +572,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
     bool should_exit = false;
     int check_counter = 0;
     time_t last_second = time(NULL);
@@ -581,17 +581,17 @@ int main(int argc, char *argv[]) {
         time_t current_time_now = time(NULL);
         if (current_time_now != last_second) {
             last_second = current_time_now;
-            if (gerenciador_workspaces.num_workspaces > 0) {
-                GerenciadorJanelas *ws = ACTIVE_WS;
-                for (int i = 0; i < ws->num_janelas; i++) {
-                    if (ws->janelas[i]->tipo == TIPOJANELA_EDITOR && ws->janelas[i]->estado) {
-                        ws->janelas[i]->estado->is_dirty = true;
+            if (workspace_manager.num_workspaces > 0) {
+                Workspace *ws = ACTIVE_WS;
+                for (int i = 0; i < ws->num_windows; i++) {
+                    if (ws->windows[i]->type == WINDOW_TYPE_EDITOR && ws->windows[i]->state) {
+                        ws->windows[i]->state->is_dirty = true;
                     }
                 }
             }
         }
 
-        if (gerenciador_workspaces.num_workspaces == 0) {
+        if (workspace_manager.num_workspaces == 0) {
             should_exit = true;
             continue;
         }
@@ -602,16 +602,16 @@ int main(int argc, char *argv[]) {
         int max_fd = STDIN_FILENO;
 
         // Add terminal and LSP FDs to the select set
-        for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {
-            GerenciadorJanelas *ws = gerenciador_workspaces.workspaces[i];
-            for (int j = 0; j < ws->num_janelas; j++) {
-                JanelaEditor *jw = ws->janelas[j];
-                if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.pty_fd != -1) {
+        for (int i = 0; i < workspace_manager.num_workspaces; i++) {
+            Workspace *ws = workspace_manager.workspaces[i];
+            for (int j = 0; j < ws->num_windows; j++) {
+                EditorWindow *jw = ws->windows[j];
+                if (jw->type == WINDOW_TYPE_TERMINAL && jw->term.pty_fd != -1) {
                     FD_SET(jw->term.pty_fd, &readfds);
                     if (jw->term.pty_fd > max_fd) max_fd = jw->term.pty_fd;
-                } else if (jw->tipo == TIPOJANELA_EDITOR && jw->estado && jw->estado->lsp_client && jw->estado->lsp_client->stdout_fd != -1) {
-                    FD_SET(jw->estado->lsp_client->stdout_fd, &readfds);
-                    if (jw->estado->lsp_client->stdout_fd > max_fd) max_fd = jw->estado->lsp_client->stdout_fd;
+                } else if (jw->type == WINDOW_TYPE_EDITOR && jw->state && jw->state->lsp_client && jw->state->lsp_client->stdout_fd != -1) {
+                    FD_SET(jw->state->lsp_client->stdout_fd, &readfds);
+                    if (jw->state->lsp_client->stdout_fd > max_fd) max_fd = jw->state->lsp_client->stdout_fd;
                 }
             }
         }
@@ -630,56 +630,56 @@ int main(int argc, char *argv[]) {
 
         // Process keyboard input
         if (FD_ISSET(STDIN_FILENO, &readfds)) {
-            JanelaEditor *active_jw = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx];
-            if (active_jw->tipo == TIPOJANELA_EDITOR) {
+            EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
+            if (active_jw->type == WINDOW_TYPE_EDITOR) {
                 wint_t ch;
                 if (wget_wch(stdscr, &ch) != ERR) {
-                     process_editor_input(active_jw->estado, ch, &should_exit);
+                     process_editor_input(active_jw->state, ch, &should_exit);
                 }
-            } else if (active_jw->tipo == TIPOJANELA_HELP) {
+            } else if (active_jw->type == WINDOW_TYPE_HELP) {
                 wint_t ch;
                 if (wget_wch(stdscr, &ch) != ERR) {
                     help_viewer_process_input(active_jw, ch, &should_exit);
                 }
-            } else if (active_jw->tipo == TIPOJANELA_SETTINGS_PANEL) {
+            } else if (active_jw->type == WINDOW_TYPE_SETTINGS_PANEL) {
                 wint_t ch;
                 if (wget_wch(stdscr, &ch) != ERR) {
                     settings_panel_process_input(active_jw, ch, &should_exit);
                 }
-            } else if (active_jw->tipo == TIPOJANELA_EXPLORER) {
+            } else if (active_jw->type == WINDOW_TYPE_EXPLORER) {
                 wint_t ch;
                 if (wget_wch(stdscr, &ch) != ERR) {
                     explorer_process_input(active_jw, ch, &should_exit);
                 }
-            } else if (active_jw->tipo == TIPOJANELA_TERMINAL && active_jw->term.pty_fd != -1) {
+            } else if (active_jw->type == WINDOW_TYPE_TERMINAL && active_jw->term.pty_fd != -1) {
                 char input_buf[256];
                 ssize_t len = read(STDIN_FILENO, input_buf, sizeof(input_buf));
                 if (len > 0) {
-                    bool atalho_consumido = false;
+                    bool shortcut_consumed = false;
                     // Check for window navigation shortcuts
                     if (len == 1 && input_buf[0] == KEY_CTRL_RIGHT_BRACKET) {
-                        proxima_janela();
-                        atalho_consumido = true;
+                        next_window();
+                        shortcut_consumed = true;
                     } else if (len == 1 && input_buf[0] == KEY_CTRL_LEFT_BRACKET) {
-                        janela_anterior();
-                        atalho_consumido = true;
+                        previous_window();
+                        shortcut_consumed = true;
                     } 
                     // Check for Alt shortcuts
                     else if (len == 2 && input_buf[0] == 27) { // Check for Alt + key
                         if (handle_global_shortcut(input_buf[1], true, false, &should_exit)) {
-                            atalho_consumido = true;
+                            shortcut_consumed = true;
                         }
                     } else if (len == 1) { // Check for Ctrl shortcuts
                         if (handle_global_shortcut(input_buf[0], false, true, &should_exit)) {
-                            atalho_consumido = true;
+                            shortcut_consumed = true;
                         }
                     }
 
-                    if (!atalho_consumido) {
+                    if (!shortcut_consumed) {
                         write(active_jw->term.pty_fd, input_buf, len);
                     }
                 }
-            } else if (active_jw->tipo == TIPOJANELA_TERMINAL && active_jw->term.pty_fd == -1) {
+            } else if (active_jw->type == WINDOW_TYPE_TERMINAL && active_jw->term.pty_fd == -1) {
                 // Handle input for a "dead" terminal (process finished)
                 wint_t ch;
                 if (wget_wch(stdscr, &ch) != ERR) {
@@ -703,12 +703,12 @@ int main(int argc, char *argv[]) {
         if (should_exit) continue;
 
         // Process terminal and LSP output
-        for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {
-            GerenciadorJanelas *ws = gerenciador_workspaces.workspaces[i];
-            for (int j = 0; j < ws->num_janelas; j++) {
-                JanelaEditor *jw = ws->janelas[j];
+        for (int i = 0; i < workspace_manager.num_workspaces; i++) {
+            Workspace *ws = workspace_manager.workspaces[i];
+            for (int j = 0; j < ws->num_windows; j++) {
+                EditorWindow *jw = ws->windows[j];
                 // Process terminal output
-                if (jw->tipo == TIPOJANELA_TERMINAL && jw->term.pty_fd != -1 && FD_ISSET(jw->term.pty_fd, &readfds)) {
+                if (jw->type == WINDOW_TYPE_TERMINAL && jw->term.pty_fd != -1 && FD_ISSET(jw->term.pty_fd, &readfds)) {
                     char buffer[4096];
                     ssize_t bytes_lidos = read(jw->term.pty_fd, buffer, sizeof(buffer) - 1);
                     if (bytes_lidos > 0) {
@@ -727,12 +727,12 @@ int main(int argc, char *argv[]) {
                     }
                 }
                 // Process LSP output
-                else if (jw->tipo == TIPOJANELA_EDITOR && jw->estado && jw->estado->lsp_client && jw->estado->lsp_client->stdout_fd != -1 && FD_ISSET(jw->estado->lsp_client->stdout_fd, &readfds)) {
+                else if (jw->type == WINDOW_TYPE_EDITOR && jw->state && jw->state->lsp_client && jw->state->lsp_client->stdout_fd != -1 && FD_ISSET(jw->state->lsp_client->stdout_fd, &readfds)) {
                     char buffer[4096];
-                    ssize_t bytes_lidos = read(jw->estado->lsp_client->stdout_fd, buffer, sizeof(buffer) - 1);
+                    ssize_t bytes_lidos = read(jw->state->lsp_client->stdout_fd, buffer, sizeof(buffer) - 1);
                     if (bytes_lidos > 0) {
                         buffer[bytes_lidos] = '\0';
-                        lsp_process_received_data(jw->estado, buffer, bytes_lidos);
+                        lsp_process_received_data(jw->state, buffer, bytes_lidos);
                     }
                 }
             }
@@ -744,34 +744,34 @@ int main(int argc, char *argv[]) {
              while (waitpid(-1, &status, WNOHANG) > 0);
 
              // Check for external file modifications in the active window
-             if (gerenciador_workspaces.num_workspaces > 0 && ACTIVE_WS->num_janelas > 0) {
-                 JanelaEditor *active_jw = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx];
-                 if (active_jw && active_jw->tipo == TIPOJANELA_EDITOR && active_jw->estado) {
-                    check_external_modification(active_jw->estado);
+             if (workspace_manager.num_workspaces > 0 && ACTIVE_WS->num_windows > 0) {
+                 EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
+                 if (active_jw && active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
+                    check_external_modification(active_jw->state);
                  }
              }
         }
 
         // Periodic auto-save
         time_t current_time = time(NULL);
-        for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {
-            GerenciadorJanelas *ws = gerenciador_workspaces.workspaces[i];
-            for (int j = 0; j < ws->num_janelas; j++) {
-                JanelaEditor *jw = ws->janelas[j];
-                if (jw->tipo == TIPOJANELA_EDITOR && jw->estado && jw->estado->buffer_modified) {
-                    if (current_time - jw->estado->last_auto_save_time >= AUTO_SAVE_INTERVAL) {
-                        auto_save(jw->estado);
-                        jw->estado->last_auto_save_time = current_time;
+        for (int i = 0; i < workspace_manager.num_workspaces; i++) {
+            Workspace *ws = workspace_manager.workspaces[i];
+            for (int j = 0; j < ws->num_windows; j++) {
+                EditorWindow *jw = ws->windows[j];
+                if (jw->type == WINDOW_TYPE_EDITOR && jw->state && jw->state->buffer_modified) {
+                    if (current_time - jw->state->last_auto_save_time >= AUTO_SAVE_INTERVAL) {
+                        auto_save(jw->state);
+                        jw->state->last_auto_save_time = current_time;
                     }
                 }
             }
         }
         
         // Debouncer for LSP Autocomplete
-        if (gerenciador_workspaces.num_workspaces > 0 && ACTIVE_WS->num_janelas > 0) {
-            JanelaEditor *active_jw = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx];
-            if (active_jw && active_jw->tipo == TIPOJANELA_EDITOR && active_jw->estado) {
-                EditorState *active_state = active_jw->estado;
+        if (workspace_manager.num_workspaces > 0 && ACTIVE_WS->num_windows > 0) {
+            EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
+            if (active_jw && active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
+                EditorState *active_state = active_jw->state;
                 if (active_state->lsp_completion_pending) {
                     struct timespec now;
                     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -793,10 +793,10 @@ int main(int argc, char *argv[]) {
         }
 
         // Debouncer for Spell Checker Hover
-        if (gerenciador_workspaces.num_workspaces > 0 && ACTIVE_WS->num_janelas > 0) {
-            JanelaEditor *active_jw = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx];
-            if (active_jw && active_jw->tipo == TIPOJANELA_EDITOR && active_jw->estado) {
-                EditorState *active_state = active_jw->estado;
+        if (workspace_manager.num_workspaces > 0 && ACTIVE_WS->num_windows > 0) {
+            EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
+            if (active_jw && active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
+                EditorState *active_state = active_jw->state;
                 if (active_state->spell_hover_pending && active_state->spell_checker.enabled) {
                     struct timespec now;
                     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -850,15 +850,15 @@ int main(int argc, char *argv[]) {
         } else {
             pthread_mutex_unlock(&global_grep_state.mutex);
         }
-        redesenhar_todas_as_janelas();
+        redraw_all_windows();
     }
     
     stop_and_log_work();
     
-    for (int i = 0; i < gerenciador_workspaces.num_workspaces; i++) {
-        free_workspace(gerenciador_workspaces.workspaces[i]);
+    for (int i = 0; i < workspace_manager.num_workspaces; i++) {
+        free_workspace(workspace_manager.workspaces[i]);
     }
-    free(gerenciador_workspaces.workspaces);
+    free(workspace_manager.workspaces);
         
     pthread_mutex_destroy(&global_grep_state.mutex);
     endwin(); 

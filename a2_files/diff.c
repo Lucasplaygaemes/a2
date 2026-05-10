@@ -43,7 +43,7 @@ static bool get_filename_input(const char *prompt, char *buffer, int max_len) {
     
     // Restore main windows
     touchwin(stdscr);
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
     
     return strlen(buffer) > 0;
 }

@@ -279,7 +279,7 @@ void display_directory_navigator(EditorState *state) {
                 mvwin(nav_win, win_y, win_x);
 
                 touchwin(stdscr);
-                redesenhar_todas_as_janelas();
+                redraw_all_windows();
                 break;
             case KEY_UP:
                 if (current_selection > 0) {
@@ -344,18 +344,18 @@ end_nav:
     }
     delwin(nav_win);
     touchwin(stdscr);
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
 }
 
 void prompt_for_directory_change(EditorState *state) {
     if (state->buffer_modified) {
         editor_set_status_msg(state, "Unsaved changes. Proceed with directory change? (y/n)");
-        redesenhar_todas_as_janelas();
+        redraw_all_windows();
         wint_t ch;
-        wget_wch(ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->win, &ch);
+        wget_wch(ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win, &ch);
         if (tolower(ch) != 'y') {
             editor_set_status_msg(state, "Cancelled.");
-            redesenhar_todas_as_janelas();
+            redraw_all_windows();
             return;
         }
     }
@@ -387,7 +387,7 @@ void prompt_for_directory_change(EditorState *state) {
         editor_set_status_msg(state, "No path entered. Cancelled.");
     }
     
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
 }
 
 void get_file_history_filename(char *buffer, size_t size) {

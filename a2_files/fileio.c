@@ -76,7 +76,7 @@ void asm_convert_file(EditorState *state, const char *filename) {
     strcat(output_filename, ".s");
     
     char *const cmd[] = {"gcc", "-S", (char*)filename, "-o", "-O0", output_filename, NULL};
-    criar_janela_terminal_generica(cmd);
+    create_generic_terminal_window(cmd);
     
 }
 
@@ -255,7 +255,7 @@ void save_file(EditorState *state) {
                // returns to ncusrse
                reset_prog_mode();
                refresh();
-               redesenhar_todas_as_janelas();
+               redraw_all_windows();
                
                // clena the temporary file and check the result
                
@@ -529,7 +529,7 @@ FileRecoveryChoice display_recovery_prompt(WINDOW *parent_win, EditorState *stat
 }
 
 void handle_file_recovery(EditorState *state, const char *original_filename, const char *sv_filename) {
-    WINDOW *win = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->win;
+    WINDOW *win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win;
     
     while (1) {
         FileRecoveryChoice choice = display_recovery_prompt(win, state);

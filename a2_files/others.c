@@ -809,7 +809,7 @@ void editor_move_to_previous_word(EditorState *state) {
 
 
 void editor_find(EditorState *state) {
-    JanelaEditor *active_jw = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx];
+    EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
     WINDOW *win = active_jw->win;
     int rows, cols;
     getmaxyx(win, rows, cols);
@@ -893,7 +893,7 @@ void editor_find(EditorState *state) {
 end_find_loop:
     editor_set_status_msg(state, "");
     state->command_buffer[0] = '\0';
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
     
     if (strlen(search_term) == 0) {
         return;
@@ -1346,7 +1346,7 @@ void editor_draw_completion_win(WINDOW *win, EditorState *state) {
 // ===================================================================
 
 void handle_insert_mode_key(EditorState *state, wint_t ch) {
-    WINDOW *win = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->win;
+    WINDOW *win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win;
     switch (ch) {
         case 22: // Ctrl+V for local paste
             editor_paste(state);
@@ -1360,8 +1360,8 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
         case KEY_CTRL_A: editor_find_previous(state); break;
         case KEY_CTRL_F: editor_find(state); break;
         case KEY_UNDO: do_undo(state); break;
-        case KEY_CTRL_RIGHT_BRACKET: proxima_janela(); break;
-        case KEY_CTRL_LEFT_BRACKET: janela_anterior(); break;
+        case KEY_CTRL_RIGHT_BRACKET: next_window(); break;
+        case KEY_CTRL_LEFT_BRACKET: previous_window(); break;
         case KEY_REDO: do_redo(state); break;
         case KEY_ENTER: case '\n': editor_handle_enter(state); break;
         case KEY_BACKSPACE: case 127: case 8: editor_handle_backspace(state); state->is_dirty = true; break;
@@ -2026,7 +2026,7 @@ void *background_grep_worker(void *arg) {
 }
 
 void display_grep_results() {
-    EditorState *state = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->estado;
+    EditorState *state = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->state;
     if (global_grep_state.num_results == 0) {
         editor_set_status_msg(state, "Nenhum resultado para '%s'", global_grep_state.search_term);
         return;
@@ -2081,7 +2081,7 @@ void display_grep_results() {
                     load_file(state, selected.file_path);
                     state->current_line = selected.line_number - 1;
                     state->ideal_col = 0;
-                    adjust_viewport(ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->win, state);
+                    adjust_viewport(ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win, state);
                 }
                 goto end_grep_display;
             case 27: case 'q': 
@@ -2098,15 +2098,15 @@ void display_grep_results() {
     }
 
 end_grep_display:
-    for (int i = 0; i < ACTIVE_WS->num_janelas; i++) {
-        JanelaEditor *jw = ACTIVE_WS->janelas[i];
-        if (jw->tipo == TIPOJANELA_EDITOR && jw->estado) jw->estado->is_dirty = true;
-        else if (jw->tipo == TIPOJANELA_EXPLORER && jw->explorer_state) jw->explorer_state->is_dirty = true;
-        else if (jw->tipo == TIPOJANELA_HELP && jw->help_state) jw->help_state->is_dirty = true;
+    for (int i = 0; i < ACTIVE_WS->num_windows; i++) {
+        EditorWindow *jw = ACTIVE_WS->windows[i];
+        if (jw->type == WINDOW_TYPE_EDITOR && jw->state) jw->state->is_dirty = true;
+        else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) jw->explorer_state->is_dirty = true;
+        else if (jw->type == WINDOW_TYPE_HELP && jw->help_state) jw->help_state->is_dirty = true;
     }
     delwin(results_win);
     touchwin(stdscr);
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
 }
 
 static bool flag_existe(const char* flags_str, const char* flag) {
@@ -2218,7 +2218,7 @@ void make_make_file(EditorState *state, const char *args) {
     if (ldflags) free(ldflags);
 
     char *const cmd[] = {"make", NULL};
-    criar_janela_terminal_generica(cmd);
+    create_generic_terminal_window(cmd);
     editor_set_status_msg(state, "Makefile robusto gerado. Compilando com 'make'...");
 }
 
@@ -2279,7 +2279,7 @@ void editor_jump_to_matching_bracket(EditorState *state) {
                 continue;
             }
 
-            // Lógica de estado
+            // Lógica de state
             if (in_multiline_comment) {
                 if (current == '/' && prev == '*') {
                     in_multiline_comment = false;
@@ -2288,7 +2288,7 @@ void editor_jump_to_matching_bracket(EditorState *state) {
                 if (current == string_delimiter) {
                     in_string = false;
                 }
-            } else { // Fora de qualquer estado especial
+            } else { // Fora de qualquer state especial
                 if (current == '"' || current == '\'') {
                     in_string = true;
                     string_delimiter = current;
@@ -2300,7 +2300,7 @@ void editor_jump_to_matching_bracket(EditorState *state) {
                     if (direction > 0) goto next_line_label;
                     else goto prev_line_label;
                 } else {
-                    // Processa os brackets apenas se não estiver em nenhum estado
+                    // Processa os brackets apenas se não estiver em nenhum state
                     if (current == open_char) {
                         nest_level += direction;
                     } else if (current == close_char) {
@@ -2585,7 +2585,7 @@ void generic_input_msg(EditorState *state, char msg[256]) {
     noecho();
     curs_set(0);
     touchwin(stdscr);
-    redesenhar_todas_as_janelas();
+    redraw_all_windows();
 }
 
 void editor_start_spell_completion(EditorState *state) {
@@ -2719,9 +2719,9 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
                 editor_set_status_msg(state, "Recording stopped");
             } else {
                 editor_set_status_msg(state, "Recording @");
-                redesenhar_todas_as_janelas();
+                redraw_all_windows();
                 wint_t reg_ch;
-                WINDOW *active_win = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->win;
+                WINDOW *active_win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win;
                 wget_wch(active_win, &reg_ch);
                 if (reg_ch >= 'a' && reg_ch <= 'z') {
                     state->is_recording_macro = true;
@@ -2740,9 +2740,9 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_MACRO_PLAY: {
             state->is_dirty = true;
             editor_set_status_msg(state, "@");
-            redesenhar_todas_as_janelas();
+            redraw_all_windows();
             wint_t reg_ch_play;
-            WINDOW *active_win = ACTIVE_WS->janelas[ACTIVE_WS->janela_ativa_idx]->win;
+            WINDOW *active_win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win;
             wget_wch(active_win, &reg_ch_play);
 
             if (reg_ch_play == '@') {
@@ -2779,17 +2779,17 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_SAVE_FILE: save_file(state); break;
         case ACT_OPENS_RECENT: display_recent_files(); break;
         case ACT_FUZZY_FINDER: display_fuzzy_finder(state); break;
-        case ACT_EXPLORER: criar_janela_explorer(); break;
+        case ACT_EXPLORER: create_explorer_window(); break;
         case ACT_CMD_PALLETE: display_command_palette(state); break;
-        case ACT_NEW_WINDOW: criar_nova_janela(NULL); break;
-        case ACT_CLOSE_WINDOW: fechar_janela_ativa(should_exit); break;
-        case ACT_NEW_WORKSPACE: criar_novo_workspace(); break;
-        case ACT_NEXT_WORKSPACE: ciclar_workspaces(1); break;
-        case ACT_PREV_WORKSPACE: ciclar_workspaces(-1); break;
-        case ACT_NEXT_WINDOW: proxima_janela(); break;
-        case ACT_PREV_WINDOW: janela_anterior(); break;
-        case ACT_CYCLE_LAYOUT: ciclar_layout(); break;
-        case ACT_ROTATE_WINDOWS: rotacionar_janelas(); break;
+        case ACT_NEW_WINDOW: create_new_window(NULL); break;
+        case ACT_CLOSE_WINDOW: close_active_window(should_exit); break;
+        case ACT_NEW_WORKSPACE: create_new_workspace(); break;
+        case ACT_NEXT_WORKSPACE: cycle_workspaces(1); break;
+        case ACT_PREV_WORKSPACE: cycle_workspaces(-1); break;
+        case ACT_NEXT_WINDOW: next_window(); break;
+        case ACT_PREV_WINDOW: previous_window(); break;
+        case ACT_CYCLE_LAYOUT: cycle_layout(); break;
+        case ACT_ROTATE_WINDOWS: rotate_windows(); break;
         case ACT_TOGGLE_COMMENT: editor_toggle_comment(state); break;
         case ACT_CHANGE_INSIDE_QUOTE: editor_change_inside_quotes(state, '"'); break;
         case ACT_INDENT_LINE: editor_ident_line(state, state->current_line); break;
@@ -2806,13 +2806,13 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_GOTO_DEFINITION: process_lsp_definition(state); break;
         case ACT_SHOW_SYMBOLS: process_lsp_symbols(state); break;
         case ACT_DIFF_INTERACTIVE: start_interactive_diff(state); break;
-        case ACT_GIT_STATUS: { char *const cmd[] = {"git", "status", NULL}; criar_janela_terminal_generica(cmd); } break;
+        case ACT_GIT_STATUS: { char *const cmd[] = {"git", "status", NULL}; create_generic_terminal_window(cmd); } break;
         case ACT_EXPAND_SNIPPET: editor_expand_snippet(state); break;
         
         // Additional Sequences Logic
         case ACT_GDB_DEBUG: prompt_and_create_gdb_workspace(); break;
         case ACT_ASM_CONVERT: asm_convert_file(state, state->filename); break;
-        case ACT_GIT_ADD_U: { char *const cmd[] = {"git", "add", "-u", NULL}; criar_janela_terminal_generica(cmd); } break;
+        case ACT_GIT_ADD_U: { char *const cmd[] = {"git", "add", "-u", NULL}; create_generic_terminal_window(cmd); } break;
         case ACT_DIR_NAVIGATOR: display_directory_navigator(state); break;
         case ACT_PASTE_CLIPBOARD: paste_from_clipboard(state); break;
         case ACT_PASTE_ABOVE: { state->current_col = 0; state->ideal_col = 0; editor_handle_enter(state); state->current_line--; editor_paste(state); } break;
@@ -2852,32 +2852,32 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
             state->current_col = 0; state->ideal_col = 0;
         } break;
 
-        case ACT_SWITCH_TO_WS_1: mover_janela_para_workspace(0); break;
-        case ACT_SWITCH_TO_WS_2: mover_janela_para_workspace(1); break;
-        case ACT_SWITCH_TO_WS_3: mover_janela_para_workspace(2); break;
-        case ACT_SWITCH_TO_WS_4: mover_janela_para_workspace(3); break;
-        case ACT_SWITCH_TO_WS_5: mover_janela_para_workspace(4); break;
-        case ACT_SWITCH_TO_WS_6: mover_janela_para_workspace(5); break;
-        case ACT_SWITCH_TO_WS_7: mover_janela_para_workspace(6); break;
-        case ACT_SWITCH_TO_WS_8: mover_janela_para_workspace(7); break;
-        case ACT_SWITCH_TO_WS_9: mover_janela_para_workspace(8); break;
+        case ACT_SWITCH_TO_WS_1: move_window_to_workspace(0); break;
+        case ACT_SWITCH_TO_WS_2: move_window_to_workspace(1); break;
+        case ACT_SWITCH_TO_WS_3: move_window_to_workspace(2); break;
+        case ACT_SWITCH_TO_WS_4: move_window_to_workspace(3); break;
+        case ACT_SWITCH_TO_WS_5: move_window_to_workspace(4); break;
+        case ACT_SWITCH_TO_WS_6: move_window_to_workspace(5); break;
+        case ACT_SWITCH_TO_WS_7: move_window_to_workspace(6); break;
+        case ACT_SWITCH_TO_WS_8: move_window_to_workspace(7); break;
+        case ACT_SWITCH_TO_WS_9: move_window_to_workspace(8); break;
 
-        case ACT_MOVE_WIN_TO_POS_1: mover_janela_para_posicao(0); break;
-        case ACT_MOVE_WIN_TO_POS_2: mover_janela_para_posicao(1); break;
-        case ACT_MOVE_WIN_TO_POS_3: mover_janela_para_posicao(2); break;
-        case ACT_MOVE_WIN_TO_POS_4: mover_janela_para_posicao(3); break;
-        case ACT_MOVE_WIN_TO_POS_5: mover_janela_para_posicao(4); break;
-        case ACT_MOVE_WIN_TO_POS_6: mover_janela_para_posicao(5); break;
-        case ACT_MOVE_WIN_TO_POS_7: mover_janela_para_posicao(6); break;
-        case ACT_MOVE_WIN_TO_POS_8: mover_janela_para_posicao(7); break;
-        case ACT_MOVE_WIN_TO_POS_9: mover_janela_para_posicao(8); break;
+        case ACT_MOVE_WIN_TO_POS_1: move_window_to_position(0); break;
+        case ACT_MOVE_WIN_TO_POS_2: move_window_to_position(1); break;
+        case ACT_MOVE_WIN_TO_POS_3: move_window_to_position(2); break;
+        case ACT_MOVE_WIN_TO_POS_4: move_window_to_position(3); break;
+        case ACT_MOVE_WIN_TO_POS_5: move_window_to_position(4); break;
+        case ACT_MOVE_WIN_TO_POS_6: move_window_to_position(5); break;
+        case ACT_MOVE_WIN_TO_POS_7: move_window_to_position(6); break;
+        case ACT_MOVE_WIN_TO_POS_8: move_window_to_position(7); break;
+        case ACT_MOVE_WIN_TO_POS_9: move_window_to_position(8); break;
 
         case ACT_SAVE_PROJECT: project_save_session(NULL); break;
         case ACT_LOAD_PROJECT: project_load_session(NULL); break; // Note: NULL will prompt for name if needed or use default
         case ACT_LSP_RENAME: { char new_name[100] = ""; generic_input_msg(state, new_name); process_lsp_rename(state, new_name); } break;
         case ACT_LSP_RESTART: process_lsp_restart(state); break;
         case ACT_TIMER_REPORT: display_work_summary(); break;
-        case ACT_SETTINGS: criar_janela_settings_panel(); break;
+        case ACT_SETTINGS: create_settings_panel_window(); break;
         case ACT_HELP: display_help_viewer("a2_help.txt"); break;
         case ACT_KSC: display_dynamic_ksc(); break;
         default: break;
