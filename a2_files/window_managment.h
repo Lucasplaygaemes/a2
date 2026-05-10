@@ -17,35 +17,35 @@ void find_all_project_files_recursive(const char *base_path, FileResult **result
 
 // Function prototypes for window_managment.c
 void free_editor_state(EditorState* state);
-void free_janela_editor(JanelaEditor* jw);
-void free_workspace(GerenciadorJanelas *ws);
-void inicializar_workspaces();
-void recalcular_layout_janelas();
-void criar_nova_janela(const char *filename);
-void redesenhar_todas_as_janelas();
-void posicionar_cursor_ativo();
-void fechar_janela_ativa(bool *should_exit);
-void proxima_janela();
-void janela_anterior();
-void ciclar_layout();
-void rotacionar_janelas();
-void mover_janela_para_posicao(int target_idx);
+void free_editor_window(EditorWindow* jw);
+void free_workspace(Workspace *ws);
+void initialize_workspaces();
+void recalculate_window_layout();
+void create_new_window(const char *filename);
+void redraw_all_windows();
+void position_active_cursor();
+void close_active_window(bool *should_exit);
+void next_window();
+void previous_window();
+void cycle_layout();
+void rotate_windows();
+void move_window_to_position(int target_idx);
 void display_recent_files();
 void *display_fuzzy_finder(EditorState *state);
-void criar_novo_workspace();
-void criar_novo_workspace_vazio();
-void ciclar_workspaces(int direcao);
-void mover_janela_para_workspace(int target_idx);
-void fechar_workspace_ativo(bool *should_exit);
+void create_new_workspace();
+void create_new_empty_workspace();
+void cycle_workspaces(int direcao);
+void move_window_to_workspace(int target_idx);
+void close_active_workspace(bool *should_exit);
 void prompt_and_create_gdb_workspace();
-void executar_comando_em_novo_workspace(const char *comando_str);
-void executar_comando_no_terminal(const char *comando_str);
-void criar_janela_terminal_generica(char *const argv[]);
+void execute_command_in_new_workspace(const char *comando_str);
+void execute_command_in_terminal(const char *comando_str);
+void create_generic_terminal_window(char *const argv[]);
 
 
 void gf2_starter();
 void display_command_palette(EditorState *state);
-void criar_janela_explorer();
+void create_explorer_window();
 
 void display_command_palette(EditorState *state);
 void display_content_search(EditorState *state, const char *prefilled_term);
@@ -58,6 +58,6 @@ EditorState *find_source_state_for_assembly(const char *asm_filename);
 
 EditorState *find_assembly_state_for_source(const char *source_filename);
 
-void criar_janela_settings_panel();
+void create_settings_panel_window();
 
 #endif // WINDOW_MANAGMENT_H
