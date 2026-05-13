@@ -2331,6 +2331,88 @@ void editor_jump_to_matching_bracket(EditorState *state) {
 }
 
 
+
+void editor_change_inside_quotes(EditorState *state, char quote_char, bool enter_insert) {
+    state->buffer_modified = true;
+    
+    if (state->current_line >= state->num_lines) return;
+    
+    char *line = state->lines[state->current_line];
+    int cursor_pos = state->current_col;
+    
+    char open_char = quote_char;
+    char close_char = quote_char;
+    
+    // support for the pairs respectively
+    if (quote_char == '(' || quote_char == ')') {
+         open_char = '('; close_char = ')'; 
+     } else if (quote_char == '[' || quote_char == ']') {
+          open_char = '['; close_char = ']';
+      } else if (quote_char == '{' || quote_char == '}') {
+          open_char = '{'; close_char = '}';
+      } else if (quote_char == '<' || quote_char == '>') {
+         open_char = '<'; close_char = '>'; 
+     }
+    
+    // find the opening 
+    int start_quote_pos = -1;
+    for (int i = cursor_pos; i >= 0; i--) {
+        if (line[i] == open_char) {
+            // ignores if the quoute is espaced (\")
+            if (open_char == close_char && i > 0 && line[i-1] == '\\') continue;
+            start_quote_pos = i;
+            break;
+        }
+    } 
+    
+    // finding the close
+    int end_quote_pos = -1;
+    for (int i = cursor_pos; line[i] != '\0'; i++) {
+        if (line[i] == close_char) {
+            if (open_char == close_char && i > 0 && line[i-1] == '\\') continue;
+            // guarantee that isnt the same character that we opened
+            if (i == start_quote_pos) continue;
+            end_quote_pos = i;
+            break;
+        }
+    }
+    
+    // validate if it found a valid pair
+    if (start_quote_pos == -1 || end_quote_pos == -1 || start_quote_pos >= end_quote_pos) { 
+        editor_set_status_msg(state, "Cursor not inside '%c'", quote_char);
+        return;
+    }
+    
+    push_undo(state);
+    clear_redo_stack(state);
+    
+    // delete the contents
+    
+    int content_start = start_quote_pos + 1;
+    int content_len = end_quote_pos - content_start;
+    
+    // move the rest of the line after the close to just after the opening
+    memmove(&line[content_start], &line[end_quote_pos], strlen(line) - end_quote_pos + 1);
+    
+    // reallocate the line to economize memroy
+    char *resized_line = realloc(line, strlen(line) + 1);
+    if (resized_line) {
+        state->lines[state->current_line] = resized_line;
+    }
+    
+    state->current_col = content_start;
+    state->ideal_col = state->current_col;
+    if (enter_insert) state->mode = INSERT;
+    state->buffer_modified = true;
+    
+    if (state->lsp_enabled) {
+        lsp_did_change(state);
+    }
+    
+    editor_set_status_msg(state, "%s inside '%c%c'", enter_insert ? "Changed" : "Deleted", open_char, close_char);
+}
+
+/*
 void editor_change_inside_quotes(EditorState *state, char quote_char) {
     state->buffer_modified = true;
     if (state->current_line >= state->num_lines) return;
@@ -2386,14 +2468,15 @@ void editor_change_inside_quotes(EditorState *state, char quote_char) {
     
     state->current_col = content_start;
     state->ideal_col = state->current_col;
-    state->mode = INSERT;
+    if (enter_insert) state->mode = INSERT;
     state->buffer_modified = true;
     if (state->lsp_enabled) {
         lsp_did_change(state);
     }
     
-    editor_set_status_msg(state, "Changed inside '%c'", quote_char);
+    editor_set_status_msg(state, "%s inside '%c%c'", enter_insert ? "Changed" : "Deleted", open_char, close_char);
 }
+*/
 
 void editor_yank_paragraph(EditorState *state) {
     if (state->current_line >= state->num_lines) return;
@@ -2675,6 +2758,10 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_MOVE_END: { char* line = state->lines[state->current_line]; if(line) state->current_col = strlen(line); state->ideal_col = state->current_col; state->is_dirty = true; } break;
         case ACT_MOVE_PAGE_UP: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; state->is_dirty = true; break;
         case ACT_MOVE_PAGE_DOWN: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; state->is_dirty = true; break;
+        
+        case ACT_MOVE_END_ALT: { char* line = state->lines[state->current_line]; if(line) state->current_col = strlen(line); state->ideal_col = state->current_col; state->is_dirty = true; } break;
+        case ACT_MOVE_HOME_ALT: state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
+
         case ACT_MOVE_TOP: state->current_line = 0; state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
         case ACT_MOVE_BOTTOM: state->current_line = state->num_lines - 1; state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
         case ACT_SCROLL_UP: if (!state) { return; } for (int i = 0; i < 10; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; state->is_dirty = true; break;
@@ -2779,7 +2866,52 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_CYCLE_LAYOUT: cycle_layout(); break;
         case ACT_ROTATE_WINDOWS: rotate_windows(); break;
         case ACT_TOGGLE_COMMENT: editor_toggle_comment(state); break;
-        case ACT_CHANGE_INSIDE_QUOTE: editor_change_inside_quotes(state, '"'); break;
+        case ACT_CHANGE_INSIDE_QUOTE: {
+            editor_set_status_msg(state, "Change inside (press \", ', (, [, {, <):");
+            redraw_all_windows();
+            
+            wint_t quote_ch;
+            WINDOW *active_win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win;
+            wget_wch(active_win, &quote_ch);
+            
+            if (quote_ch > 0 && quote_ch < 128) {
+                editor_change_inside_quotes(state, (char)quote_ch, true);
+            } else {
+                editor_set_status_msg(state, "Cancelled.");
+            }
+            state->is_dirty = true;
+        } break;
+
+        case ACT_DELETE_INSIDE_QUOTE: {
+            editor_set_status_msg(state, "Delete inside (press \", ', (, [, {, <):");
+            redraw_all_windows();
+            
+            wint_t quote_ch;
+            WINDOW *active_win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win;
+            wget_wch(active_win, &quote_ch);
+            
+            if (quote_ch > 0 && quote_ch < 128) {
+                editor_change_inside_quotes(state, (char)quote_ch, false);
+            } else {
+                editor_set_status_msg(state, "Cancelled.");
+            }
+            state->is_dirty = true;
+        } break;
+
+        case ACT_DELETE_WORD_BACK: {
+            if (state->current_col == 0 && state->current_line == 0) break;
+            push_undo(state);
+            clear_redo_stack(state);
+            int end_line = state->current_line;
+            int end_col = state->current_col;
+            editor_move_to_previous_word(state);
+            state->selection_start_line = state->current_line;
+            state->selection_start_col = state->current_col;
+            state->current_line = end_line;
+            state->current_col = end_col;
+            editor_delete_selection(state);
+        } break;
+        
         case ACT_INDENT_LINE: editor_ident_line(state, state->current_line); break;
         case ACT_UNINDENT_LINE: editor_unindent_line(state, state->current_line); break;
         case ACT_JOIN_LINES: editor_join_line(state); break;
