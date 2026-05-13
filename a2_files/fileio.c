@@ -444,35 +444,64 @@ void load_syntax_file(EditorState *state, const char *filename) {
     fclose(file);
 }
 
+void get_pos_path(const char *filename, char *out_path, size_t size) {
+    char config_dir[PATH_MAX];
+    ensure_a2_config_dir(config_dir, sizeof(config_dir));
+    
+    char pos_dir[PATH_MAX];
+    snprintf(pos_dir, sizeof(pos_dir), "%s/pos", config_dir);
+    mkdir(pos_dir, 0755);
+
+    // Get absolute path to ensure uniqueness
+    char abs_path[PATH_MAX];
+    if (realpath(filename, abs_path) == NULL) {
+        strncpy(abs_path, filename, PATH_MAX - 1);
+        abs_path[PATH_MAX - 1] = '\0';
+    }
+
+    // Convert path to a safe filename (replace / with _)
+    char safe_name[PATH_MAX];
+    strncpy(safe_name, abs_path, sizeof(safe_name) - 1);
+    safe_name[sizeof(safe_name) - 1] = '\0';
+    
+    for (int i = 0; safe_name[i]; i++) {
+        if (safe_name[i] == '/') safe_name[i] = '_';
+    }
+    
+    snprintf(out_path, size, "%s/%s.pos", pos_dir, safe_name);
+}
+
 void save_last_line(const char *filename, int line) {
-    char pos_filename[256];
-    snprintf(pos_filename, sizeof(pos_filename), "%s.pos", filename);
-    debug_log("[POS] Saving last line %d to file %s\n", line, pos_filename);
-    FILE *f = fopen(pos_filename, "w");
+    char pos_path[PATH_MAX];
+    get_pos_path(filename, pos_path, sizeof(pos_path));
+    
+    debug_log("[POS] Saving last line %d to file %s\n", line, pos_path);
+    FILE *f = fopen(pos_path, "w");
     if (f) {
         fprintf(f, "%d", line);
         fclose(f);
     } else {
-        debug_log("[POS] FAILED to open %s for writing.\n", pos_filename);
+        debug_log("[POS] FAILED to open %s for writing.\n", pos_path);
     }
 }
 
 int load_last_line(const char *filename) {
-    char pos_filename[256];
-    snprintf(pos_filename, sizeof(pos_filename), "%s.pos", filename);
-    debug_log("[POS] Attempting to load last line from %s\n", pos_filename);
-    FILE *f = fopen(pos_filename, "r");
+    char pos_path[PATH_MAX];
+    get_pos_path(filename, pos_path, sizeof(pos_path));
+    
+    debug_log("[POS] Attempting to load last line from %s\n", pos_path);
+    FILE *f = fopen(pos_path, "r");
     if (f) {
         int line = 0;
         if (fscanf(f, "%d", &line) == 1) {
             fclose(f);
-            debug_log("[POS] Successfully loaded line %d from %s\n", line, pos_filename);
+            debug_log("[POS] Successfully loaded line %d from %s\n", line, pos_path);
             return line;
         }
         fclose(f);
-        debug_log("[POS] Failed to read integer from %s\n", pos_filename);
+        debug_log("[POS] Failed to read integer from %s\n", pos_path);
     } else {
-        debug_log("[POS] Failed to open %s for reading.\n", pos_filename);
+        debug_log("[POS] Failed to open %s for reading.\n", pos_path);
     }
     return 0;
 }
