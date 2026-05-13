@@ -286,6 +286,22 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         }
                         break;
                     }
+                    case '>': {
+                        push_undo(state);
+                        int start_line, end_line;
+                        if (state->selection_start_line < state->current_line) { start_line = state->selection_start_line; end_line = state->current_line; }
+                        else { start_line = state->current_line; end_line = state->selection_start_line; }
+                        for (int i = start_line; i <= end_line; i++) editor_ident_line(state, i);
+                        break;
+                    }
+                    case '<': {
+                        push_undo(state);
+                        int start_line, end_line;
+                        if (state->selection_start_line < state->current_line) { start_line = state->selection_start_line; end_line = state->current_line; }
+                        else { start_line = state->current_line; end_line = state->selection_start_line; }
+                        for (int i = start_line; i <= end_line; i++) editor_unindent_line(state, i);
+                        break;
+                    }
                     case 'd':
                         editor_delete_selection(state);
                         break;
