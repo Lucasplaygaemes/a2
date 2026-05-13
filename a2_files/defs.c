@@ -102,6 +102,12 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     [ACT_NEXT_PARAGRAPH] = {ACT_NEXT_PARAGRAPH, 0, '}', false, false, "NEXT_PARAGRAPH", "Next Paragraph", "Jump to next blank line"},
     [ACT_PREV_PARAGRAPH] = {ACT_PREV_PARAGRAPH, 0, '{', false, false, "PREV_PARAGRAPH", "Prev Paragraph", "Jump to previous blank line"},
 
+    [ACT_MOVE_END_ALT] = {ACT_MOVE_END_ALT, 0, '$', true, false, "MOVE_END_ALT", "End (Alt)", "Jump to end of line (Alt+$)"},
+    [ACT_MOVE_HOME_ALT] = {ACT_MOVE_HOME_ALT, 0, '0', true, false, "MOVE_HOME_ALT", "Home (Alt)", "Jump to start of line (Alt+0)"},
+
+    [ACT_DELETE_INSIDE_QUOTE] = {ACT_DELETE_INSIDE_QUOTE, 0, 'D', true, false, "DELETE_INSIDE", "Delete Inside", "Delete inside quotes/brackets"},
+    [ACT_DELETE_WORD_BACK] = {ACT_DELETE_WORD_BACK, 0, KEY_BACKSPACE, true, false, "DEL_WORD_BACK", "Del Word Back", "Delete previous word"},
+
     // Workspace Management
     [ACT_SWITCH_TO_WS_1] = {ACT_SWITCH_TO_WS_1, 0, '1', true, false, "WS_1", "WS 1", "Switch to workspace 1"},
     [ACT_SWITCH_TO_WS_2] = {ACT_SWITCH_TO_WS_2, 0, '2', true, false, "WS_2", "WS 2", "Switch to workspace 2"},

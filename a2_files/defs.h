@@ -509,6 +509,12 @@ typedef enum {
     ACT_NEXT_PARAGRAPH,    // }
     ACT_PREV_PARAGRAPH,    // {
     
+    ACT_MOVE_END_ALT,      // Alt+$
+    ACT_MOVE_HOME_ALT,     // Alt+0
+
+    ACT_DELETE_INSIDE_QUOTE, // Alt+Shift+D
+    ACT_DELETE_WORD_BACK,    // Alt+Backspace
+
     // Workspace & Window Management
     ACT_SWITCH_TO_WS_1, ACT_SWITCH_TO_WS_2, ACT_SWITCH_TO_WS_3,
     ACT_SWITCH_TO_WS_4, ACT_SWITCH_TO_WS_5, ACT_SWITCH_TO_WS_6,
