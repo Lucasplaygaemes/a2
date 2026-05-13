@@ -10,6 +10,8 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *Alt+B* : Show a list of recently opened files.
 - *Alt+S* : Start a project-wide content search (grep).
 - *Alt+A* : Compile and view assembly side-by-side with source.
+- *Alt+$* : Jump to the end of the line (Works in Insert Mode).
+- *Alt+0* : Jump to the start of the line (Works in Insert Mode).
 - *Alt+X* : Close the active window.
 - *Alt+Enter* : Create a new empty window (vertical split).
 - *Ctrl+]* / *Ctrl+[* : Navigate to the next/previous window (split).
@@ -43,7 +45,9 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *Ctrl+d* / *Ctrl+a* : Find next / previous occurrence of the last search.
 - *Ctrl+Del* / *Ctrl+k* : Delete the current line.
 - *Alt+c* : Toggle comment on the current line or visual selection.
-- *Alt+C* : Change inside current quotes (") and enter Insert Mode.
+- *Alt+C* : Change inside (prompts for ", ', (, [, {, <) and enter Insert Mode.
+- *Alt+D* : Delete inside (prompts for ", ', (, [, {, <).
+- *Alt+Backspace* : Delete the previous word (Works in Insert Mode).
 
 ## Insert Mode
 - *Esc* : Return to *Normal Mode*.
@@ -65,6 +69,7 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *Alt+y* : Copy the selection to the system clipboard.
 - *m* : Cut the selection to the "move" register.
 - *p* : Paste over the selection.
+- *>* / *<* : Indent / un-indent the selected block.
 - *Alt+Tab* / *Shift+Tab* : Indent / un-indent the selected block.
 - *Alt+c* : Toggle comments on all lines in the selection.
 
