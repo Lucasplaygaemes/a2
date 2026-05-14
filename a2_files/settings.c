@@ -31,7 +31,9 @@ A2Config global_config = {
     .status_bar_mode = 1,
     .default_spell_lang = "",
     .spell_checker_enabled = true,
-    .show_line_numbers = false
+    .show_line_numbers = false,
+    .show_error_count = true,
+    .abbreviate_filename = true
 };
 
 typedef struct {
@@ -46,7 +48,9 @@ BoolSetting editor_bool_settings[] = {
     {"Show Line Numbers", &global_config.show_line_numbers},
     {"Show Scrollbar", &global_config.show_scrollbar},
     {"Expand Tab", &global_config.expand_tab},
-    {"Relative Lines", &global_config.relative_line_numbers}
+    {"Relative Lines", &global_config.relative_line_numbers},
+    {"Status Bar Error Count", &global_config.show_error_count},
+    {"Abbreviate Filename", &global_config.abbreviate_filename}
 };
 
 const int num_bool_settings = sizeof(editor_bool_settings) / sizeof(BoolSetting);
@@ -337,6 +341,8 @@ void save_global_config() {
         fprintf(f, "lsp_diagnostics=%d\n", global_config.lsp_diagnostics);
         fprintf(f, "lsp_completion=%d\n", global_config.lsp_completion);
         fprintf(f, "lsp_hover=%d\n", global_config.lsp_hover);
+        fprintf(f, "show_error_count=%d\n", global_config.show_error_count);
+        fprintf(f, "abbreviate_filename=%d\n", global_config.abbreviate_filename);
         fclose(f);
     }
 }
@@ -367,6 +373,8 @@ void load_global_config() {
         else if (sscanf(line, "lsp_diagnostics=%d", &val) == 1) global_config.lsp_diagnostics = val;
         else if (sscanf(line, "lsp_completion=%d", &val) == 1) global_config.lsp_completion = val;
         else if (sscanf(line, "lsp_hover=%d", &val) == 1) global_config.lsp_hover = val;
+        else if (sscanf(line, "show_error_count=%d", &val) == 1) global_config.show_error_count = val;
+        else if (sscanf(line, "abbreviate_filename=%d", &val) == 1) global_config.abbreviate_filename = val;
         else if (sscanf(line, "default_spell_lang=%127s", str_val) == 1) {
             strncpy(global_config.default_spell_lang, str_val, sizeof(global_config.default_spell_lang) - 1);
             global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
