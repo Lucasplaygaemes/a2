@@ -56,6 +56,7 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     
     // Windows and Workspaces
     [ACT_NEW_WINDOW] = {ACT_NEW_WINDOW, 0, 10, true, false, "NEW_WINDOW", "New Window", "Create the screen division"},
+    [ACT_NEW_TERMINAL_WINDOW] = {ACT_NEW_TERMINAL_WINDOW, 0, 32, true, false, "NEW TERMINAL WINDOW", "Open Terminal in a new window"},
     [ACT_CLOSE_WINDOW] = {ACT_CLOSE_WINDOW, 0, 'x', true, false, "CLOSE_WINDOW", "Close Window", "Close the division or current tab"},
     [ACT_NEW_WORKSPACE] = {ACT_NEW_WORKSPACE, 0, 23, false, true, "NEW_WORKSPACE", "New Workspace", "Create a new workspace (CTRL+W)"},
     [ACT_NEXT_WORKSPACE] = {ACT_NEXT_WORKSPACE, 0, 'm', true, false, "NEXT_WORKSPACE", "Next Workspace", "Goes to the tab at right"},

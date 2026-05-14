@@ -313,6 +313,9 @@ typedef struct {
     bool show_line_numbers;
     bool relative_line_numbers;
     bool show_scrollbar;
+    
+    bool show_error_count;
+    bool abbreviate_filename;
 } A2Config;
 
 extern A2Config global_config;
@@ -463,6 +466,7 @@ typedef enum {
     
     // windows and workspaces
     ACT_NEW_WINDOW,        // Alt+Enter
+    ACT_NEW_TERMINAL_WINDOW, // Alt+Shift+Enter
     ACT_CLOSE_WINDOW,      // Alt+X
     ACT_NEW_WORKSPACE,     // Ctrl+W
     ACT_NEXT_WORKSPACE,    // Alt+n
