@@ -14,6 +14,7 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *Alt+0* : Jump to the start of the line (Works in Insert Mode).
 - *Alt+X* : Close the active window.
 - *Alt+Enter* : Create a new empty window (vertical split).
+- *Alt+Space* : Open a new terminal window.
 - *Ctrl+]* / *Ctrl+[* : Navigate to the next/previous window (split).
 - *Alt+N* / *Alt+M* : Navigate to the next/previous workspace.
 - *Ctrl+W* : Create a new empty workspace.
