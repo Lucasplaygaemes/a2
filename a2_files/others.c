@@ -2857,6 +2857,7 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_EXPLORER: create_explorer_window(); break;
         case ACT_CMD_PALLETE: display_command_palette(state); break;
         case ACT_NEW_WINDOW: create_new_window(NULL); break;
+        case ACT_NEW_TERMINAL_WINDOW: execute_command_in_terminal(""); break;
         case ACT_CLOSE_WINDOW: close_active_window(should_exit); break;
         case ACT_NEW_WORKSPACE: create_new_workspace(); break;
         case ACT_NEXT_WORKSPACE: cycle_workspaces(1); break;
