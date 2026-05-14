@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <wctype.h>
+#include <libgen.h>
 
 extern const int ansi_to_ncurses_map[16];
 
@@ -789,54 +790,64 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             case OPERATOR_PENDING: snprintf(mode_str, sizeof(mode_str), "-- (%c) --", state->pending_operator); break;
             default: strcpy(mode_str, "--          --"); break;
         }
-        char display_filename[40];
-        strncpy(display_filename, state->filename, sizeof(display_filename) - 1);
-        display_filename[sizeof(display_filename) - 1] = '\0'; 
+        
         int visual_col = get_visual_col(state->lines[state->current_line], state->current_col);
-        int diag_count = (state->lsp_document) ? state->lsp_document->diagnostics_count : -1;
 
         if (state->status_bar_mode == 1) { // New robust style
-            char left_bar[200];
-            char right_bar[100];
-
-            snprintf(left_bar, sizeof(left_bar), "WS %d | %s | %s%s",
-            workspace_manager.active_workspace_idx + 1, mode_str, display_filename, state->buffer_modified ? "*" : "");
+            char left_bar[256], right_bar[256], display_filename[64], error_count_str[64] = "";
             
-            time_t c_time = time(NULL);
-            struct tm *info = localtime(&c_time);
-            
-            // using strftime to format
-            char buffer[80];
-            strftime(buffer, sizeof(buffer), "%H:%M:%S", info);
+            if (global_config.abbreviate_filename) {
+                char *fname_copy = strdup(state->filename);
+                if (fname_copy) {
+                    strncpy(display_filename, basename(fname_copy), sizeof(display_filename) - 1);
+                    free(fname_copy);
+                }
+            } else {
+                strncpy(display_filename, state->filename, sizeof(display_filename) - 1);
+            }
+            display_filename[sizeof(display_filename) - 1] = '\0';
 
-            snprintf(right_bar, sizeof(right_bar), " %s | Line %d/%d, Col %d",
-            buffer, state->current_line + 1, state->num_lines, visual_col + 1);
+            if (global_config.show_error_count && state->lsp_document && state->lsp_document->diagnostics_count > 0) {
+                int errors = 0, warnings = 0;
+                for (int i = 0; i < state->lsp_document->diagnostics_count; i++) {
+                    if (state->lsp_document->diagnostics[i].severity == LSP_SEVERITY_ERROR) errors++;
+                    else if (state->lsp_document->diagnostics[i].severity == LSP_SEVERITY_WARNING) warnings++;
+                }
+                if (errors > 0 || warnings > 0) snprintf(error_count_str, sizeof(error_count_str), "❌ %d ⚠️ %d | ", errors, warnings);
+            }
+
+            snprintf(left_bar, sizeof(left_bar), "WS %d | %s | %s%s%s", workspace_manager.active_workspace_idx + 1, mode_str, error_count_str, display_filename, state->buffer_modified ? "*" : "");
+
+            time_t now = time(NULL);
+            struct tm *info = localtime(&now);
+            char time_buf[16];
+            strftime(time_buf, sizeof(time_buf), "%H:%M:%S", info);
+
+            snprintf(right_bar, sizeof(right_bar), " %s | L:%d/%d, C:%d", time_buf, state->current_line + 1, state->num_lines, visual_col + 1);
 
             mvwprintw(win, rows - 1, 1, "%s", left_bar);
-            
-            int right_bar_len = strlen(right_bar);
-            mvwprintw(win, rows - 1, cols - 1 - right_bar_len, "%s", right_bar);
+            mvwprintw(win, rows - 1, cols - 1 - strlen(right_bar), "%s", right_bar);
 
-            int left_len = strlen(left_bar);
-            int available_space = (cols - 1 - right_bar_len) - (left_len + 3);
-            
-            if (available_space > 5 && state->status_msg[0] != '\0') {
-                mvwprintw(win, rows - 1, left_len + 2, "| %.*s", available_space - 2, state->status_msg);
+            int left_len = strlen(left_bar), right_len = strlen(right_bar);
+            int available = (cols - 1 - right_len) - (left_len + 3);
+            if (available > 5 && state->status_msg[0] != '\0') {
+                mvwprintw(win, rows - 1, left_len + 2, "| %.*s", available - 2, state->status_msg);
             }
-            
-            } else { // Estilo clássico (antigo)
-                char final_bar[cols + 1];
-                // Estilo 0 simplificado para ser visualmente distinto
-                snprintf(final_bar, sizeof(final_bar), "%s%s -- Line %d/%d, Col %d",
-                    display_filename, state->buffer_modified ? "*" : "",
-                    state->current_line + 1, state->num_lines, visual_col + 1);
-    
-                int print_width = cols > 2 ? cols - 2 : 0;
-                mvwprintw(win, rows - 1, 1, "%.*s", print_width, final_bar);
-            }    }
-    wattroff(win, COLOR_PAIR(color_pair));
-    wnoutrefresh(win);
+        } else {
+            char left_bar[256], right_bar[64], error_count_str[32] = "";
+            int diag_count = state->lsp_document ? state->lsp_document->diagnostics_count : 0;
+            if (diag_count > 0) snprintf(error_count_str, sizeof(error_count_str), " [!%d]", diag_count);
+
+            snprintf(left_bar, sizeof(left_bar), "%s %s%s%s", mode_str, state->filename, state->buffer_modified ? "*" : "", error_count_str);
+            snprintf(right_bar, sizeof(right_bar), "L:%d/%d, C:%d ", state->current_line + 1, state->num_lines, state->current_col + 1);
+
+            mvwprintw(win, rows - 1, 1, "%s", left_bar);
+            mvwprintw(win, rows - 1, cols - strlen(right_bar) - 1, "%s", right_bar);
+        }
+    }
 }
+
+
 
 void adjust_viewport(WINDOW *win, EditorState *state) {
     ensure_cursor_in_bounds(state);
