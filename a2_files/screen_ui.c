@@ -546,6 +546,49 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         }
                     }
 
+                    // --- REAL-TIME SEARCH HIGHLIGHT (WORD WRAP) ---
+                    bool is_searching = (state->command_buffer[0] == '/');
+                    const char *query = is_searching ? state->command_buffer + 1 : state->last_search;
+                    
+                    if (query && strlen(query) > 0) {
+                        regex_t regex;
+                        bool is_regex = false;
+                        if (is_searching) is_regex = (regcomp(&regex, query, REG_EXTENDED | REG_NEWLINE) == 0);
+                        else if (state->last_search_is_regex) is_regex = (regcomp(&regex, query, REG_EXTENDED | REG_NEWLINE) == 0);
+
+                        int search_offset = line_offset;
+                        while (search_offset < line_offset + break_pos) {
+                            int match_start = -1, match_len = 0;
+                            if (is_regex) {
+                                regmatch_t pmatch[1];
+                                if (regexec(&regex, line + search_offset, 1, pmatch, 0) == 0) {
+                                    match_start = search_offset + pmatch[0].rm_so;
+                                    match_len = pmatch[0].rm_eo - pmatch[0].rm_so;
+                                    if (match_len == 0) match_len = 1;
+                                } else break;
+                            } else {
+                                char *match = strstr(line + search_offset, query);
+                                if (match) {
+                                    match_start = match - line;
+                                    match_len = strlen(query);
+                                } else break;
+                            }
+
+                            if (match_start != -1 && match_start < line_offset + break_pos) {
+                                int s_start = max(match_start, line_offset);
+                                int s_end = min(match_start + match_len, line_offset + break_pos);
+                                if (s_start < s_end) {
+                                    int sx = border_offset + line_number_width + get_visual_col(line + line_offset, s_start - line_offset);
+                                    int ex = border_offset + line_number_width + get_visual_col(line + line_offset, s_end - line_offset);
+                                    int mx = cols - border_offset;
+                                    if (sx < mx) mvwchgat(win, screen_y + border_offset, sx, min(ex, mx) - sx, A_REVERSE, PAIR_WARNING, NULL);
+                                }
+                                search_offset = match_start + match_len;
+                            } else break;
+                        }
+                        if (is_regex) regfree(&regex);
+                    }
+
                     screen_y++;
                 }
                 visual_line_idx++;
@@ -720,6 +763,53 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         }
                     }
                 }
+
+                bool is_searching = (state->command_buffer[0] == '/');
+                const char *query = is_searching ? state->command_buffer + 1 : state->last_search;
+                
+                if (query && strlen(query) > 0) {
+                    regex_t regex;
+                    bool is_regex = false;
+                    if (is_searching) {
+                        is_regex = (regcomp(&regex, query, REG_EXTENDED | REG_NEWLINE) == 0);
+                    } else if (state->last_search_is_regex) {
+                        is_regex = (regcomp(&regex, query, REG_EXTENDED | REG_NEWLINE) == 0);
+                    }
+
+                    int search_offset = 0;
+                    while (search_offset < line_len) {
+                        int match_start = -1, match_len = 0;
+                        if (is_regex) {
+                            regmatch_t pmatch[1];
+                            if (regexec(&regex, line + search_offset, 1, pmatch, 0) == 0) {
+                                match_start = search_offset + pmatch[0].rm_so;
+                                match_len = pmatch[0].rm_eo - pmatch[0].rm_so;
+                                if (match_len == 0) match_len = 1;
+                            } else break;
+                        } else {
+                            char *match = strstr(line + search_offset, query);
+                            if (match) {
+                                match_start = match - line;
+                                match_len = strlen(query);
+                            } else break;
+                        }
+
+                        if (match_start != -1) {
+                            int start_x = border_offset + line_number_width + get_visual_col(line, match_start) - state->left_col;
+                            int end_x = border_offset + line_number_width + get_visual_col(line, match_start + match_len) - state->left_col;
+                            int min_x = border_offset + line_number_width;
+                            int max_x = cols - border_offset;
+                            int draw_start = (start_x < min_x) ? min_x : start_x;
+                            int draw_end = (end_x > max_x) ? max_x : end_x;
+                            if (draw_start < draw_end) {
+                                mvwchgat(win, i + border_offset, draw_start, draw_end - draw_start, A_REVERSE, PAIR_WARNING, NULL);
+                            }
+                            search_offset = match_start + match_len;
+                        } else break;
+                    }
+                    if (is_regex) regfree(&regex);
+                }
+
                 // After drawing, mark the line as clean
                 if (line_idx < state->dirty_lines_cap) {
                     state->dirty_lines[line_idx] = false;
