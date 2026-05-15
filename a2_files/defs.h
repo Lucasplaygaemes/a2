@@ -416,6 +416,9 @@ typedef struct EditorState {
     char spell_hover_word[100];
     
     int prefix_count;
+    
+    int search_start_line;
+    int search_start_col;
 } EditorState;
 #endif
 
