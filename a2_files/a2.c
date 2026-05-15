@@ -386,6 +386,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             case ':': state->mode = COMMAND; state->history_pos = state->history_count; state->command_buffer[0] = '\0'; state->command_pos = 0; state->is_dirty = true; break;
                             case KEY_CTRL_RIGHT_BRACKET: next_window(); state->is_dirty = true; break;
                             case KEY_CTRL_LEFT_BRACKET: previous_window(); state->is_dirty = true; break;
+                            case '/':
                             case KEY_CTRL_F: editor_find(state); break;
                             case KEY_CTRL_DEL: editor_delete_line(state); break;
                             case KEY_CTRL_K: editor_delete_line(state); state->is_dirty = true; break;
