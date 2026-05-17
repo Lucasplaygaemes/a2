@@ -325,6 +325,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
     const char *delimiters = " \t\n\r,;()[]{}<>=+-*/%&|!^.";
     int content_height = rows - (border_offset + 1); 
     int screen_y = 0;
+    int current_conflict_block = 0; // 0: none, 1: MINE, 2: THEIRS
 
     if (state->word_wrap_enabled) {
         state->left_col = 0;
@@ -337,6 +338,13 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             
             bool highlight_this_line = false;
             
+            // --- CONFLICT HIGHLIGHTING (WORD WRAP) ---
+            if (strncmp(line, "<<<<<<<", 7) == 0) current_conflict_block = 1;
+            else if (strncmp(line, "=======", 7) == 0) current_conflict_block = 2;
+            
+            if (current_conflict_block == 1) wattron(win, COLOR_PAIR(PAIR_SELECTION) | A_DIM);
+            else if (current_conflict_block == 2) wattron(win, COLOR_PAIR(PAIR_DIFF_ADD) | A_DIM);
+
             if (state->mapping) {
                 // case 1, drawing in assembly trying to find in the windown in C
                 EditorState *source = find_source_state_for_assembly(state->filename);
@@ -440,6 +448,25 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                             display_num = file_line_idx + 1;
                         }
                         mvwprintw(win, screen_y + border_offset, border_offset, "%*d ", line_number_width - 1, display_num);
+                        
+                        // Draw git gutter marker (only on the first line of the wrapped block)
+                        if (state->git_gutter && file_line_idx < state->num_lines) {
+                            char marker = state->git_gutter[file_line_idx];
+                            if (marker == '+') {
+                                wattron(win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
+                                mvwaddch(win, screen_y + border_offset, border_offset + line_number_width - 1, '+');
+                                wattroff(win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
+                            } else if (marker == '-') {
+                                wattron(win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+                                mvwaddch(win, screen_y + border_offset, border_offset + line_number_width - 1, '-');
+                                wattroff(win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+                            } else if (marker == '~') {
+                                wattron(win, COLOR_PAIR(PAIR_WARNING) | A_BOLD);
+                                mvwaddch(win, screen_y + border_offset, border_offset + line_number_width - 1, '~');
+                                wattroff(win, COLOR_PAIR(PAIR_WARNING) | A_BOLD);
+                            }
+                        }
+
                         wattroff(win, A_BOLD);
                         wattroff(win, COLOR_PAIR(8) | A_DIM);
                         wmove(win, screen_y + border_offset, border_offset + line_number_width);
@@ -589,6 +616,9 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         if (is_regex) regfree(&regex);
                     }
 
+                    if (current_conflict_block != 0) wattroff(win, A_DIM);
+                    if (strncmp(line, ">>>>>>>", 7) == 0) current_conflict_block = 0;
+
                     screen_y++;
                 }
                 visual_line_idx++;
@@ -637,11 +667,37 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         
                     // Desenha alinhado à direita
                     mvwprintw(win, i + border_offset, border_offset, "%*d ", line_number_width - 1, display_num);
+                    
+                    // Draw git gutter marker
+                    if (state->git_gutter && line_idx < state->num_lines) {
+                        char marker = state->git_gutter[line_idx];
+                        if (marker == '+') {
+                            wattron(win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
+                            mvwaddch(win, i + border_offset, border_offset + line_number_width - 1, '+');
+                            wattroff(win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
+                        } else if (marker == '-') {
+                            wattron(win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+                            mvwaddch(win, i + border_offset, border_offset + line_number_width - 1, '-');
+                            wattroff(win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+                        } else if (marker == '~') {
+                            wattron(win, COLOR_PAIR(PAIR_WARNING) | A_BOLD);
+                            mvwaddch(win, i + border_offset, border_offset + line_number_width - 1, '~');
+                            wattroff(win, COLOR_PAIR(PAIR_WARNING) | A_BOLD);
+                        }
+                    }
+
                     wattroff(win, COLOR_PAIR(8) | A_DIM);
                     wmove(win, i + border_offset, border_offset + line_number_width);
                 }
 
                 if (!line) continue;
+
+                // --- CONFLICT HIGHLIGHTING ---
+                if (strncmp(line, "<<<<<<<", 7) == 0) current_conflict_block = 1;
+                else if (strncmp(line, "=======", 7) == 0) current_conflict_block = 2;
+                
+                if (current_conflict_block == 1) wattron(win, COLOR_PAIR(PAIR_SELECTION) | A_DIM);
+                else if (current_conflict_block == 2) wattron(win, COLOR_PAIR(PAIR_DIFF_ADD) | A_DIM);
 
                 bool highlight_this_line = false;
                 if (state->mapping) {
@@ -810,6 +866,9 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     if (is_regex) regfree(&regex);
                 }
 
+                if (current_conflict_block != 0) wattroff(win, A_DIM);
+                if (strncmp(line, ">>>>>>>", 7) == 0) current_conflict_block = 0;
+
                 // After drawing, mark the line as clean
                 if (line_idx < state->dirty_lines_cap) {
                     state->dirty_lines[line_idx] = false;
@@ -903,7 +962,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     if (state->lsp_document->diagnostics[i].severity == LSP_SEVERITY_ERROR) errors++;
                     else if (state->lsp_document->diagnostics[i].severity == LSP_SEVERITY_WARNING) warnings++;
                 }
-                if (errors > 0 || warnings > 0) snprintf(error_count_str, sizeof(error_count_str), "❌ %d ⚠️ %d | ", errors, warnings);
+                if (errors > 0 || warnings > 0) snprintf(error_count_str, sizeof(error_count_str), "☒ %d ⚠ %d | ", errors, warnings);
             }
 
             snprintf(left_bar, sizeof(left_bar), "WS %d | %s | %s%s%s", workspace_manager.active_workspace_idx + 1, mode_str, error_count_str, display_filename, state->buffer_modified ? "*" : "");

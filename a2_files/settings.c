@@ -33,7 +33,9 @@ A2Config global_config = {
     .spell_checker_enabled = true,
     .show_line_numbers = false,
     .show_error_count = true,
-    .abbreviate_filename = true
+    .abbreviate_filename = true,
+    .smart_save_enabled = true,
+    .git_gutter_enabled = true
 };
 
 typedef struct {
@@ -50,8 +52,10 @@ BoolSetting editor_bool_settings[] = {
     {"Expand Tab", &global_config.expand_tab},
     {"Relative Lines", &global_config.relative_line_numbers},
     {"Status Bar Error Count", &global_config.show_error_count},
-    {"Abbreviate Filename", &global_config.abbreviate_filename}
-};
+    {"Abbreviate Filename", &global_config.abbreviate_filename},
+    {"Smart Merge Save", &global_config.smart_save_enabled},
+    {"Git Diff Gutter", &global_config.git_gutter_enabled}
+    };
 
 const int num_bool_settings = sizeof(editor_bool_settings) / sizeof(BoolSetting);
 
@@ -343,6 +347,8 @@ void save_global_config() {
         fprintf(f, "lsp_hover=%d\n", global_config.lsp_hover);
         fprintf(f, "show_error_count=%d\n", global_config.show_error_count);
         fprintf(f, "abbreviate_filename=%d\n", global_config.abbreviate_filename);
+        fprintf(f, "smart_save_enabled=%d\n", global_config.smart_save_enabled);
+        fprintf(f, "git_gutter_enabled=%d\n", global_config.git_gutter_enabled);
         fclose(f);
     }
 }
@@ -375,6 +381,8 @@ void load_global_config() {
         else if (sscanf(line, "lsp_hover=%d", &val) == 1) global_config.lsp_hover = val;
         else if (sscanf(line, "show_error_count=%d", &val) == 1) global_config.show_error_count = val;
         else if (sscanf(line, "abbreviate_filename=%d", &val) == 1) global_config.abbreviate_filename = val;
+        else if (sscanf(line, "smart_save_enabled=%d", &val) == 1) global_config.smart_save_enabled = val;
+        else if (sscanf(line, "git_gutter_enabled=%d", &val) == 1) global_config.git_gutter_enabled = val;
         else if (sscanf(line, "default_spell_lang=%127s", str_val) == 1) {
             strncpy(global_config.default_spell_lang, str_val, sizeof(global_config.default_spell_lang) - 1);
             global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
@@ -400,6 +408,9 @@ void apply_settings_globally() {
                 state->show_line_numbers = global_config.show_line_numbers;
                 state->show_scrollbar = global_config.show_scrollbar;
                 
+                // Refresh Git Gutter state
+                editor_update_git_gutter(state);
+
                 // LSP Global Toggle
                 if (!global_config.lsp_enabled) {
                     if (state->lsp_client) {

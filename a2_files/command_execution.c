@@ -170,6 +170,14 @@ void process_command(EditorState *state, bool *should_exit) {
             } else if (strcmp(set_cmd, "nowrap") == 0) {
                 state->word_wrap_enabled = false;
                 editor_set_status_msg(state, "Word wrap disabled");
+            } else if (strcmp(set_cmd, "gutter") == 0) {
+                global_config.git_gutter_enabled = true;
+                editor_update_git_gutter(state);
+                editor_set_status_msg(state, "Git gutter enabled");
+            } else if (strcmp(set_cmd, "nogutter") == 0) {
+                global_config.git_gutter_enabled = false;
+                editor_update_git_gutter(state);
+                editor_set_status_msg(state, "Git gutter disabled");
             } else if (strcmp(set_cmd, "spelllang") == 0 && items == 2) {
                 if (spell_checker_load_dict(&state->spell_checker, set_val)) {
                     editor_set_status_msg(state, "Spell checker language set to: %s", set_val);

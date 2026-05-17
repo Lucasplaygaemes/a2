@@ -24,8 +24,10 @@
 #include <sys/select.h>
 #include <sys/wait.h> 
 #include <pthread.h>
+#include <ctype.h>
 
 #include "project.h"
+
 void create_new_empty_workspace();
 void load_global_config();
 
@@ -184,6 +186,12 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 editor_set_status_msg(state, "");
             } else if (state->mode == INSERT || state->mode == VISUAL) {
                 state->mode = NORMAL;
+            } else if (state->mode == NORMAL) {
+                // Clear search highlight on ESC in normal mode
+                if (state->last_search[0] != '\0') {
+                    state->last_search[0] = '\0';
+                    state->is_dirty = true;
+                }
             }
 
             if (state->is_moving) {
@@ -263,66 +271,80 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     }
 
     switch (state->mode) {
-            case VISUAL:
-                switch (ch) {
-                    case 22: // Ctrl+V for local paste
-                        editor_delete_selection(state);
-                        editor_paste(state);
-                        break;
-                    case KEY_BTAB: {
-                        push_undo(state);
-                        int start_line, end_line;
-                        if (state->selection_start_line < state->current_line) {
-                            start_line = state->selection_start_line;
-                            end_line = state->current_line;
-                        } else {
-                            push_undo(state);
-                            start_line = state->current_line;
-                            end_line = state->selection_start_line;
-                        }
-                        for (int i = start_line; i <= end_line; i++) {
-                            push_undo(state);
-                            editor_unindent_line(state, i);
-                        }
-                        break;
-                    }
-                    case '>': {
-                        push_undo(state);
-                        int start_line, end_line;
+        case VISUAL:
+        case NORMAL: {
+            char *line = state->lines[state->current_line];
+            bool is_conflict_line = (line && (strncmp(line, "<<<<<<<", 7) == 0 || strncmp(line, "=======", 7) == 0 || strncmp(line, ">>>>>>>", 7) == 0));
+            
+            if (state->mode == NORMAL) {
+                if (is_conflict_line) {
+                    if (tolower(ch) == 'm') { editor_resolve_conflict_interactive(state, 'm'); return; }
+                    if (tolower(ch) == 't') { editor_resolve_conflict_interactive(state, 't'); return; }
+                }
+                if (ch == '[') { editor_jump_to_conflict(state, false); return; }
+                if (ch == ']') { editor_jump_to_conflict(state, true); return; }
+            }
+
+            switch (ch) {
+                case 22: // Ctrl+V for local paste
+                    if (state->mode == VISUAL) editor_delete_selection(state);
+                    editor_paste(state);
+                    break;
+                case KEY_BTAB: {
+                    push_undo(state);
+                    int start_line, end_line;
+                    if (state->mode == VISUAL) {
                         if (state->selection_start_line < state->current_line) { start_line = state->selection_start_line; end_line = state->current_line; }
                         else { start_line = state->current_line; end_line = state->selection_start_line; }
-                        for (int i = start_line; i <= end_line; i++) editor_ident_line(state, i);
-                        break;
+                    } else { start_line = end_line = state->current_line; }
+                    for (int i = start_line; i <= end_line; i++) {
+                        editor_unindent_line(state, i);
                     }
-                    case '<': {
-                        push_undo(state);
-                        int start_line, end_line;
+                    break;
+                }
+                case '>': {
+                    push_undo(state);
+                    int start_line, end_line;
+                    if (state->mode == VISUAL) {
                         if (state->selection_start_line < state->current_line) { start_line = state->selection_start_line; end_line = state->current_line; }
                         else { start_line = state->current_line; end_line = state->selection_start_line; }
-                        for (int i = start_line; i <= end_line; i++) editor_unindent_line(state, i);
-                        break;
+                    } else { start_line = end_line = state->current_line; }
+                    for (int i = start_line; i <= end_line; i++) editor_ident_line(state, i);
+                    break;
+                }
+                case '<': {
+                    push_undo(state);
+                    int start_line, end_line;
+                    if (state->mode == VISUAL) {
+                        if (state->selection_start_line < state->current_line) { start_line = state->selection_start_line; end_line = state->current_line; }
+                        else { start_line = state->current_line; end_line = state->selection_start_line; }
+                    } else { start_line = end_line = state->current_line; }
+                    for (int i = start_line; i <= end_line; i++) editor_unindent_line(state, i);
+                    break;
+                }
+                case 'd':
+                    if (state->mode == VISUAL) editor_delete_selection(state);
+                    else { state->mode = OPERATOR_PENDING; state->pending_operator = 'd'; }
+                    break;
+                case KEY_ENTER:
+                case '\n':
+                    push_undo(state);
+                    editor_handle_enter(state);
+                    break;
+                case 25: // Ctrl+Y
+                    if (state->visual_selection_mode == VISUAL_MODE_NONE) {
+                        state->selection_start_line = state->current_line;
+                        state->selection_start_col = state->current_col;
+                        state->visual_selection_mode = VISUAL_MODE_YANK;
+                        editor_set_status_msg(state, "Global visual selection started");
+                    } else {
+                        editor_global_yank(state);
+                        state->visual_selection_mode = VISUAL_MODE_NONE;
                     }
-                    case 'd':
-                        editor_delete_selection(state);
-                        break;
-                    case KEY_ENTER:
-                    case '\n':
-                        push_undo(state);
-                        editor_handle_enter(state);
-                        break;
-                    case 25: // Ctrl+Y
-                        if (state->visual_selection_mode == VISUAL_MODE_NONE) {
-                            state->selection_start_line = state->current_line;
-                            state->selection_start_col = state->current_col;
-                            state->visual_selection_mode = VISUAL_MODE_YANK;
-                            editor_set_status_msg(state, "Global visual selection started");
-                        } else {
-                            editor_global_yank(state);
-                            state->visual_selection_mode = VISUAL_MODE_NONE;
-                        }
-                        break;
-                    case 'p': editor_paste(state); break;
-                    case 's':
+                    break;
+                case 'p': editor_paste(state); break;
+                case 's':
+                    if (state->mode == VISUAL) {
                         if (state->visual_selection_mode == VISUAL_MODE_NONE) {
                             state->selection_start_line = state->current_line;
                             state->selection_start_col = state->current_col;
@@ -331,8 +353,10 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                         } else {
                             state->visual_selection_mode = VISUAL_MODE_NONE;
                         }
-                        break;
-                    case 'y':
+                    }
+                    break;
+                case 'y':
+                    if (state->mode == VISUAL) {
                         if (state->visual_selection_mode == VISUAL_MODE_NONE) {
                             state->selection_start_line = state->current_line;
                             state->selection_start_col = state->current_col;
@@ -342,115 +366,127 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                             editor_yank_selection(state);
                             state->visual_selection_mode = VISUAL_MODE_NONE;
                         }
+                    } else {
+                        state->mode = OPERATOR_PENDING;
+                        state->pending_operator = 'y';
+                    }
+                    state->is_dirty = true;
+                    break;
+                case 'm':
+                    if (state->mode == VISUAL && state->visual_selection_mode != VISUAL_MODE_NONE) {
+                        editor_yank_to_move_register(state);
+                        editor_delete_selection(state);
+                        state->is_moving = true;
+                        editor_set_status_msg(state, "Text cut. Press 'm' again to paste.");
+                    } else if (state->is_moving) {
+                        editor_paste_from_move_register(state);
+                        state->is_moving = false;
+                        free(state->move_register);
+                        state->move_register = NULL;
+                        editor_set_status_msg(state, "Text moved.");
+                    }
+                    state->is_dirty = true;
+                    break;
+                case 'u':
+                    if (state->mode == NORMAL) {
+                        do_undo(state);
+                    } else {
                         state->is_dirty = true;
-                        break;
-                    case 'm':
-                        if (state->visual_selection_mode != VISUAL_MODE_NONE) {
-                            editor_yank_to_move_register(state);
-                            editor_delete_selection(state);
-                            state->is_moving = true;
-                            editor_set_status_msg(state, "Text cut. Press 'm' again to paste.");
-                        }
-                        state->is_dirty = true;
-                        break;
-                    default: // Fallback to normal mode keys
-                        switch (ch) {
-                            case 'u':
-                                state->is_dirty = true;
-                                state->current_col = 0;
-                                state->ideal_col = 0;
-                                editor_handle_enter(state);
-                                state->current_line--;
-                                state->mode = INSERT;
-                                break;
-                            case 'U':
-                                state->is_dirty = true;
-                                state->current_col = strlen(state->lines[state->current_line]);
-                                editor_handle_enter(state);
-                                state->mode = INSERT;
-                                break;
-                            case 'G':
-                                state->is_dirty = true;
-                                state->current_line = state->num_lines - 1;
-                                state->current_col = 0;
-                                state->ideal_col = 0;
-                                break;
-                            case 'g':
-                                state->is_dirty = true;
-                                state->current_line = 0;
-                                state->current_col = 0;
-                                state->ideal_col = 0;
-                                break;
-                            case 'v': state->mode = NORMAL; state->is_dirty = true; break;
-                            case 'i': state->mode = INSERT; state->is_dirty = true; break;
-                            case ':': state->mode = COMMAND; state->history_pos = state->history_count; state->command_buffer[0] = '\0'; state->command_pos = 0; state->is_dirty = true; break;
-                            case KEY_CTRL_RIGHT_BRACKET: next_window(); state->is_dirty = true; break;
-                            case KEY_CTRL_LEFT_BRACKET: previous_window(); state->is_dirty = true; break;
-                            case '/':
-                            case KEY_CTRL_F: editor_find(state); break;
-                            case KEY_CTRL_DEL: editor_delete_line(state); break;
-                            case KEY_CTRL_K: editor_delete_line(state); state->is_dirty = true; break;
-                            case KEY_CTRL_D: editor_find_next(state); break;
-                            case KEY_CTRL_A: editor_find_previous(state); break;
-                            case KEY_CTRL_G: display_directory_navigator(state); break;
-                            case 'o':
-                            case KEY_UP: {
-                                int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
-                                for (int i = 0; i < repeat; i++) {
-                                    if (state->current_line > 0) state->current_line--;
-                                }
-                                state->prefix_count = 0; 
-                                state->current_col = state->ideal_col;
-                                state->is_dirty = true;
-                                break;
-                            }
-                            case 'l':
-                            case KEY_DOWN: {
-                                int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
-                                for (int i = 0; i < repeat; i++) {
-                                    if (state->current_line < state->num_lines - 1) state->current_line++;
-                                }
-                                state->prefix_count = 0;
-                                state->current_col = state->ideal_col;
-                                state->is_dirty = true;
-                                break;
-                            }
-                            case 'k':
-                            case KEY_LEFT:
-                                if (state->current_col > 0) {
-                                    state->current_col--;
-                                    while (state->current_col > 0 && (state->lines[state->current_line][state->current_col] & 0xC0) == 0x80) {
-                                        state->current_col--;
-                                    }
-                                }
-                                state->ideal_col = state->current_col;
-                                state->is_dirty = true;
-                                break;
-                            case 231: // ç
-                            case KEY_RIGHT: {
-                                char* line = state->lines[state->current_line];
-                                if (line && state->current_col < (int)strlen(line)) {
-                                    state->current_col++;
-                                    while (line[state->current_col] != '\0' && (line[state->current_col] & 0xC0) == 0x80) {
-                                        state->current_col++;
-                                    }
-                                }
-                                state->ideal_col = state->current_col;
-                                state->is_dirty = true;
-                                } break;
-                            case 'O':
-                            case KEY_PPAGE: case KEY_SR: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; state->is_dirty = true; break;
-                            case 'L':
-                            case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; state->is_dirty = true; break;
-                            case 'K':
-                            case KEY_HOME: state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
-                            case 199: // Ç
-                            case KEY_END: { char* line = state->lines[state->current_line]; if(line) state->current_col = strlen(line); state->ideal_col = state->current_col; state->is_dirty = true; } break;
-                            case KEY_SDC: editor_delete_line(state); break;
-                        }
+                        state->current_col = 0;
+                        state->ideal_col = 0;
+                        editor_handle_enter(state);
+                        state->current_line--;
+                        state->mode = INSERT;
+                    }
+                    break;
+                case 'U':
+                    state->is_dirty = true;
+                    state->current_col = strlen(state->lines[state->current_line]);
+                    editor_handle_enter(state);
+                    state->mode = INSERT;
+                    break;
+                case 'G':
+                    state->is_dirty = true;
+                    state->current_line = state->num_lines - 1;
+                    state->current_col = 0;
+                    state->ideal_col = 0;
+                    break;
+                case 'g':
+                    state->is_dirty = true;
+                    state->current_line = 0;
+                    state->current_col = 0;
+                    state->ideal_col = 0;
+                    break;
+                case 'v': state->mode = (state->mode == VISUAL) ? NORMAL : VISUAL; state->is_dirty = true; break;
+                case 'i': state->mode = INSERT; state->is_dirty = true; break;
+                case ':': state->mode = COMMAND; state->history_pos = state->history_count; state->command_buffer[0] = '\0'; state->command_pos = 0; state->is_dirty = true; break;
+                case KEY_CTRL_RIGHT_BRACKET: next_window(); state->is_dirty = true; break;
+                case KEY_CTRL_LEFT_BRACKET: previous_window(); state->is_dirty = true; break;
+                case '/':
+                case KEY_CTRL_F: editor_find(state); break;
+                case KEY_CTRL_DEL: editor_delete_line(state); break;
+                case KEY_CTRL_K: editor_delete_line(state); state->is_dirty = true; break;
+                case KEY_CTRL_D: editor_find_next(state); break;
+                case KEY_CTRL_A: editor_find_previous(state); break;
+                case KEY_CTRL_G: display_directory_navigator(state); break;
+                case 'o':
+                case KEY_UP: {
+                    int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
+                    for (int i = 0; i < repeat; i++) {
+                        if (state->current_line > 0) state->current_line--;
+                    }
+                    state->prefix_count = 0; 
+                    state->current_col = state->ideal_col;
+                    state->is_dirty = true;
+                    break;
                 }
-                break;
-            case OPERATOR_PENDING: {
+                case 'l':
+                case KEY_DOWN: {
+                    int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
+                    for (int i = 0; i < repeat; i++) {
+                        if (state->current_line < state->num_lines - 1) state->current_line++;
+                    }
+                    state->prefix_count = 0;
+                    state->current_col = state->ideal_col;
+                    state->is_dirty = true;
+                    break;
+                }
+                case 'k':
+                case KEY_LEFT:
+                    if (state->current_col > 0) {
+                        state->current_col--;
+                        while (state->current_col > 0 && (state->lines[state->current_line][state->current_col] & 0xC0) == 0x80) {
+                            state->current_col--;
+                        }
+                    }
+                    state->ideal_col = state->current_col;
+                    state->is_dirty = true;
+                    break;
+                case 231: // ç
+                case KEY_RIGHT: {
+                    char* line = state->lines[state->current_line];
+                    if (line && state->current_col < (int)strlen(line)) {
+                        state->current_col++;
+                        while (line[state->current_col] != '\0' && (line[state->current_col] & 0xC0) == 0x80) {
+                            state->current_col++;
+                        }
+                    }
+                    state->ideal_col = state->current_col;
+                    state->is_dirty = true;
+                    } break;
+                case 'O':
+                case KEY_PPAGE: case KEY_SR: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; state->is_dirty = true; break;
+                case 'L':
+                case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; state->is_dirty = true; break;
+                case 'K':
+                case KEY_HOME: state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
+                case 199: // Ç
+                case KEY_END: { char* line = state->lines[state->current_line]; if(line) state->current_col = strlen(line); state->ideal_col = state->current_col; state->is_dirty = true; } break;
+                case KEY_SDC: editor_delete_line(state); break;
+            }
+            break;
+        }
+        case OPERATOR_PENDING: {
                 char op = state->pending_operator;
                 state->pending_operator = 0;
                 state->mode = NORMAL; // FIX: Return to NORMAL mode by default
@@ -790,6 +826,7 @@ int main(int argc, char *argv[]) {
                  EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
                  if (active_jw && active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
                     check_external_modification(active_jw->state);
+                    editor_update_git_gutter(active_jw->state);
                  }
              }
         }
@@ -906,3 +943,9 @@ int main(int argc, char *argv[]) {
     endwin(); 
     return 0;
 }
+
+
+
+
+
+
