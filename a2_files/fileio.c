@@ -10,6 +10,7 @@
 #include "cache.h"
 #include "settings.h"
 
+
 #include <limits.h> // For PATH_MAX
 #include <errno.h> // For errno, ENOENT
 #include <sys/stat.h> // For struct stat, stat
@@ -24,6 +25,219 @@
 // ===================================================================
 // 3. File I/O & Handling
 // ===================================================================
+
+char* editor_buffer_to_string(EditorState *state) {
+    size_t total_len = 0;
+    for (int i = 0; i < state->num_lines; i++) {
+        if (state->lines[i]) total_len += strlen(state->lines[i]) + 1;
+    }
+    char *buf = malloc(total_len + 1);
+    if (!buf) return NULL;
+    buf[0] = '\0';
+    for (int i = 0; i < state->num_lines; i++) {
+        if (state->lines[i]) {
+            strcat(buf, state->lines[i]);
+            strcat(buf, "\n");
+        }
+    }
+    return buf;
+}
+
+bool perform_smart_merge(EditorState *state) {
+    char *tmp_current = get_cache_filename("a2_merge_current.tmp");
+    char *tmp_base = get_cache_filename("a2_merge_base.tmp");
+    char *tmp_disk = get_cache_filename("a2_merge_disk.tmp");
+
+    if (!tmp_current || !tmp_base || !tmp_disk) {
+        if (tmp_current) free(tmp_current);
+        if (tmp_base) free(tmp_base);
+        if (tmp_disk) free(tmp_disk);
+        return false;
+    }
+
+    char *current_str = editor_buffer_to_string(state);
+    FILE *f = fopen(tmp_current, "w"); 
+    if (f) { fputs(current_str ? current_str : "", f); fclose(f); }
+    if (current_str) free(current_str);
+
+    f = fopen(tmp_base, "w"); 
+    if (f) { fputs(state->shadow_copy ? state->shadow_copy : "", f); fclose(f); }
+
+    char cmd[PATH_MAX * 3 + 100];
+    snprintf(cmd, sizeof(cmd), "git merge-file -p \"%s\" \"%s\" \"%s\" > \"%s\"", tmp_current, tmp_base, state->filename, tmp_disk);
+    
+    int exit_status = system(cmd);
+
+    if (WIFEXITED(exit_status)) {
+        int code = WEXITSTATUS(exit_status);
+        if (code >= 0) {
+            // Save original filename to restore it after loading merged content
+            char original_filename[PATH_MAX];
+            strncpy(original_filename, state->filename, PATH_MAX - 1);
+            original_filename[PATH_MAX - 1] = '\0';
+
+            if (code > 0) {
+                ui_show_message("CONFLICT DETECTED", "Entering War Room mode!\nLeft: BASE | Center: RESULT | Right: DISK\nUse '[' and ']' to navigate, 'm' (mine) or 't' (theirs) to resolve.");
+                
+                Workspace *ws = ACTIVE_WS;
+                ws->current_layout = LAYOUT_VERTICAL_SPLIT;
+                
+                // 1. Result (Center) - Load merged content into the ACTIVE buffer
+                load_file_core(state, tmp_disk);
+                // Restore the original filename so we don't save to the temp file!
+                strncpy(state->filename, original_filename, sizeof(state->filename) - 1);
+                
+                // 2. Mine/Base (Left) - Create a TEMPORARY window for context
+                create_new_window(NULL); 
+                EditorState *base_state = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->state;
+                load_file_core(base_state, tmp_base);
+                strcpy(base_state->filename, "[BASE VERSION]"); 
+                move_window_to_position(0); 
+                
+                // 3. Theirs/Disk (Right)
+                create_new_window(NULL);
+                EditorState *disk_state = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->state;
+                load_file_core(disk_state, original_filename); 
+                strcpy(disk_state->filename, "[DISK VERSION]"); 
+                
+                ws->active_window_idx = 1;
+                editor_jump_to_conflict(ws->windows[1]->state, true);
+            } else {
+                ui_show_message("MERGE SUCCESSFUL", "Your changes and external changes were merged successfully.");
+                load_file_core(state, tmp_disk);
+                // Restore the original filename so we don't save to the temp file!
+                strncpy(state->filename, original_filename, sizeof(state->filename) - 1);
+            }            
+            state->buffer_modified = true;
+            // IMPORTANT: Update shadow_copy to the new common ancestor (what was just on disk)
+            // so future saves are compared correctly.
+            if(state->shadow_copy) free(state->shadow_copy);
+            state->shadow_copy = editor_buffer_to_string(state);
+        }
+    }
+
+    remove(tmp_current); remove(tmp_base); remove(tmp_disk);
+    free(tmp_current); free(tmp_base); free(tmp_disk);
+    
+    return true;
+}
+
+// Returns true if the disk file matches the baseline shadow_copy
+bool file_content_matches_shadow_copy(const char *filename, const char *shadow_copy) {
+    if (!shadow_copy) return false;
+    FILE *f = fopen(filename, "r");
+    if (!f) return true; // If file doesn't exist, it can't differ from a baseline (shouldn't happen here)
+    
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    
+    if (size != (long)strlen(shadow_copy)) {
+        fclose(f);
+        return false;
+    }
+    
+    char *buf = malloc(size + 1);
+    if (!buf) { fclose(f); return true; } // Safety fallback
+    
+    size_t read_bytes = fread(buf, 1, size, f);
+    buf[read_bytes] = '\0';
+    fclose(f);
+    
+    bool matches = (strcmp(buf, shadow_copy) == 0);
+    free(buf);
+    return matches;
+}
+
+// Returns true if the buffer has any conflict markers
+bool editor_has_conflicts(EditorState *state) {
+    for (int i = 0; i < state->num_lines; i++) {
+        if (state->lines[i] && strncmp(state->lines[i], "<<<<<<<", 7) == 0) return true;
+    }
+    return false;
+}
+
+// Navigates to the next or previous conflict marker
+void editor_jump_to_conflict(EditorState *state, bool next) {
+    int start = state->current_line + (next ? 1 : -1);
+    for (int i = 0; i < state->num_lines; i++) {
+        int idx = (start + (next ? i : -i) + state->num_lines) % state->num_lines;
+        if (state->lines[idx] && strncmp(state->lines[idx], "<<<<<<<", 7) == 0) {
+            state->current_line = idx;
+            state->current_col = 0;
+            state->ideal_col = 0;
+            editor_set_status_msg(state, "Conflict found!");
+            return;
+        }
+    }
+    editor_set_status_msg(state, "No more conflicts found.");
+}
+
+// Resolves the conflict block at cursor
+void editor_resolve_conflict_interactive(EditorState *state, char choice) {
+    int start = -1, mid = -1, end = -1;
+
+    // Scan up for start
+    for (int i = state->current_line; i >= 0; i--) {
+        if (state->lines[i] && strncmp(state->lines[i], "<<<<<<<", 7) == 0) { start = i; break; }
+        if (i < state->current_line - 100) break;
+    }
+    // Scan down for mid and end
+    if (start != -1) {
+        for (int i = start; i < state->num_lines; i++) {
+            if (state->lines[i] && strncmp(state->lines[i], "=======", 7) == 0) mid = i;
+            if (state->lines[i] && strncmp(state->lines[i], ">>>>>>>", 7) == 0) { end = i; break; }
+            if (i > start + 200) break;
+        }
+    }
+
+    if (start == -1 || mid == -1 || end == -1) {
+        editor_set_status_msg(state, "Cursor is not inside a conflict block!");
+        return;
+    }
+
+    push_undo(state);
+    if (choice == 'm') { // KEEP MINE
+        for (int i = end; i >= mid; i--) editor_delete_specific_line(state, i);
+        editor_delete_specific_line(state, start);
+    } else if (choice == 't') { // KEEP THEIRS
+        for (int i = mid; i >= start; i--) editor_delete_specific_line(state, i);
+        editor_delete_specific_line(state, end - (mid - start + 1));
+    }
+
+    state->buffer_modified = true;
+    mark_all_lines_dirty(state);
+    
+    // Jump to next if exists
+    editor_jump_to_conflict(state, true);
+
+    // If no more conflicts, clean up the War Room auxiliary windows
+    if (!editor_has_conflicts(state)) {
+        Workspace *ws = ACTIVE_WS;
+        // Search and close windows with pseudo-names
+        for (int i = 0; i < ws->num_windows; i++) {
+            EditorWindow *jw = ws->windows[i];
+            if (jw->type == WINDOW_TYPE_EDITOR && jw->state &&
+                (strcmp(jw->state->filename, "[BASE VERSION]") == 0 || 
+                 strcmp(jw->state->filename, "[DISK VERSION]") == 0)) {
+                
+                // We use a internal-like close logic to avoid interactive prompts
+                // and because these are pseudo-files without modifications anyway.
+                EditorWindow *win_to_close = ws->windows[i];
+                for (int k = i; k < ws->num_windows - 1; k++) {
+                    ws->windows[k] = ws->windows[k+1];
+                }
+                ws->num_windows--;
+                if (ws->active_window_idx >= ws->num_windows) ws->active_window_idx = ws->num_windows - 1;
+                free_editor_window(win_to_close);
+                i--; // Re-check current index as it now has a new window
+            }
+        }
+        recalculate_window_layout();
+        redraw_all_windows();
+        editor_set_status_msg(state, "All conflicts resolved. War Room closed.");
+    }
+}
 
 // Helper function to determine syntax file based on extension
 const char * get_syntax_file_from_extension(const char* filename) {
@@ -139,6 +353,10 @@ void load_file_core(EditorState *state, const char *filename) {
     state->last_file_mod_time = get_file_mod_time(state->filename);
     editor_find_unmatched_brackets(state);
     mark_all_lines_dirty(state);
+
+    if (state->shadow_copy) free(state->shadow_copy);
+    state->shadow_copy = editor_buffer_to_string(state);
+    editor_update_git_gutter(state);
 }
 
 void load_file(EditorState *state, const char *filename) {
@@ -185,16 +403,103 @@ void save_file(EditorState *state) {
         editor_set_status_msg(state, "No file name. Use :w <filename>"); 
         return; 
     } 
+
+    // --- CONFLICT SAFETY LOCK ---
+    if (editor_has_conflicts(state)) {
+        ui_show_message("CONFLICTS PENDING", "You cannot save a file with conflict markers!\nPlease resolve them (use 'm' or 't') before saving.");
+        editor_jump_to_conflict(state, true);
+        return;
+    }
+
+    // Initialize shadow_copy if missing (e.g. file was already open)
+    if (state->shadow_copy == NULL && access(state->filename, F_OK) == 0) {
+        FILE *f = fopen(state->filename, "r");
+        if (f) {
+            fseek(f, 0, SEEK_END);
+            long size = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            state->shadow_copy = malloc(size + 1);
+            if (state->shadow_copy) {
+                size_t n = fread(state->shadow_copy, 1, size, f);
+                state->shadow_copy[n] = '\0';
+            }
+            fclose(f);
+        }
+    }
+
+    // --- DISCREPANCY DETECTION (SMART SAVE) ---
+    if (global_config.smart_save_enabled && state->shadow_copy != NULL) {
+        // DO NOT check for discrepancies in temporary pseudo-windows
+        if (strncmp(state->filename, "[", 1) != 0) {
+            if (!file_content_matches_shadow_copy(state->filename, state->shadow_copy)) {
+            
+            // Build conflict resolution UI
+            WINDOW *win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win;
+            int rows, cols; getmaxyx(win, rows, cols);
+            int win_h = 9; int win_w = 65;
+            int win_y = (rows - win_h) / 2; int win_x = (cols - win_w) / 2;
+            
+            WINDOW *dialog_win = newwin(win_h, win_w, win_y, win_x);
+            keypad(dialog_win, TRUE);
+            wbkgd(dialog_win, COLOR_PAIR(9));
+            box(dialog_win, 0, 0);
+            
+            wattron(dialog_win, A_BOLD);
+            mvwprintw(dialog_win, 1, 2, " FILE CHANGED ON DISK! ");
+            wattroff(dialog_win, A_BOLD);
+            mvwprintw(dialog_win, 2, 2, "A discrepancy was detected between your buffer and the file.");
+            mvwprintw(dialog_win, 4, 4, "(M)erge (Smart) - Combine changes using git");
+            mvwprintw(dialog_win, 5, 4, "(O)verwrite    - Force your version over disk");
+            mvwprintw(dialog_win, 6, 4, "(D)iff         - View side-by-side differences");
+            mvwprintw(dialog_win, 7, 4, "(C)ancel       - Return to editor without saving");
+            wrefresh(dialog_win);
+            
+            bool decided = false;
+            while (!decided) {
+                wint_t ch;
+                wget_wch(dialog_win, &ch);
+                ch = tolower(ch);
+                
+                if (ch == 'm') {
+                    delwin(dialog_win); redraw_all_windows();
+                    perform_smart_merge(state);
+                    editor_set_status_msg(state, "Merge attempted. Resolve markers and save again.");
+                    return;
+                } else if (ch == 'o') {
+                    decided = true; // Exit loop and proceed to save logic below
+                } else if (ch == 'd') {
+                    delwin(dialog_win); redraw_all_windows();
+                    char *tmp_current = get_cache_filename("a2_diff_current.tmp");
+                    if (tmp_current) {
+                        char *current_str = editor_buffer_to_string(state);
+                        FILE *f = fopen(tmp_current, "w");
+                        if (f) { fputs(current_str ? current_str : "", f); fclose(f); }
+                        if (current_str) free(current_str);
+                        char diff_cmd[PATH_MAX * 2 + 100];
+                        snprintf(diff_cmd, sizeof(diff_cmd), "git diff --no-index -- \"%s\" \"%s\"", state->filename, tmp_current);
+                        run_and_display_command(diff_cmd, "--- DISK vs CURRENT BUFFER ---");
+                        remove(tmp_current); free(tmp_current);
+                    }
+                    return;
+                } else if (ch == 'c' || ch == 27) {
+                    delwin(dialog_win); redraw_all_windows();
+                    editor_set_status_msg(state, "Save cancelled.");
+                    return;
+                }
+            }
+            delwin(dialog_win); redraw_all_windows();
+        }
+    }
     
+    // --- ACTUAL FILE SAVING LOGIC ---
     FILE *file = fopen(state->filename, "w");
     if (file) {
         for (int i = 0; i < state->num_lines; i++) {
-            if (state->lines[i]) {
-                fprintf(file, "%s\n", state->lines[i]);
-            }
+            if (state->lines[i]) fprintf(file, "%s\n", state->lines[i]);
         }
         fclose(file); 
         
+        // Finalize standard save
         char auto_save_filename[256];
         snprintf(auto_save_filename, sizeof(auto_save_filename), "%s%s", state->filename, AUTO_SAVE_EXTENSION);
         remove(auto_save_filename);
@@ -203,74 +508,49 @@ void save_file(EditorState *state) {
         strncpy(display_filename, state->filename, sizeof(display_filename) - 1);
         display_filename[sizeof(display_filename) - 1] = '\0';
         editor_set_status_msg(state, "%s written", display_filename);
+        
         state->buffer_modified = false;
         state->last_file_mod_time = get_file_mod_time(state->filename);
-        if (state->lsp_enabled) {
-          lsp_did_save(state);
-            }
+        
+        // Sync Shadow Copy
+        if (state->shadow_copy) free(state->shadow_copy);
+        state->shadow_copy = editor_buffer_to_string(state);
+        editor_update_git_gutter(state);
+
+        if (state->lsp_enabled) lsp_did_save(state);
     } else { 
+        // --- SUDO SAVE FALLBACK ---
         if (errno == EACCES) {
-           // access denied, offers to use sudo
            if (ui_confirm("Permission denied. Save with sudo?")) {
-               // create the name of the temporary file
                char *temp_filename = get_cache_filename("a2_sudo_save.XXXXXX");
-               if (!temp_filename) {
-                   editor_set_status_msg(state, "Error creating the temp file path for sudo.");
-                   return;
-               }
-               
+               if (!temp_filename) return;
                int fd = mkstemp(temp_filename);
-               if (fd == -1) {
-                   editor_set_status_msg(state, "Error creating temp file for sudo.");
-                   free(temp_filename);
-                   return;
-               }
-               
-               // write to the temporary buffer
+               if (fd == -1) { free(temp_filename); return; }
                FILE *temp_file = fdopen(fd, "w");
-               if (!temp_file) {
-                   editor_set_status_msg(state, "Error opening the temp file stream for sudo.");
-                   close(fd);
-                   remove(temp_filename);
-                   free(temp_filename);
-                   return;
-               }
-               for (int i = 0; i < state->num_lines; i++) {
-                   if (state->lines[i]) {
-                       fprintf(temp_file, "%s\n", state->lines[i]);
-                   }
-               }
+               if (!temp_file) { close(fd); remove(temp_filename); free(temp_filename); return; }
+               for (int i = 0; i < state->num_lines; i++) { if (state->lines[i]) fprintf(temp_file, "%s\n", state->lines[i]); }
                fclose(temp_file);
                
-               // construct and execute the command with sudo
                char command[PATH_MAX * 2 + 50];
                snprintf(command, sizeof(command), "cat \"%s\" | sudo tee \"%s\" > /dev/null", temp_filename, state->filename);
                
-               // temporarly exit ncurse to the password prompt appear
-               def_prog_mode();
-               endwin();
-               
+               def_prog_mode(); endwin();
                int ret = system(command);
+               reset_prog_mode(); refresh(); redraw_all_windows();
                
-               // returns to ncusrse
-               reset_prog_mode();
-               refresh();
-               redraw_all_windows();
-               
-               // clena the temporary file and check the result
-               
-               remove(temp_filename);
-               free(temp_filename);
+               remove(temp_filename); free(temp_filename);
                
                if (WIFEXITED(ret) && WEXITSTATUS(ret) == 0) {
-                   // sucess! update the state of the editor
                    state->buffer_modified = false;
                    state->last_file_mod_time = get_file_mod_time(state->filename);
-                   if (state->lsp_enabled) {
-                       lsp_did_save(state);
-                   }
+                   
+                   // Sync Shadow Copy
+                   if (state->shadow_copy) free(state->shadow_copy);
+                   state->shadow_copy = editor_buffer_to_string(state);
+                   editor_update_git_gutter(state);
+
+                   if (state->lsp_enabled) lsp_did_save(state);
                    editor_set_status_msg(state, "'%s' saved with sudo.", basename(state->filename));
-                   // if it saved sucessfully, remove the auto-save file
                    char auto_save_filename[PATH_MAX];
                    snprintf(auto_save_filename, sizeof(auto_save_filename), "%s%s", state->filename, AUTO_SAVE_EXTENSION);
                    remove(auto_save_filename);
@@ -281,13 +561,11 @@ void save_file(EditorState *state) {
                editor_set_status_msg(state, "Sudo save cancelled.");
            }
         } else {
-            // if it's even another error, show it messages
             editor_set_status_msg(state, "Error saving: %s", strerror(errno));
-            
         }
     } 
 }
-
+}
 void auto_save(EditorState *state) {
     if (strcmp(state->filename, "[No Name]") == 0) return;
     if (!state->buffer_modified) return;

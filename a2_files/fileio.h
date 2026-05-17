@@ -30,9 +30,12 @@ char * load_default_theme_name();
 
 void asm_convert_file(EditorState *state, const char *filename);
 
-
-
-
-
+// Conflict Resolution
+bool editor_has_conflicts(EditorState *state);
+void editor_jump_to_conflict(EditorState *state, bool next);
+void editor_resolve_conflict_interactive(EditorState *state, char choice);
+char* editor_buffer_to_string(EditorState *state);
+bool perform_smart_merge(EditorState *state);
+bool file_content_matches_shadow_copy(const char *filename, const char *shadow_copy);
 
 #endif // FILEIO_H
