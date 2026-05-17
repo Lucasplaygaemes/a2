@@ -10,6 +10,8 @@ Welcome to `a2`, a lightweight, fast, and configurable modal text editor inspire
 - **Command Palette:** A searchable command palette (`Alt+T`) for easy access to all editor commands.
 - **File Explorer:** A built-in file explorer (`:explorer`) to navigate and manage files.
 - **LSP Support:** Language Server Protocol integration for real-time diagnostics and code completion.
+- **Git Gutter:** Real-time git difference markers (`+`, `-`, `~`) in the margin to track changes since the last commit.
+- **Conflict Resolution (War Room):** A specialized 3-column mode (`BASE` \| `RESULT` \| `DISK`) that opens automatically during merge conflicts, with case-insensitive one-key resolution and automatic cleanup.
 - **Combined Autocompletion:** Pressing `Tab` provides a unified list of suggestions from both the LSP and local words in the buffer.
 - **Unified UI System:** A consistent dialog and input system for all editor interactions, ensuring stability and a smooth user experience.
 - **Robust Integrated Terminal:** A stable terminal emulator (`:term`) that correctly handles input translation and allows global editor shortcuts even while processes are running.
@@ -129,6 +131,8 @@ This guide details all available commands and keybindings.
 | `:set nopaste` | Disable paste mode. |
 | `:set wrap` | Enable word wrap. |
 | `:set nowrap` | Disable word wrap. |
+| `:set gutter` | Enable the Git Gutter. |
+| `:set nogutter` | Disable the Git Gutter. |
 | `:set bar <0|1>` | Set status bar style (0: minimalist, 1: segmented). |
 | `:set themedir <path>` | Set a persistent custom directory for themes. |
 | `:shortcuts-reset` | Reload default shortcuts from `ds.a2`. |
@@ -180,7 +184,10 @@ This guide details all available commands and keybindings.
 | `m` | Paste from the "move" register (used after cutting in Visual Mode). |
 | `q[a-z]` | Start or stop recording a macro. |
 | `@[a-z]` | Play back a macro. `@@` repeats the last one. |
+| `m` / `t` | Conflict Resolution: Keep Mine / Keep Theirs (case-insensitive, only on conflict lines). |
+| `[` / `]` | Jump to previous / next conflict marker. |
 | `Ctrl+F` | Start a search (supports regular expressions). |
+| `Esc` | Return to Normal mode / Clear search highlights. |
 | `Ctrl+D` / `Ctrl+A` | Find next / previous occurrence of the last search. |
 | `Ctrl+Del` / `Ctrl+K` | Delete the current line. |
 | `Alt+C` | Toggle comment on the current line or visual selection. |
