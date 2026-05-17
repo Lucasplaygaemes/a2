@@ -5,6 +5,7 @@
 
 // Function prototypes for others.c
 void editor_set_status_msg(EditorState *state, const char *format, ...);
+void editor_update_git_gutter(EditorState *state);
 
 // Bracket Matching
 void editor_find_unmatched_brackets(EditorState *state);
@@ -19,6 +20,7 @@ void editor_handle_enter(EditorState *state);
 void editor_handle_backspace(EditorState *state);
 void editor_insert_char(EditorState *state, wint_t ch);
 void editor_delete_line(EditorState *state);
+void editor_delete_specific_line(EditorState *state, int line_num);
 void editor_delete_selection(EditorState *state);
 void editor_yank_line(EditorState *state);
 void editor_yank_to_move_register(EditorState *state);

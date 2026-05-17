@@ -27,6 +27,65 @@ void key_to_string(KeyBinding *kb, char *buf, size_t size);
 #include <regex.h>
 #include <stdarg.h>
 
+void editor_update_git_gutter(EditorState *state) {
+    if (!state || strcmp(state->filename, "[No Name]") == 0) return;
+
+    if (!global_config.git_gutter_enabled) {
+        if (state->git_gutter) {
+            free(state->git_gutter);
+            state->git_gutter = NULL;
+        }
+        return;
+    }
+
+    if (state->git_gutter) free(state->git_gutter);
+    state->git_gutter = malloc(state->num_lines);
+    memset(state->git_gutter, ' ', state->num_lines);
+
+    char cmd[PATH_MAX + 100];
+    // --unified=0 ensures we only get the changed lines
+    snprintf(cmd, sizeof(cmd), "git diff --unified=0 \"%s\" 2>/dev/null", state->filename);
+    
+    FILE *fp = popen(cmd, "r");
+    if (!fp) return;
+
+    char line[1024];
+    while (fgets(line, sizeof(line), fp)) {
+        if (strncmp(line, "@@", 2) == 0) {
+            int old_start, old_count = 1, new_start, new_count = 1;
+            
+            // Try to parse the complex format: @@ -5,1 +5,1 @@
+            // and the simpler one: @@ -5 +5 @@
+            char *minus = strchr(line, '-');
+            char *plus = strchr(line, '+');
+            if (!minus || !plus) continue;
+
+            if (sscanf(minus, "-%d,%d", &old_start, &old_count) != 2) sscanf(minus, "-%d", &old_start);
+            if (sscanf(plus, "+%d,%d", &new_start, &new_count) != 2) sscanf(plus, "+%d", &new_start);
+
+            if (new_count == 0) {
+                // Pure deletion - mark the line before or after
+                int idx = new_start; // Line after deletion
+                if (idx >= 0 && idx < state->num_lines) state->git_gutter[idx] = '-';
+            } else if (old_count == 0) {
+                // Pure addition
+                for (int i = 0; i < new_count; i++) {
+                    int idx = new_start + i - 1;
+                    if (idx >= 0 && idx < state->num_lines) state->git_gutter[idx] = '+';
+                }
+            } else {
+                // Modification
+                for (int i = 0; i < new_count; i++) {
+                    int idx = new_start + i - 1;
+                    if (idx >= 0 && idx < state->num_lines) state->git_gutter[idx] = '~';
+                }
+            }
+        }
+    }
+    pclose(fp);
+    state->is_dirty = true;
+}
+
 void editor_set_status_msg(EditorState *state, const char *format, ...) {
     if (!state) return;
     va_list args;
@@ -662,6 +721,17 @@ void editor_insert_char(EditorState *state, wint_t ch) {
     }
 }
 
+void editor_delete_specific_line(EditorState *state, int line_num) {
+    if (line_num < 0 || line_num >= state->num_lines) return;
+    free(state->lines[line_num]);
+    for (int i = line_num; i < state->num_lines - 1; i++) {
+        state->lines[i] = state->lines[i + 1];
+    }
+    state->num_lines--;
+    state->lines[state->num_lines] = NULL;
+    if (state->current_line >= state->num_lines) state->current_line = state->num_lines - 1;
+}
+
 void editor_delete_line(EditorState *state) {
     state->buffer_modified = true;
     push_undo(state);
@@ -877,6 +947,14 @@ void editor_find(EditorState *state) {
                 state->top_line = orig_top;
                 state->left_col = orig_left;
                 search_term[0] = '\0';
+                
+                // Clear highlight
+                state->last_search[0] = '\0';
+                if (state->last_search_is_regex) {
+                    regfree(&state->compiled_regex);
+                    state->last_search_is_regex = false;
+                }
+                
                 goto end_find_loop;
                 
             case '\t': {
