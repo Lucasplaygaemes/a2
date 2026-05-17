@@ -48,7 +48,7 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     [ACT_MACRO_PLAY] = {ACT_MACRO_PLAY, 0, '@', false, false, "MACRO_PLAY", "Play Macro", "Execute a recorded macro"},
     
     // File
-    [ACT_SAVE_FILE] = {ACT_SAVE_FILE, 0, 'W', true, false, "SAVE_FILE", "Save", "Save the current file"},
+    [ACT_SAVE_FILE] = {ACT_SAVE_FILE, 0, 'w', true, false, "SAVE_FILE", "Save", "Save the current file"},
     [ACT_OPENS_RECENT] = {ACT_OPENS_RECENT, 0, 'b', true, false, "OPEN_RECENT", "Recent Files", "List the recently open files"},
     [ACT_FUZZY_FINDER] = {ACT_FUZZY_FINDER, 0, 'f', true, false, "FUZZY_FINDER", "Fuzzy Finder", "Fast Search of files by the name"},
     [ACT_EXPLORER] = {ACT_EXPLORER, 0, 'e', true, false, "EXPLORER", "Explorer", "Open the file explorer"},

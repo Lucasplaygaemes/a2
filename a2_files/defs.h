@@ -316,6 +316,9 @@ typedef struct {
     
     bool show_error_count;
     bool abbreviate_filename;
+    
+    bool smart_save_enabled;
+    bool git_gutter_enabled;
 } A2Config;
 
 extern A2Config global_config;
@@ -401,9 +404,9 @@ typedef struct EditorState {
     
     // Lsp new flags
     bool lsp_completion_pending;         // Flag to indicate a requestion is in the line
-   
+
     struct timespec lsp_last_keystroke; // Timestamp for the last relevant key
-    
+
     // Assembly things
     AssemblyMapping *mapping;
 
@@ -414,12 +417,17 @@ typedef struct EditorState {
     bool spell_hover_pending;
     char *spell_hover_message;
     char spell_hover_word[100];
-    
+
     int prefix_count;
-    
+
     int search_start_line;
     int search_start_col;
+    char *shadow_copy;
+
+    // Git Gutter
+    char *git_gutter; // Array of chars [num_lines] storing '+', '-', '~' or ' '
 } EditorState;
+
 #endif
 
 #ifndef EXPLORERSTATE_DEFINED
