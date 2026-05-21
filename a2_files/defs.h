@@ -550,6 +550,7 @@ typedef enum {
     ACT_SETTINGS,          // Alt+Shift+S
     ACT_HELP,              // :help
     ACT_KSC,               // :ksc
+    ACT_TOGGLE_FLOATING_TERMINAL,
     
     ACT_COUNT              // totalizer
 } EditorAction;
@@ -665,6 +666,8 @@ typedef struct {
     int num_windows;
     int active_window_idx;
     LayoutMode current_layout;
+    struct EditorWindow *floating_term;
+    bool floating_terminal_visible;
 } Workspace;
 #endif
 

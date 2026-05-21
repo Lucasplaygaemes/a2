@@ -141,7 +141,8 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     // System
     [ACT_SETTINGS] = {ACT_SETTINGS, 0, 'S', true, false, "SETTINGS", "Configuration", "Open settings panel"},
     [ACT_HELP] = {ACT_HELP, 0, 0, false, false, "HELP", "Help", "Show manual"},
-    [ACT_KSC] = {ACT_KSC, 0, 0, false, false, "KSC", "Shortcuts", "Show shortcut list (:ksc)"}
+    [ACT_KSC] = {ACT_KSC, 0, 0, false, false, "KSC", "Shortcuts", "Show shortcut list (:ksc)"},
+    [ACT_TOGGLE_FLOATING_TERMINAL] = {ACT_TOGGLE_FLOATING_TERMINAL, 0, KEY_F(12), true, false, "TOGGLE_FLOAT_TERM", "Toggle Floating Term", "Hide or show the floating terminal overlay"}
 };
 
 void reset_bindings_to_default() {
