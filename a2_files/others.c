@@ -2906,11 +2906,12 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
     // Actions that DO NOT need an active file state (work in terminals/explorer/etc)
     bool is_global_manager_action = (action >= ACT_NEW_WINDOW && action <= ACT_ROTATE_WINDOWS) || 
                                     (action >= ACT_SWITCH_TO_WS_1 && action <= ACT_MOVE_WIN_TO_POS_9) ||
-                                    (action == ACT_SETTINGS || action == ACT_HELP || action == ACT_KSC || action == ACT_TIMER_REPORT);
+                                    (action == ACT_SETTINGS || action == ACT_HELP || action == ACT_KSC || action == ACT_TIMER_REPORT || action == ACT_TOGGLE_FLOATING_TERMINAL);
     
     if (!state && !is_global_manager_action) return;
     
     switch (action) {
+        case ACT_TOGGLE_FLOATING_TERMINAL: toggle_floating_terminal(); break;
         case ACT_INSERT_MODE: state->mode = INSERT; state->is_dirty = true; break;
         case ACT_NORMAL_MODE: state->mode = NORMAL; state->is_dirty = true; break;
         case ACT_VISUAL_MODE: state->mode = VISUAL; state->is_dirty = true; break;

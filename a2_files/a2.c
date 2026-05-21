@@ -666,6 +666,11 @@ int main(int argc, char *argv[]) {
                     if (jw->state->lsp_client->stdout_fd > max_fd) max_fd = jw->state->lsp_client->stdout_fd;
                 }
             }
+            // Monitoring Floating Terminal PTY even if hidden
+            if (ws->floating_term && ws->floating_term->term.pty_fd != -1) {
+                FD_SET(ws->floating_term->term.pty_fd, &readfds);
+                if (ws->floating_term->term.pty_fd > max_fd) max_fd = ws->floating_term->term.pty_fd;
+            }
         }
 
         // Use a timeout to make the loop non-blocking
@@ -682,7 +687,61 @@ int main(int argc, char *argv[]) {
 
         // Process keyboard input
         if (FD_ISSET(STDIN_FILENO, &readfds)) {
-            EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
+            Workspace *ws = ACTIVE_WS;
+            if (ws->floating_term && ws->floating_terminal_visible && ws->floating_term->term.pty_fd != -1) {
+                wint_t ch;
+                if (wget_wch(stdscr, &ch) != ERR) {
+                    bool shortcut_consumed = false;
+                    
+                    // 1. Check for Alt shortcuts (ESC + key)
+                    if (ch == 27) {
+                        nodelay(stdscr, TRUE);
+                        wint_t next_ch;
+                        int res = wget_wch(stdscr, &next_ch);
+                        nodelay(stdscr, FALSE);
+                        if (res != ERR) {
+                            if (handle_global_shortcut(next_ch, true, false, &should_exit)) {
+                                shortcut_consumed = true;
+                            }
+                        }
+                    } 
+                    // 2. Check for Ctrl and other modified global shortcuts
+                    else if (ch > 0 && ch < 32 && ch != 10 && ch != 13 && ch != 9 && ch != 8) {
+                        if (handle_global_shortcut(ch, false, true, &should_exit)) {
+                            shortcut_consumed = true;
+                        }
+                    }
+                    // 3. Check for any other direct global shortcut (ONLY for special/function keys)
+                    else if (ch >= 256) {
+                        if (handle_global_shortcut(ch, false, false, &should_exit)) {
+                            shortcut_consumed = true;
+                        }
+                    }
+
+                    if (!shortcut_consumed) {
+                        if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
+                            char b = 0x7f; write(ws->floating_term->term.pty_fd, &b, 1);
+                        } else if (ch == '\n' || ch == KEY_ENTER || ch == 13) {
+                            char b = '\r'; write(ws->floating_term->term.pty_fd, &b, 1);
+                        } else if (ch == KEY_UP) {
+                            write(ws->floating_term->term.pty_fd, "\033[A", 3);
+                        } else if (ch == KEY_DOWN) {
+                            write(ws->floating_term->term.pty_fd, "\033[B", 3);
+                        } else if (ch == KEY_RIGHT) {
+                            write(ws->floating_term->term.pty_fd, "\033[C", 3);
+                        } else if (ch == KEY_LEFT) {
+                            write(ws->floating_term->term.pty_fd, "\033[D", 3);
+                        } else {
+                            char mb_buf[MB_CUR_MAX + 1];
+                            int n = wctomb(mb_buf, ch);
+                            if (n > 0) write(ws->floating_term->term.pty_fd, mb_buf, n);
+                        }
+                    }
+                }
+                continue; // Skip normal input processing
+            }
+
+            EditorWindow *active_jw = ws->windows[ws->active_window_idx];
             if (active_jw->type == WINDOW_TYPE_EDITOR) {
                 wint_t ch;
                 if (wget_wch(stdscr, &ch) != ERR) {
@@ -812,6 +871,24 @@ int main(int argc, char *argv[]) {
                         buffer[bytes_lidos] = '\0';
                         lsp_process_received_data(jw->state, buffer, bytes_lidos);
                     }
+                }
+            }
+            
+            // Process floating terminal output
+            if (ws->floating_term && ws->floating_term->term.pty_fd != -1 && FD_ISSET(ws->floating_term->term.pty_fd, &readfds)) {
+                char buffer[4096];
+                ssize_t bytes_lidos = read(ws->floating_term->term.pty_fd, buffer, sizeof(buffer) - 1);
+                if (bytes_lidos > 0) {
+                    buffer[bytes_lidos] = '\0';
+                    vterm_render(ws->floating_term->term.vterm, buffer, bytes_lidos);
+                } else {
+                    // Process finished or error. 
+                    close(ws->floating_term->term.pty_fd);
+                    ws->floating_term->term.pty_fd = -1;
+                    waitpid(ws->floating_term->term.pid, NULL, 0); 
+                    ws->floating_term->term.pid = -1;
+                    ws->floating_terminal_visible = false; 
+                    redraw_all_windows();
                 }
             }
         }
