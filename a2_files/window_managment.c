@@ -36,10 +36,18 @@ void create_new_empty_workspace();
 void atualizar_tamanho_pty(EditorWindow *jw) {
     if (jw->type != WINDOW_TYPE_TERMINAL || jw->term.pty_fd == -1) return;
 
-    int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
+    int rows, cols;
+    if (jw->content_win) {
+        getmaxyx(jw->content_win, rows, cols);
+    } else {
+        int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
+        rows = jw->height - (2 * border_offset);
+        cols = jw->width - (2 * border_offset);
+    }
+
     struct winsize ws;
-    ws.ws_row = jw->height - (2 * border_offset);
-    ws.ws_col = jw->width - (2 * border_offset);
+    ws.ws_row = rows;
+    ws.ws_col = cols;
     ws.ws_xpixel = 0;
     ws.ws_ypixel = 0;
     
@@ -87,7 +95,7 @@ void create_generic_terminal_window(char *const argv[]) {
     
     if (!jw->content_win) jw->content_win = jw->win;
     
-    jw->term.vterm = vterm_create(rows - 2 * border_offset, cols - 2 * border_offset, VTERM_FLAG_XTERM_256);
+    jw->term.vterm = vterm_create(cols - 2 * border_offset, rows - 2 * border_offset, VTERM_FLAG_XTERM_256);
     
     vterm_wnd_set(jw->term.vterm, jw->content_win);
     
@@ -447,6 +455,70 @@ void close_active_workspace(bool *should_exit) {
     }
 }
 
+void toggle_floating_terminal() {
+    Workspace *ws = ACTIVE_WS;
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+
+    // Re-create terminal if it was closed or finished
+    if (ws->floating_term != NULL && ws->floating_term->term.pty_fd == -1) {
+        free_editor_window(ws->floating_term);
+        ws->floating_term = NULL;
+    }
+
+    if (ws->floating_term == NULL) {
+        // Criar o terminal se não existir
+        ws->floating_term = calloc(1, sizeof(EditorWindow));
+        ws->floating_term->type = WINDOW_TYPE_TERMINAL;
+        
+        // Define posição flutuante (centralizado, 80% da tela)
+        ws->floating_term->height = rows * 0.8;
+        ws->floating_term->width = cols * 0.8;
+        if (ws->floating_term->height < 5) ws->floating_term->height = 5;
+        if (ws->floating_term->width < 20) ws->floating_term->width = 20;
+        ws->floating_term->y = (rows - ws->floating_term->height) / 2;
+        ws->floating_term->x = (cols - ws->floating_term->width) / 2;
+        
+        int master_fd;
+        pid_t pid = forkpty(&master_fd, NULL, NULL, NULL);
+
+        if (pid < 0) {
+            free(ws->floating_term);
+            ws->floating_term = NULL;
+            return;
+        }
+        if (pid == 0) {
+            setenv("TERM", "xterm-256color", 1);
+            execlp("/bin/bash", "/bin/bash", NULL);
+            exit(127);
+        }
+        
+        ws->floating_term->term.pid = pid;
+        ws->floating_term->term.pty_fd = master_fd;
+        fcntl(master_fd, F_SETFL, O_NONBLOCK);
+
+        ws->floating_term->win = newwin(ws->floating_term->height, ws->floating_term->width, 
+                                        ws->floating_term->y, ws->floating_term->x);
+        ws->floating_term->content_win = derwin(ws->floating_term->win, ws->floating_term->height - 2, ws->floating_term->width - 2, 1, 1);
+        keypad(ws->floating_term->win, TRUE);
+        keypad(ws->floating_term->content_win, TRUE);
+
+        ws->floating_term->term.vterm = vterm_create(ws->floating_term->width - 2, ws->floating_term->height - 2, VTERM_FLAG_XTERM_256);
+        vterm_wnd_set(ws->floating_term->term.vterm, ws->floating_term->content_win);
+        vterm_set_userptr(ws->floating_term->term.vterm, ws->floating_term);
+
+        ws->floating_terminal_visible = true;
+        atualizar_tamanho_pty(ws->floating_term);
+    } else {
+        ws->floating_terminal_visible = !ws->floating_terminal_visible;
+    }
+    
+    if (ws->floating_terminal_visible) {
+        touchwin(stdscr);
+    }
+    redraw_all_windows();
+}
+
 void recalculate_window_layout() {
     Workspace *ws = ACTIVE_WS;
     int screen_rows, screen_cols;
@@ -454,6 +526,7 @@ void recalculate_window_layout() {
 
     if (ws->num_windows == 0) return;
 
+    // ... (rest of layout logic remains same) ...
     if ((ws->num_windows != 2 && ws->current_layout == LAYOUT_HORIZONTAL_SPLIT) ||
         (ws->num_windows != 3 && ws->current_layout == LAYOUT_MAIN_AND_STACK) ||
         (ws->num_windows != 4 && ws->current_layout == LAYOUT_GRID)) {
@@ -575,6 +648,33 @@ void recalculate_window_layout() {
             atualizar_tamanho_pty(jw);
         }
     }
+
+    // Update floating terminal if it exists
+    if (ws->floating_term) {
+        ws->floating_term->height = screen_rows * 0.8;
+        ws->floating_term->width = screen_cols * 0.8;
+        if (ws->floating_term->height < 5) ws->floating_term->height = 5;
+        if (ws->floating_term->width < 20) ws->floating_term->width = 20;
+        ws->floating_term->y = (screen_rows - ws->floating_term->height) / 2;
+        ws->floating_term->x = (screen_cols - ws->floating_term->width) / 2;
+
+        if (ws->floating_term->content_win && ws->floating_term->content_win != ws->floating_term->win) {
+            delwin(ws->floating_term->content_win);
+        }
+        if (ws->floating_term->win) delwin(ws->floating_term->win);
+
+        ws->floating_term->win = newwin(ws->floating_term->height, ws->floating_term->width, 
+                                        ws->floating_term->y, ws->floating_term->x);
+        ws->floating_term->content_win = derwin(ws->floating_term->win, ws->floating_term->height - 2, ws->floating_term->width - 2, 1, 1);
+        keypad(ws->floating_term->win, TRUE);
+        keypad(ws->floating_term->content_win, TRUE);
+
+        if (ws->floating_term->term.vterm) {
+            vterm_wnd_set(ws->floating_term->term.vterm, ws->floating_term->content_win);
+            vterm_resize(ws->floating_term->term.vterm, ws->floating_term->width - 2, ws->floating_term->height - 2);
+            atualizar_tamanho_pty(ws->floating_term);
+        }
+    }
 }        
 /*        
         if (jw->win) {
@@ -689,6 +789,9 @@ void free_workspace(Workspace *ws) {
     for (int i = 0; i < ws->num_windows; i++) {
         free_editor_window(ws->windows[i]);
     }
+    if (ws->floating_term) {
+        free_editor_window(ws->floating_term);
+    }
     free(ws->windows);
     free(ws);
 }
@@ -723,6 +826,8 @@ void redraw_all_windows() {
         }
         if (any_dirty) break;
     }
+    
+    if (ws->floating_terminal_visible) any_dirty = true;
 
     // If no windows are dirty, we can often just reposition the cursor and do a minimal update.
     if (!any_dirty) {
@@ -804,6 +909,19 @@ void redraw_all_windows() {
         }
     }
 
+    // 2. Draw floating terminal last so it overlays everything
+    if (ws->floating_term && ws->floating_terminal_visible) {
+        // Draw border and shadow
+        wattron(ws->floating_term->win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
+        box(ws->floating_term->win, 0, 0);
+        mvwprintw(ws->floating_term->win, 0, 2, " FLOATING TERMINAL ");
+        wattroff(ws->floating_term->win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
+        
+        vterm_wnd_update(ws->floating_term->term.vterm, -1, 0, VTERM_WND_RENDER_ALL);
+        wnoutrefresh(ws->floating_term->win);
+        wnoutrefresh(ws->floating_term->content_win);
+    }
+
     // 3. Position the cursor and update the physical screen
     position_active_cursor();
     doupdate();
@@ -816,6 +934,14 @@ void position_active_cursor() {
     }
 
     Workspace *ws = ACTIVE_WS;
+
+    // Handle floating terminal cursor
+    if (ws->floating_term && ws->floating_terminal_visible) {
+        curs_set(1);
+        vterm_wnd_update(ws->floating_term->term.vterm, -1, 0, VTERM_WND_RENDER_ALL);
+        return;
+    }
+
     if (ws->num_windows == 0) { curs_set(0); return; };
 
     EditorWindow* active_jw = ws->windows[ACTIVE_WS->active_window_idx];
