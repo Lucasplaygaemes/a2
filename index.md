@@ -14,6 +14,7 @@ Welcome to `a2`, a lightweight, fast, and configurable modal text editor inspire
 - **Conflict Resolution (War Room):** A specialized 3-column mode (`BASE` \| `RESULT` \| `DISK`) that opens automatically during merge conflicts, with case-insensitive one-key resolution and automatic cleanup.
 - **Combined Autocompletion:** Pressing `Tab` provides a unified list of suggestions from both the LSP and local words in the buffer.
 - **Unified UI System:** A consistent dialog and input system for all editor interactions, ensuring stability and a smooth user experience.
+- **Floating Terminal:** A toggleable terminal window (`Alt+F12`) that overlays the editor, allowing quick command execution without disrupting your workspace layout.
 - **Robust Integrated Terminal:** A stable terminal emulator (`:term`) that correctly handles input translation and allows global editor shortcuts even while processes are running.
 - **Macros:** Record and play back sequences of commands (`q` and `@`) to automate repetitive tasks.
 - **Advanced Search & Replace:** A powerful `:s` command to perform targeted text substitutions.
@@ -156,6 +157,7 @@ This guide details all available commands and keybindings.
 | `Alt+B` | Show a list of recently opened files. |
 | `Alt+s` | Start a project-wide content search (grep). |
 | `Alt+Shift+S` | Open the **Settings Panel**. |
+| `Alt+F12` | Toggle the **Floating Terminal**. |
 | `Alt+X` | Close the active window. |
 | `Alt+Enter` | Create a new split window. |
 | `Ctrl+]` / `Ctrl+[` | Navigate to the next/previous window. |
