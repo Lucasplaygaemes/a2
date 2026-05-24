@@ -76,7 +76,7 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     [ACT_PREV_WORD] = {ACT_PREV_WORD, 0, 'q', true, false, "PREV_WORD", "Previous Word", "Jump to previous word"},
     
     // Search and tools
-    [ACT_FIND_LOCAL] = {ACT_FIND_LOCAL, 0, 6, false, true, "FIND_LOCAL", "Locate", "Search for text in file (CTRL+F)"},
+    [ACT_FIND_LOCAL] = {ACT_FIND_LOCAL, 0, 6, false, true, "FIND_LOCAL", "Locate", "Interactive search (/term). For replace, use :s/find/repl/"},
     [ACT_FIND_NEXT] = {ACT_FIND_NEXT, 0, 4, false, true, "FIND_NEXT", "Find Next", "Next occurrence (CTRL+D)"},
     [ACT_FIND_PREV] = {ACT_FIND_PREV, 0, 1, false, true, "FIND_PREV", "Find Previous", "Previous occurrence (CTRL+A)"},
     [ACT_GREP_PROJECT] = {ACT_GREP_PROJECT, 0, 's', true, false, "GREP", "Grep", "Search text in all project"},
