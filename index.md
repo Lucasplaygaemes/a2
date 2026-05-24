@@ -188,7 +188,7 @@ This guide details all available commands and keybindings.
 | `@[a-z]` | Play back a macro. `@@` repeats the last one. |
 | `m` / `t` | Conflict Resolution: Keep Mine / Keep Theirs (case-insensitive, only on conflict lines). |
 | `[` / `]` | Jump to previous / next conflict marker. |
-| `Ctrl+F` | Start a search (supports regular expressions). |
+| `Ctrl+F` | Interactive search. Type `/term`. Supports regex automatically. `Tab` autocompletes words. For replace, use `:s/find/repl/`. |
 | `Esc` | Return to Normal mode / Clear search highlights. |
 | `Ctrl+D` / `Ctrl+A` | Find next / previous occurrence of the last search. |
 | `Ctrl+Del` / `Ctrl+K` | Delete the current line. |
