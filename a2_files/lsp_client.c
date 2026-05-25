@@ -758,13 +758,14 @@ void get_word_at_cursor(EditorState *state, char *buffer, size_t buffer_size) {
     
     // Find the end of the word
     int end = state->current_col;
-    while (end < strlen(line) && isalnum(line[end])) {
+    int line_len = (int)strlen(line);
+    while (end < line_len && isalnum(line[end])) {
         end++;
     }
     
     // Copy the word
     int length = end - start;
-    if (length > 0 && length < buffer_size) {
+    if (length > 0 && (size_t)length < buffer_size) {
         strncpy(buffer, line + start, length);
         buffer[length] = '\0';
     } else {
@@ -1031,9 +1032,15 @@ void lsp_parse_completion(EditorState *state, const char *json_response) {
     for (size_t i = 0; i < num_items; i++) {
         json_t *item = json_array_get(items, i);
         json_t *label = json_object_get(item, "label");
+        json_t *detail = json_object_get(item, "detail");
+        json_t *insert_text = json_object_get(item, "insertText");
         
         if (json_is_string(label)) {
-            add_suggestion(state, json_string_value(label));
+            const char *label_str = json_string_value(label);
+            const char *detail_str = json_is_string(detail) ? json_string_value(detail) : NULL;
+            const char *insert_str = json_is_string(insert_text) ? json_string_value(insert_text) : NULL;
+            
+            add_suggestion(state, label_str, detail_str, insert_str);
         }
     }
     
