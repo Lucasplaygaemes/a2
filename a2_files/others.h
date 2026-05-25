@@ -60,7 +60,7 @@ void do_undo(EditorState *state);
 void do_redo(EditorState *state);
 
 // Autocompletion
-void add_suggestion(EditorState *state, const char *suggestion);
+void add_suggestion(EditorState *state, const char *label, const char *detail, const char *insert_text);
 void editor_start_completion(EditorState *state);
 void editor_start_command_completion(EditorState *state);
 void editor_start_theme_completion(EditorState *state);

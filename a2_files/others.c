@@ -1,4 +1,5 @@
 #include "others.h" // Include its own header
+#include "themes.h"
 #include "fileio.h"
 #include "defs.h" // For EditorState, etc.
 #include "lsp_client.h" // For lsp_did_change
@@ -906,7 +907,7 @@ void editor_find(EditorState *state) {
         // If completing, update buffer with selection
         if (state->completion_mode != COMPLETION_NONE && state->num_suggestions > 0) {
             snprintf(state->command_buffer, sizeof(state->command_buffer), "/%s", 
-                     state->completion_suggestions[state->selected_suggestion]);
+                     state->completion_items[state->selected_suggestion].label);
             state->command_pos = strlen(state->command_buffer);
         }
 
@@ -967,7 +968,7 @@ void editor_find(EditorState *state) {
                     if (strlen(current_query) == 0) break;
 
                     state->num_suggestions = 0;
-                    state->completion_suggestions = NULL;
+                    state->completion_items = NULL;
                     const char *delims = " \t\n\r`~!@#$%^&*()-=+[]{}|\\;:'\",.<>/?";
                     for (int i = 0; i < state->num_lines; i++) {
                         if (!state->lines[i]) continue;
@@ -975,7 +976,7 @@ void editor_find(EditorState *state) {
                         char *saveptr, *tok = strtok_r(line_copy, delims, &saveptr);
                         while (tok) {
                             if (strncmp(tok, current_query, strlen(current_query)) == 0) {
-                                add_suggestion(state, tok);
+                                add_suggestion(state, tok, NULL, NULL);
                             }
                             tok = strtok_r(NULL, delims, &saveptr);
                         }
@@ -1286,13 +1287,19 @@ void do_redo(EditorState *state) {
 // Autocompletion
 // ===================================================================
 
-void add_suggestion(EditorState *state, const char *suggestion) {
+void add_suggestion(EditorState *state, const char *label, const char *detail, const char *insert_text) {
+    // avoid duplicates
     for (int i = 0; i < state->num_suggestions; i++) {
-        if (strcmp(state->completion_suggestions[i], suggestion) == 0) return;
+        if (strcmp(state->completion_items[i].label, label) == 0) return;
     }
+    
     state->num_suggestions++;
-    state->completion_suggestions = realloc(state->completion_suggestions, state->num_suggestions * sizeof(char*));
-    state->completion_suggestions[state->num_suggestions - 1] = strdup(suggestion);
+    state->completion_items = realloc(state->completion_items, state->num_suggestions * sizeof(CompletionItem));
+    
+    CompletionItem *item = &state->completion_items[state->num_suggestions - 1];
+    item->label = strdup(label);
+    item->detail = detail ? strdup(detail) : strdup("");
+    item->insert_text = insert_text ? strdup(insert_text) : strdup(label);
 }
 
 void editor_start_completion(EditorState *state) {
@@ -1308,7 +1315,7 @@ void editor_start_completion(EditorState *state) {
     state->word_to_complete[len] = '\0';
 
     state->num_suggestions = 0;
-    state->completion_suggestions = NULL;
+    state->completion_items = NULL;
 
     const char *delimiters = " \t\n\r`~!@#$%^&*()-=+[]{}|\\;:'\",.<>/?";
     for (int i = 0; i < state->num_lines; i++) {
@@ -1317,7 +1324,7 @@ void editor_start_completion(EditorState *state) {
         char *saveptr;
         for (char *token = strtok_r(line_copy, delimiters, &saveptr); token != NULL; token = strtok_r(NULL, delimiters, &saveptr)) {
             if (strncmp(token, state->word_to_complete, len) == 0 && strlen(token) > len) {
-                add_suggestion(state, token);
+                add_suggestion(state, token, NULL, NULL);
             }
         }
         free(line_copy);
@@ -1328,7 +1335,7 @@ void editor_start_completion(EditorState *state) {
             if (strstr(state->lines[i], known_headers[j].header_name)) {
                 for (int k = 0; k < known_headers[j].count; k++) {
                     if (strncmp(known_headers[j].symbols[k], state->word_to_complete, len) == 0) {
-                        add_suggestion(state, known_headers[j].symbols[k]);
+                        add_suggestion(state, known_headers[j].symbols[k], NULL, NULL);
                     }
                 }
             }
@@ -1348,15 +1355,19 @@ void editor_start_command_completion(EditorState *state) {
     int len = strlen(buffer);
     if (len == 0) return;
 
-    if (state->completion_suggestions) {
-        for (int i = 0; i < state->num_suggestions; i++) free(state->completion_suggestions[i]);
-        free(state->completion_suggestions);
-        state->completion_suggestions = NULL;
+    if (state->completion_items) {
+        for (int i = 0; i < state->num_suggestions; i++) {
+            free(state->completion_items[i].label);
+            free(state->completion_items[i].detail);
+            free(state->completion_items[i].insert_text);
+        }
+        free(state->completion_items);
+        state->completion_items = NULL;
     }
     state->num_suggestions = 0;
 
     for (int i = 0; i < num_editor_commands; i++) {
-        if (strncmp(editor_commands[i], buffer, len) == 0) add_suggestion(state, editor_commands[i]);
+        if (strncmp(editor_commands[i], buffer, len) == 0) add_suggestion(state, editor_commands[i], NULL, NULL);
     }
 
     if (state->num_suggestions > 0) {
@@ -1376,10 +1387,14 @@ void editor_start_file_completion(EditorState *state) {
     char *prefix = space + 1;
     int prefix_len = strlen(prefix);
 
-    if (state->completion_suggestions) {
-        for (int i = 0; i < state->num_suggestions; i++) free(state->completion_suggestions[i]);
-        free(state->completion_suggestions);
-        state->completion_suggestions = NULL;
+    if (state->completion_items) {
+        for (int i = 0; i < state->num_suggestions; i++) {
+            free(state->completion_items[i].label);
+            free(state->completion_items[i].detail);
+            free(state->completion_items[i].insert_text);
+        }
+        free(state->completion_items);
+        state->completion_items = NULL;
     }
     state->num_suggestions = 0;
 
@@ -1388,7 +1403,7 @@ void editor_start_file_completion(EditorState *state) {
     d = opendir(".");
     if (d) {
         while ((dir = readdir(d)) != NULL) {
-            if (strncmp(dir->d_name, prefix, prefix_len) == 0) add_suggestion(state, dir->d_name);
+            if (strncmp(dir->d_name, prefix, prefix_len) == 0) add_suggestion(state, dir->d_name, NULL, NULL);
         }
         closedir(d);
     }
@@ -1405,36 +1420,35 @@ void editor_start_file_completion(EditorState *state) {
 
 void editor_end_completion(EditorState *state) {
     state->completion_mode = COMPLETION_NONE;
-    if (state->completion_win) { delwin(state->completion_win); state->completion_win = NULL; }
-    for (int i = 0; i < state->num_suggestions; i++) free(state->completion_suggestions[i]);
-    free(state->completion_suggestions);
-    state->completion_suggestions = NULL;
+    if (state->completion_win) {
+        delwin(state->completion_win);
+        state->completion_win = NULL;
+    }
+    
+    if (state->completion_items) {
+        for (int i = 0; i < state->num_suggestions; i++) {
+            free(state->completion_items[i].label);
+            free(state->completion_items[i].detail);
+            free(state->completion_items[i].insert_text);
+        }
+        free(state->completion_items);
+        state->completion_items = NULL;
+    }
     state->num_suggestions = 0;
     curs_set(1);
 }
 
 void editor_apply_completion(EditorState *state) {
     if (state->completion_mode == COMPLETION_NONE || state->num_suggestions == 0) return;
-
-    const char* original_selected = state->completion_suggestions[state->selected_suggestion];
-    char* temp_selected = strdup(original_selected);
-
-    // Clean up the suggestion from the LSP
-    char* actual_start = temp_selected;
-    while (*actual_start && !isalnum(*actual_start)) {
-        actual_start++;
-    }
-    char *paren = strchr(actual_start, '(');
-    if (paren) {
-        *paren = '\0';
-    }
-    const char* selected = actual_start;
-
+    
+    // we take the insertion text (printf(const char *format....))
+    const char *selected = state->completion_items[state->selected_suggestion].insert_text;
 
     if (state->completion_mode == COMPLETION_TEXT) {
         state->buffer_modified = true;
         char* original_line = state->lines[state->current_line];
         char* rest_of_line = original_line + state->current_col;
+        
         int new_len = state->completion_start_col + strlen(selected) + strlen(rest_of_line);
         char* new_line = malloc(new_len + 1);
 
@@ -1445,6 +1459,7 @@ void editor_apply_completion(EditorState *state) {
 
         free(state->lines[state->current_line]);
         state->lines[state->current_line] = new_line;
+        
         state->current_col = state->completion_start_col + strlen(selected);
         state->ideal_col = state->current_col;
         mark_line_as_dirty(state, state->current_line);
@@ -1467,7 +1482,6 @@ void editor_apply_completion(EditorState *state) {
         }
     }
 
-    free(temp_selected);
     editor_end_completion(state);
 }
 
@@ -1480,10 +1494,13 @@ void editor_draw_completion_win(WINDOW *win, EditorState *state) {
         return;
     }
 
-    int max_len = 0;
+    int max_label_len = 0;
+    int max_detail_len = 0;
     for (int i = 0; i < state->num_suggestions; i++) {
-        int len = strlen(state->completion_suggestions[i]);
-        if (len > max_len) max_len = len;
+        int l_len = strlen(state->completion_items[i].label);
+        int d_len = strlen(state->completion_items[i].detail);
+        if (l_len > max_label_len) max_label_len = l_len;
+        if (d_len > max_detail_len) max_detail_len = d_len;
     }
 
     int parent_rows, parent_cols;
@@ -1500,7 +1517,9 @@ void editor_draw_completion_win(WINDOW *win, EditorState *state) {
         if (max_h < 3) max_h = 3; if (max_h > 15) max_h = 15;
 
         win_h = state->num_suggestions < max_h ? state->num_suggestions : max_h;
-        win_w = max_len + 2;
+        win_w = max_label_len + max_detail_len + 4; // Extra space for padding
+        if (win_w > parent_cols - 2) win_w = parent_cols - 2;
+
         win_y = getbegy(win) + cursor_screen_y + 1;
         win_x = getbegx(win) + get_visual_col(state->lines[state->current_line], state->completion_start_col) % parent_cols;
 
@@ -1508,15 +1527,14 @@ void editor_draw_completion_win(WINDOW *win, EditorState *state) {
         if (win_y < getbegy(win)) win_y = getbegy(win);
         if (win_x < getbegx(win)) win_x = getbegx(win);
 
-    } else if (state->completion_mode == COMPLETION_COMMAND || state->completion_mode == COMPLETION_FILE || (state->completion_mode == COMPLETION_TEXT && state->mode == COMMAND)) {
+    } else { // COMPLETION_COMMAND or COMPLETION_FILE
         int max_h = parent_rows - 2; if (max_h < 3) max_h = 3; if (max_h > 15) max_h = 15;
         win_h = state->num_suggestions < max_h ? state->num_suggestions : max_h;
-        win_w = max_len + 2;
+        win_w = max_label_len + 4;
+        if (win_w > parent_cols - 2) win_w = parent_cols - 2;
         win_y = getbegy(win) + parent_rows - 2 - win_h;
         if (win_y < getbegy(win)) win_y = getbegy(win);
         win_x = getbegx(win) + 1;
-    } else {
-        return;
     }
 
     if(state->completion_win) delwin(state->completion_win); 
@@ -1526,8 +1544,17 @@ void editor_draw_completion_win(WINDOW *win, EditorState *state) {
     for (int i = 0; i < win_h; i++) {
         int suggestion_idx = state->completion_scroll_top + i;
         if (suggestion_idx < state->num_suggestions) {
+            CompletionItem *item = &state->completion_items[suggestion_idx];
             if (suggestion_idx == state->selected_suggestion) wattron(state->completion_win, A_REVERSE);
-            mvwprintw(state->completion_win, i, 1, "%.*s", win_w - 2, state->completion_suggestions[suggestion_idx]);
+            
+            // Draw label
+            mvwprintw(state->completion_win, i, 1, "%-*s", max_label_len, item->label);
+            
+            // Draw detail with dimmed attribute to avoid background color conflicts
+            if (suggestion_idx != state->selected_suggestion) wattron(state->completion_win, A_DIM);
+            mvwprintw(state->completion_win, i, 1 + max_label_len + 1, " %s", item->detail);
+            if (suggestion_idx != state->selected_suggestion) wattroff(state->completion_win, A_DIM);
+
             if (suggestion_idx == state->selected_suggestion) wattroff(state->completion_win, A_REVERSE);
         }
     }
@@ -1895,7 +1922,7 @@ void editor_expand_snippet(EditorState *state) {
     if (state->completion_mode == COMPLETION_NONE || state->num_suggestions == 0) return;
     
     // Simple snippet logic: expand function calls into templates
-    char *suggestion = state->completion_suggestions[state->selected_suggestion];
+    char *suggestion = state->completion_items[state->selected_suggestion].label;
     if (strstr(suggestion, "(")) {
         editor_apply_completion(state);
         // After applying, if it's a function, we could add more logic here
@@ -2111,10 +2138,14 @@ void editor_start_theme_completion(EditorState *state) {
     char *prefix = space + 1;
     int prefix_len = strlen(prefix);
 
-    if (state->completion_suggestions) {
-        for (int i = 0; i < state->num_suggestions; i++) free(state->completion_suggestions[i]);
-        free(state->completion_suggestions);
-        state->completion_suggestions = NULL;
+    if (state->completion_items) {
+        for (int i = 0; i < state->num_suggestions; i++) {
+            free(state->completion_items[i].label);
+            free(state->completion_items[i].detail);
+            free(state->completion_items[i].insert_text);
+        }
+        free(state->completion_items);
+        state->completion_items = NULL;
     }
     state->num_suggestions = 0;
 
@@ -2163,7 +2194,7 @@ void editor_start_theme_completion(EditorState *state) {
             while ((dir = readdir(d)) != NULL) {
                 if (strstr(dir->d_name, ".theme")) {
                     if (strncmp(dir->d_name, prefix, prefix_len) == 0) {
-                        add_suggestion(state, dir->d_name);
+                        add_suggestion(state, dir->d_name, NULL, NULL);
                     }
                 }
             }
@@ -2850,9 +2881,14 @@ void editor_start_spell_completion(EditorState *state) {
     
     if (strlen(word) == 0) return;
     
-    if (state->completion_suggestions) {
-        for (int i = 0; i < state->num_suggestions; i++) free(state->completion_suggestions[i]);
-        state->completion_suggestions = NULL;
+    if (state->completion_items) {
+        for (int i = 0; i < state->num_suggestions; i++) {
+            free(state->completion_items[i].label);
+            free(state->completion_items[i].detail);
+            free(state->completion_items[i].insert_text);
+        }
+        free(state->completion_items);
+        state->completion_items = NULL;
     }
     state->num_suggestions = 0;
     
@@ -2861,7 +2897,7 @@ void editor_start_spell_completion(EditorState *state) {
     
     if (n_sugg > 0 && suggestions) {
         for (int i = 0; i < n_sugg; i++) {
-            add_suggestion(state, suggestions[i]);
+            add_suggestion(state, suggestions[i], NULL, NULL);
         }
         spell_checker_free_suggestions(&state->spell_checker, suggestions, n_sugg);
         
@@ -3227,8 +3263,8 @@ void display_dynamic_ksc() {
         char key_text[32];
         key_to_string(&global_bindings[i], key_text, sizeof(key_text));
         
-        const char* name = global_bindings[i].name ? global_bindings[i].name : "Unknown";
-        const char* desc = global_bindings[i].desc ? global_bindings[i].desc : "No description";
+        const char* name = global_bindings[i].name[0] != '\0' ? global_bindings[i].name : "Unknown";
+        const char* desc = global_bindings[i].desc[0] != '\0' ? global_bindings[i].desc : "No description";
 
         fprintf(f, "- *%-15s* : %s (%s)\n", 
                 key_text, 
