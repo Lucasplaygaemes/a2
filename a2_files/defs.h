@@ -325,6 +325,16 @@ extern A2Config global_config;
 
 #endif 
 
+
+#ifndef COMPLETIONITEM_DEFINED
+#define COMPLETIONITEM_DEFINED
+typedef struct {
+    char *label;     // The basic name, "printf"
+    char *detail;    // Extra info: "<stdio.h>" or the prototype "(const char *format. ...)"
+    char *insert_text; // What will be inserted: "printf(const char format...)"
+} CompletionItem;
+#endif
+
 #ifndef EDITORSTATE_DEFINED
 #define EDITORSTATE_DEFINED
 typedef struct EditorState {
@@ -343,7 +353,7 @@ typedef struct EditorState {
     char *command_history[MAX_COMMAND_HISTORY];
     int history_count, history_pos;
     CompletionMode completion_mode;
-    char **completion_suggestions;
+    CompletionItem *completion_items;
     int num_suggestions, selected_suggestion, completion_start_col, completion_scroll_top;
     WINDOW *completion_win;
     char word_to_complete[100];
@@ -426,6 +436,9 @@ typedef struct EditorState {
 
     // Git Gutter
     char *git_gutter; // Array of chars [num_lines] storing '+', '-', '~' or ' '
+    
+    
+    
 } EditorState;
 
 #endif
