@@ -33,10 +33,9 @@ The a2 has undergone significant "polishing" to reach a professional standard:
 - `:ksc`: Displays dynamic shortcut list.
 
 # Refactoring
-The first major refactoring phases are complete:
-1. **Input Refactor**: Modularized and stabilized key processing.
-2. **Standardization**: Full transition from Portuguese to English in the core architecture.
-3. **UI Consolidation**: Unified disparate dialog systems into a single API.
+The refactor of the EditorState and the others.c is if not complete, it's almost, yet bugs are not a surprise and more optimizations are to come.
+The process was made with AI help for speed, the code was revised but errors can pass unseen, will fix them as find and possible.
+Any help as usually is welcomed.
 
 # Assembly!
 Because i'm learning assembly, a new function was added to the code to help me understand better what C functions turned in what in assembly, i will fix any bugs that i find.
