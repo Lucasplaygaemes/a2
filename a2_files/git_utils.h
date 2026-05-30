@@ -29,11 +29,11 @@ static inline int run_command_and_get_output(const char *cmd, char *buffer, size
 static inline void editor_update_git_branch(EditorState *state) {
     // Robust command to get the current branch. Redirects stderr to null.
     const char *cmd = "git rev-parse --abbrev-ref HEAD 2>/dev/null";
-    if (run_command_and_get_output(cmd, state->git_branch, sizeof(state->git_branch))) {
-        // Success, branch name is in state->git_branch
+    if (run_command_and_get_output(cmd, state->buffer.git_branch, sizeof(state->buffer.git_branch))) {
+        // Success, branch name is in state->buffer.git_branch
     } else {
         // Failure (likely not a git repo), clear the branch name
-        state->git_branch[0] = '\0';
+        state->buffer.git_branch[0] = '\0';
     }
 }
 
