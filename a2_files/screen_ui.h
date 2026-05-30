@@ -34,4 +34,6 @@ bool ui_ask_input(const char *prompt, char *buffer, int max_len);
 // Shows a message of warning/information centralized
 void ui_show_message(const char *title, const char *message);
 
+void draw_settings_header(WINDOW *win, const char *title, int width);
+
 #endif // SCREEN_UI_H
