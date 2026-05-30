@@ -348,7 +348,7 @@ end_nav:
 }
 
 void prompt_for_directory_change(EditorState *state) {
-    if (state->buffer_modified) {
+    if (state->buffer.modified) {
         if (!ui_confirm("Unsaved changes. Proceed with directory change?")) {
             editor_set_status_msg(state, "Cancelled.");
             return;

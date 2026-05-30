@@ -252,12 +252,6 @@ void save_ds_keybindings() {
     editor_set_status_msg(get_any_editor_state(), "Default shortcuts saved to %s", path);
 }
 
-static void draw_settings_header(WINDOW *win, const char *title, int width) {
-    wattron(win, COLOR_PAIR(PAIR_STATUS_BAR) | A_BOLD);
-    for (int i = 0; i < width; i++) mvwaddch(win, 0, i, ' ');
-    mvwprintw(win, 0, 2, " %s ", title);
-    wattroff(win, COLOR_PAIR(PAIR_STATUS_BAR) | A_BOLD);
-}
 
 bool is_key_duplicate(int idx) {
     KeyBinding *current = &global_bindings[idx];
@@ -401,34 +395,34 @@ void apply_settings_globally() {
             if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
                 EditorState *state = jw->state;
                 
-                state->word_wrap_enabled = global_config.word_wrap;
-                state->auto_indent_on_newline = global_config.auto_indent;
-                state->paste_mode = global_config.paste_mode;
-                state->status_bar_mode = global_config.status_bar_mode;
-                state->show_line_numbers = global_config.show_line_numbers;
-                state->show_scrollbar = global_config.show_scrollbar;
+                state->view.word_wrap = global_config.word_wrap;
+                state->input.auto_indent = global_config.auto_indent;
+                state->input.paste_mode = global_config.paste_mode;
+                state->view.status_bar_mode = global_config.status_bar_mode;
+                state->view.show_line_numbers = global_config.show_line_numbers;
+                state->view.show_scrollbar = global_config.show_scrollbar;
                 
                 // Refresh Git Gutter state
                 editor_update_git_gutter(state);
 
                 // LSP Global Toggle
                 if (!global_config.lsp_enabled) {
-                    if (state->lsp_client) {
+                    if (state->lsp.client) {
                         lsp_shutdown(state);
                     }
-                } else if (global_config.lsp_enabled && !state->lsp_client) {
+                } else if (global_config.lsp_enabled && !state->lsp.client) {
                     // Re-initialize might start LSP if supported
                     lsp_initialize(state);
                 }
                 
                 // Spell Checker Global Toggle
                 if (!global_config.spell_checker_enabled) {
-                    if (state->spell_checker.enabled) {
-                        spell_checker_unload_dict(&state->spell_checker);
+                    if (state->spell.checker.enabled) {
+                        spell_checker_unload_dict(&state->spell.checker);
                     }
-                } else if (global_config.spell_checker_enabled && !state->spell_checker.enabled) {
+                } else if (global_config.spell_checker_enabled && !state->spell.checker.enabled) {
                     // Logic similar to lsp_initialize spell check policy
-                    const char *ext = strrchr(state->filename, '.');
+                    const char *ext = strrchr(state->buffer.filename, '.');
                     bool lsp_will_be_enabled = false;
                     if (ext) {
                         if (strcmp(ext, ".c") == 0 || strcmp(ext, ".h") == 0 ||
@@ -439,11 +433,11 @@ void apply_settings_globally() {
                     }
                     bool enable_spell_check = (ext && strcmp(ext, ".txt") == 0) || !lsp_will_be_enabled;
                     if (enable_spell_check && global_config.default_spell_lang[0] != '\0') {
-                        spell_checker_load_dict(&state->spell_checker, global_config.default_spell_lang);
+                        spell_checker_load_dict(&state->spell.checker, global_config.default_spell_lang);
                     }
                 }
                 
-                state->is_dirty = true;
+                state->buffer.is_dirty = true;
                 mark_all_lines_dirty(state);
             }
         }

@@ -56,10 +56,10 @@ void project_save_session(const char *project_name) {
             if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
                 EditorState *state = jw->state;
                 json_object_set_new(win_obj, "type", json_string("editor"));
-                json_object_set_new(win_obj, "filepath", json_string(state->filename));
-                json_object_set_new(win_obj, "cursor_line", json_integer(state->current_line));
-                json_object_set_new(win_obj, "cursor_col", json_integer(state->current_col));
-                json_object_set_new(win_obj, "top_line", json_integer(state->top_line));
+                json_object_set_new(win_obj, "filepath", json_string(state->buffer.filename));
+                json_object_set_new(win_obj, "cursor_line", json_integer(state->cursor.line));
+                json_object_set_new(win_obj, "cursor_col", json_integer(state->cursor.col));
+                json_object_set_new(win_obj, "top_line", json_integer(state->view.top_line));
             } else if (jw->type == WINDOW_TYPE_TERMINAL) {
                 json_object_set_new(win_obj, "type", json_string("terminal"));
             }
@@ -141,10 +141,10 @@ bool project_load_session(const char *project_name) {
                 create_new_window(filepath);
                 EditorState *state = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->state;
                 if (!state) continue;
-                state->current_line = json_integer_value(json_object_get(win_value, "cursor_line"));
-                state->current_col = json_integer_value(json_object_get(win_value, "cursor_col"));
-                state->top_line = json_integer_value(json_object_get(win_value, "top_line"));
-                state->ideal_col = state->current_col;
+                state->cursor.line = json_integer_value(json_object_get(win_value, "cursor_line"));
+                state->cursor.col = json_integer_value(json_object_get(win_value, "cursor_col"));
+                state->view.top_line = json_integer_value(json_object_get(win_value, "top_line"));
+                state->cursor.ideal_col = state->cursor.col;
             } else if (strcmp(type, "terminal") == 0) {
                 execute_command_in_terminal("");
             }

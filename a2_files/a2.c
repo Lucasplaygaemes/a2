@@ -77,18 +77,18 @@ void inicializar_ncurses() {
 
 void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     // Reset spell hover on any action
-    state->spell_hover_pending = true;
-    clock_gettime(CLOCK_MONOTONIC, &state->spell_hover_last_move);
-    if (state->spell_hover_message) {
-        free(state->spell_hover_message);
-        state->spell_hover_message = NULL;
-        state->is_dirty = true;
+    state->spell.hover_pending = true;
+    clock_gettime(CLOCK_MONOTONIC, &state->spell.hover_last_move);
+    if (state->spell.hover_message) {
+        free(state->spell.hover_message);
+        state->spell.hover_message = NULL;
+        state->buffer.is_dirty = true;
     }
 
     // Manipulação especial para Ctrl+O para evitar reversão imediata.
-    if (state->mode == INSERT && ch == 15) { // 15 é Ctrl+O
-        state->mode = NORMAL;
-        state->single_command_mode = true;
+    if (state->input.mode == INSERT && ch == 15) { // 15 é Ctrl+O
+        state->input.mode = NORMAL;
+        state->input.single_command_mode = true;
         editor_set_status_msg(state, "-- NORMAL (one command) --");
         return; // Sai imediatamente para esperar pelo próximo comando.
     }
@@ -99,56 +99,56 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
 
     // Detect if current key triggers macro recording to avoid recording the 'stop' key
     bool is_ctrl_tmp = (ch > 0 && ch < 32 && ch != 10 && ch != 13 && ch != 9);
-    EditorAction current_act = get_action_from_key(ch, false, is_ctrl_tmp, state->pending_sequence_key);
+    EditorAction current_act = get_action_from_key(ch, false, is_ctrl_tmp, state->input.pending_sequence_key);
 
-    if (state->is_recording_macro && current_act != ACT_MACRO_RECORD) {
-        int reg_idx = state->recording_register_idx;
+    if (state->input.is_recording_macro && current_act != ACT_MACRO_RECORD) {
+        int reg_idx = state->input.recording_register_idx;
         char new_chars[MB_CUR_MAX + 1];
         int len = wctomb(new_chars, ch);
         if (len > 0) {
             new_chars[len] = '\0';
-            char *old_macro = state->macro_registers[reg_idx];
+            char *old_macro = state->input.macro_registers[reg_idx];
             if (old_macro == NULL) {
-                state->macro_registers[reg_idx] = strdup(new_chars);
+                state->input.macro_registers[reg_idx] = strdup(new_chars);
             } else {
                 char *new_macro = malloc(strlen(old_macro) + len + 1);
                 strcpy(new_macro, old_macro);
                 strcat(new_macro, new_chars);
                 free(old_macro);
-                state->macro_registers[reg_idx] = new_macro;
+                state->input.macro_registers[reg_idx] = new_macro;
             }
         }
     }
     EditorWindow* active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
     WINDOW *active_win = active_jw->win;
     
-    if (state->completion_mode != COMPLETION_NONE) {
+    if (state->input.completion_mode != COMPLETION_NONE) {
         int win_h = 0;
-        if (state->completion_win) win_h = getmaxy(state->completion_win);
+        if (state->input.completion_win) win_h = getmaxy(state->input.completion_win);
 
         switch(ch) {
             case KEY_UP:
-                state->selected_suggestion--;
-                if (state->selected_suggestion < 0) {
-                    state->selected_suggestion = state->num_suggestions - 1;
+                state->input.selected_suggestion--;
+                if (state->input.selected_suggestion < 0) {
+                    state->input.selected_suggestion = state->input.num_suggestions - 1;
                     if(win_h > 0) {
-                       int new_top = state->num_suggestions - win_h;
-                       state->completion_scroll_top = new_top > 0 ? new_top : 0;
+                       int new_top = state->input.num_suggestions - win_h;
+                       state->input.completion_scroll_top = new_top > 0 ? new_top : 0;
                     }
                 }
-                if (state->selected_suggestion < state->completion_scroll_top) {
-                    state->completion_scroll_top = state->selected_suggestion;
+                if (state->input.selected_suggestion < state->input.completion_scroll_top) {
+                    state->input.completion_scroll_top = state->input.selected_suggestion;
                 }
                 return; // Use return to prevent further processing
             case ' ':
             case KEY_DOWN:
-                state->selected_suggestion++;
-                if (state->selected_suggestion >= state->num_suggestions) {
-                    state->selected_suggestion = 0;
-                    state->completion_scroll_top = 0;
+                state->input.selected_suggestion++;
+                if (state->input.selected_suggestion >= state->input.num_suggestions) {
+                    state->input.selected_suggestion = 0;
+                    state->input.completion_scroll_top = 0;
                 }
-                if (win_h > 0 && state->selected_suggestion >= state->completion_scroll_top + win_h) {
-                    state->completion_scroll_top = state->selected_suggestion - win_h + 1;
+                if (win_h > 0 && state->input.selected_suggestion >= state->input.completion_scroll_top + win_h) {
+                    state->input.completion_scroll_top = state->input.selected_suggestion - win_h + 1;
                 }
                 return;
             case KEY_ENTER: case '\n':
@@ -181,30 +181,30 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         nodelay(active_win, FALSE);
 
         if (get_result == ERR) { // Pure ESC
-            if (state->pending_sequence_key != 0) {
-                state->pending_sequence_key = 0;
+            if (state->input.pending_sequence_key != 0) {
+                state->input.pending_sequence_key = 0;
                 editor_set_status_msg(state, "");
-            } else if (state->mode == INSERT || state->mode == VISUAL) {
-                state->mode = NORMAL;
-            } else if (state->mode == NORMAL) {
+            } else if (state->input.mode == INSERT || state->input.mode == VISUAL) {
+                state->input.mode = NORMAL;
+            } else if (state->input.mode == NORMAL) {
                 // Clear search highlight on ESC in normal mode
-                if (state->last_search[0] != '\0') {
-                    state->last_search[0] = '\0';
-                    state->is_dirty = true;
+                if (state->search.last_term[0] != '\0') {
+                    state->search.last_term[0] = '\0';
+                    state->buffer.is_dirty = true;
                 }
             }
 
-            if (state->is_moving) {
-                state->is_moving = false;
-                free(state->move_register);
-                state->move_register = NULL;
+            if (state->cursor.is_moving) {
+                state->cursor.is_moving = false;
+                free(state->cursor.move_register);
+                state->cursor.move_register = NULL;
                 editor_set_status_msg(state, "Move cancelled.");
             }
         } else { 
             // 1. If we have a pending leader, try to resolve it
-            if (state->pending_sequence_key != 0) {
-                EditorAction act = get_action_from_key(next_ch, false, false, state->pending_sequence_key);
-                state->pending_sequence_key = 0;
+            if (state->input.pending_sequence_key != 0) {
+                EditorAction act = get_action_from_key(next_ch, false, false, state->input.pending_sequence_key);
+                state->input.pending_sequence_key = 0;
                 if (act != ACT_NONE) {
                     execute_action(act, state, should_exit);
                     return;
@@ -213,17 +213,17 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
 
             // 2. Check if this key is a LEADER for any registered sequence
             if (is_leader_key(next_ch)) {
-                state->pending_sequence_key = next_ch;
+                state->input.pending_sequence_key = next_ch;
                 editor_set_status_msg(state, "(Alt+%c)...", (char)next_ch);
                 return;
             }
 
             // 3. Try global actions (Single Alt+Key or Sequence with Leader)
             EditorAction action = get_action_from_key(next_ch, true, false, 0);
-            if (action == ACT_NONE && state->pending_sequence_key != 0) {
+            if (action == ACT_NONE && state->input.pending_sequence_key != 0) {
                 // Try resolving sequence
-                action = get_action_from_key(next_ch, false, false, state->pending_sequence_key);
-                state->pending_sequence_key = 0;
+                action = get_action_from_key(next_ch, false, false, state->input.pending_sequence_key);
+                state->input.pending_sequence_key = 0;
             }
 
             if (action != ACT_NONE) {
@@ -233,15 +233,15 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
 
             // 4. If no action found, check if it's a prefix for sequences
             if (is_leader_key(next_ch)) {
-                state->pending_sequence_key = next_ch;
+                state->input.pending_sequence_key = next_ch;
                 editor_set_status_msg(state, "(Alt+%lc)...", next_ch);
             } else if (next_ch == '\t') { 
-                if (state->mode == VISUAL) {
+                if (state->input.mode == VISUAL) {
                     int start_line, end_line;
-                    if (state->selection_start_line < state->current_line) { start_line = state->selection_start_line; end_line = state->current_line; }
-                    else { start_line = state->current_line; end_line = state->selection_start_line; }
+                    if (state->cursor.selection_start_line < state->cursor.line) { start_line = state->cursor.selection_start_line; end_line = state->cursor.line; }
+                    else { start_line = state->cursor.line; end_line = state->cursor.selection_start_line; }
                     for (int i = start_line; i <= end_line; i++) editor_ident_line(state, i);
-                } else { editor_ident_line(state, state->current_line); }
+                } else { editor_ident_line(state, state->cursor.line); }
                 flushinp();
             }
         }
@@ -257,7 +257,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         
         // In INSERT or COMMAND mode, don't intercept simple printable characters (like 'q', 'i', 'p')
         // unless they are special keys (like Arrows) or have modifiers.
-        if (state->mode == INSERT || state->mode == COMMAND) {
+        if (state->input.mode == INSERT || state->input.mode == COMMAND) {
             KeyBinding *kb = &global_bindings[global_act];
             if (!kb->alt && !kb->ctrl && kb->leader == 0 && kb->key < 256) {
                 should_execute = false;
@@ -270,13 +270,13 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         }
     }
 
-    switch (state->mode) {
+    switch (state->input.mode) {
         case VISUAL:
         case NORMAL: {
-            char *line = state->lines[state->current_line];
+            char *line = state->buffer.lines[state->cursor.line];
             bool is_conflict_line = (line && (strncmp(line, "<<<<<<<", 7) == 0 || strncmp(line, "=======", 7) == 0 || strncmp(line, ">>>>>>>", 7) == 0));
             
-            if (state->mode == NORMAL) {
+            if (state->input.mode == NORMAL) {
                 if (is_conflict_line) {
                     if (tolower(ch) == 'm') { editor_resolve_conflict_interactive(state, 'm'); return; }
                     if (tolower(ch) == 't') { editor_resolve_conflict_interactive(state, 't'); return; }
@@ -287,16 +287,16 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
 
             switch (ch) {
                 case 22: // Ctrl+V for local paste
-                    if (state->mode == VISUAL) editor_delete_selection(state);
+                    if (state->input.mode == VISUAL) editor_delete_selection(state);
                     editor_paste(state);
                     break;
                 case KEY_BTAB: {
                     push_undo(state);
                     int start_line, end_line;
-                    if (state->mode == VISUAL) {
-                        if (state->selection_start_line < state->current_line) { start_line = state->selection_start_line; end_line = state->current_line; }
-                        else { start_line = state->current_line; end_line = state->selection_start_line; }
-                    } else { start_line = end_line = state->current_line; }
+                    if (state->input.mode == VISUAL) {
+                        if (state->cursor.selection_start_line < state->cursor.line) { start_line = state->cursor.selection_start_line; end_line = state->cursor.line; }
+                        else { start_line = state->cursor.line; end_line = state->cursor.selection_start_line; }
+                    } else { start_line = end_line = state->cursor.line; }
                     for (int i = start_line; i <= end_line; i++) {
                         editor_unindent_line(state, i);
                     }
@@ -305,26 +305,26 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 case '>': {
                     push_undo(state);
                     int start_line, end_line;
-                    if (state->mode == VISUAL) {
-                        if (state->selection_start_line < state->current_line) { start_line = state->selection_start_line; end_line = state->current_line; }
-                        else { start_line = state->current_line; end_line = state->selection_start_line; }
-                    } else { start_line = end_line = state->current_line; }
+                    if (state->input.mode == VISUAL) {
+                        if (state->cursor.selection_start_line < state->cursor.line) { start_line = state->cursor.selection_start_line; end_line = state->cursor.line; }
+                        else { start_line = state->cursor.line; end_line = state->cursor.selection_start_line; }
+                    } else { start_line = end_line = state->cursor.line; }
                     for (int i = start_line; i <= end_line; i++) editor_ident_line(state, i);
                     break;
                 }
                 case '<': {
                     push_undo(state);
                     int start_line, end_line;
-                    if (state->mode == VISUAL) {
-                        if (state->selection_start_line < state->current_line) { start_line = state->selection_start_line; end_line = state->current_line; }
-                        else { start_line = state->current_line; end_line = state->selection_start_line; }
-                    } else { start_line = end_line = state->current_line; }
+                    if (state->input.mode == VISUAL) {
+                        if (state->cursor.selection_start_line < state->cursor.line) { start_line = state->cursor.selection_start_line; end_line = state->cursor.line; }
+                        else { start_line = state->cursor.line; end_line = state->cursor.selection_start_line; }
+                    } else { start_line = end_line = state->cursor.line; }
                     for (int i = start_line; i <= end_line; i++) editor_unindent_line(state, i);
                     break;
                 }
                 case 'd':
-                    if (state->mode == VISUAL) editor_delete_selection(state);
-                    else { state->mode = OPERATOR_PENDING; state->pending_operator = 'd'; }
+                    if (state->input.mode == VISUAL) editor_delete_selection(state);
+                    else { state->input.mode = OPERATOR_PENDING; state->input.pending_operator = 'd'; }
                     break;
                 case KEY_ENTER:
                 case '\n':
@@ -332,164 +332,164 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     editor_handle_enter(state);
                     break;
                 case 25: // Ctrl+Y
-                    if (state->visual_selection_mode == VISUAL_MODE_NONE) {
-                        state->selection_start_line = state->current_line;
-                        state->selection_start_col = state->current_col;
-                        state->visual_selection_mode = VISUAL_MODE_YANK;
+                    if (state->cursor.visual_selection_mode == VISUAL_MODE_NONE) {
+                        state->cursor.selection_start_line = state->cursor.line;
+                        state->cursor.selection_start_col = state->cursor.col;
+                        state->cursor.visual_selection_mode = VISUAL_MODE_YANK;
                         editor_set_status_msg(state, "Global visual selection started");
                     } else {
                         editor_global_yank(state);
-                        state->visual_selection_mode = VISUAL_MODE_NONE;
+                        state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
                     }
                     break;
                 case 'p': editor_paste(state); break;
                 case 's':
-                    if (state->mode == VISUAL) {
-                        if (state->visual_selection_mode == VISUAL_MODE_NONE) {
-                            state->selection_start_line = state->current_line;
-                            state->selection_start_col = state->current_col;
-                            state->visual_selection_mode = VISUAL_MODE_SELECT;
+                    if (state->input.mode == VISUAL) {
+                        if (state->cursor.visual_selection_mode == VISUAL_MODE_NONE) {
+                            state->cursor.selection_start_line = state->cursor.line;
+                            state->cursor.selection_start_col = state->cursor.col;
+                            state->cursor.visual_selection_mode = VISUAL_MODE_SELECT;
                             editor_set_status_msg(state, "Visual selection started");
                         } else {
-                            state->visual_selection_mode = VISUAL_MODE_NONE;
+                            state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
                         }
                     }
                     break;
                 case 'y':
-                    if (state->mode == VISUAL) {
-                        if (state->visual_selection_mode == VISUAL_MODE_NONE) {
-                            state->selection_start_line = state->current_line;
-                            state->selection_start_col = state->current_col;
-                            state->visual_selection_mode = VISUAL_MODE_YANK;
+                    if (state->input.mode == VISUAL) {
+                        if (state->cursor.visual_selection_mode == VISUAL_MODE_NONE) {
+                            state->cursor.selection_start_line = state->cursor.line;
+                            state->cursor.selection_start_col = state->cursor.col;
+                            state->cursor.visual_selection_mode = VISUAL_MODE_YANK;
                             editor_set_status_msg(state, "Visual selection for yank started");
                         } else {
                             editor_yank_selection(state);
-                            state->visual_selection_mode = VISUAL_MODE_NONE;
+                            state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
                         }
                     } else {
-                        state->mode = OPERATOR_PENDING;
-                        state->pending_operator = 'y';
+                        state->input.mode = OPERATOR_PENDING;
+                        state->input.pending_operator = 'y';
                     }
-                    state->is_dirty = true;
+                    state->buffer.is_dirty = true;
                     break;
                 case 'm':
-                    if (state->mode == VISUAL && state->visual_selection_mode != VISUAL_MODE_NONE) {
+                    if (state->input.mode == VISUAL && state->cursor.visual_selection_mode != VISUAL_MODE_NONE) {
                         editor_yank_to_move_register(state);
                         editor_delete_selection(state);
-                        state->is_moving = true;
+                        state->cursor.is_moving = true;
                         editor_set_status_msg(state, "Text cut. Press 'm' again to paste.");
-                    } else if (state->is_moving) {
+                    } else if (state->cursor.is_moving) {
                         editor_paste_from_move_register(state);
-                        state->is_moving = false;
-                        free(state->move_register);
-                        state->move_register = NULL;
+                        state->cursor.is_moving = false;
+                        free(state->cursor.move_register);
+                        state->cursor.move_register = NULL;
                         editor_set_status_msg(state, "Text moved.");
                     }
-                    state->is_dirty = true;
+                    state->buffer.is_dirty = true;
                     break;
                 case 'u':
-                    if (state->mode == NORMAL) {
+                    if (state->input.mode == NORMAL) {
                         do_undo(state);
                     } else {
-                        state->is_dirty = true;
-                        state->current_col = 0;
-                        state->ideal_col = 0;
+                        state->buffer.is_dirty = true;
+                        state->cursor.col = 0;
+                        state->cursor.ideal_col = 0;
                         editor_handle_enter(state);
-                        state->current_line--;
-                        state->mode = INSERT;
+                        state->cursor.line--;
+                        state->input.mode = INSERT;
                     }
                     break;
                 case 'U':
-                    state->is_dirty = true;
-                    state->current_col = strlen(state->lines[state->current_line]);
+                    state->buffer.is_dirty = true;
+                    state->cursor.col = strlen(state->buffer.lines[state->cursor.line]);
                     editor_handle_enter(state);
-                    state->mode = INSERT;
+                    state->input.mode = INSERT;
                     break;
                 case 'G':
-                    state->is_dirty = true;
-                    state->current_line = state->num_lines - 1;
-                    state->current_col = 0;
-                    state->ideal_col = 0;
+                    state->buffer.is_dirty = true;
+                    state->cursor.line = state->buffer.num_lines - 1;
+                    state->cursor.col = 0;
+                    state->cursor.ideal_col = 0;
                     break;
                 case 'g':
-                    state->is_dirty = true;
-                    state->current_line = 0;
-                    state->current_col = 0;
-                    state->ideal_col = 0;
+                    state->buffer.is_dirty = true;
+                    state->cursor.line = 0;
+                    state->cursor.col = 0;
+                    state->cursor.ideal_col = 0;
                     break;
-                case 'v': state->mode = (state->mode == VISUAL) ? NORMAL : VISUAL; state->is_dirty = true; break;
-                case 'i': state->mode = INSERT; state->is_dirty = true; break;
-                case ':': state->mode = COMMAND; state->history_pos = state->history_count; state->command_buffer[0] = '\0'; state->command_pos = 0; state->is_dirty = true; break;
-                case KEY_CTRL_RIGHT_BRACKET: next_window(); state->is_dirty = true; break;
-                case KEY_CTRL_LEFT_BRACKET: previous_window(); state->is_dirty = true; break;
+                case 'v': state->input.mode = (state->input.mode == VISUAL) ? NORMAL : VISUAL; state->buffer.is_dirty = true; break;
+                case 'i': state->input.mode = INSERT; state->buffer.is_dirty = true; break;
+                case ':': state->input.mode = COMMAND; state->input.history_pos = state->input.history_count; state->input.command_buffer[0] = '\0'; state->input.command_pos = 0; state->buffer.is_dirty = true; break;
+                case KEY_CTRL_RIGHT_BRACKET: next_window(); state->buffer.is_dirty = true; break;
+                case KEY_CTRL_LEFT_BRACKET: previous_window(); state->buffer.is_dirty = true; break;
                 case '/':
                 case KEY_CTRL_F: editor_find(state); break;
                 case KEY_CTRL_DEL: editor_delete_line(state); break;
-                case KEY_CTRL_K: editor_delete_line(state); state->is_dirty = true; break;
+                case KEY_CTRL_K: editor_delete_line(state); state->buffer.is_dirty = true; break;
                 case KEY_CTRL_D: editor_find_next(state); break;
                 case KEY_CTRL_A: editor_find_previous(state); break;
                 case KEY_CTRL_G: display_directory_navigator(state); break;
                 case 'o':
                 case KEY_UP: {
-                    int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
+                    int repeat = (state->input.prefix_count > 0) ? state->input.prefix_count : 1;
                     for (int i = 0; i < repeat; i++) {
-                        if (state->current_line > 0) state->current_line--;
+                        if (state->cursor.line > 0) state->cursor.line--;
                     }
-                    state->prefix_count = 0; 
-                    state->current_col = state->ideal_col;
-                    state->is_dirty = true;
+                    state->input.prefix_count = 0; 
+                    state->cursor.col = state->cursor.ideal_col;
+                    state->buffer.is_dirty = true;
                     break;
                 }
                 case 'l':
                 case KEY_DOWN: {
-                    int repeat = (state->prefix_count > 0) ? state->prefix_count : 1;
+                    int repeat = (state->input.prefix_count > 0) ? state->input.prefix_count : 1;
                     for (int i = 0; i < repeat; i++) {
-                        if (state->current_line < state->num_lines - 1) state->current_line++;
+                        if (state->cursor.line < state->buffer.num_lines - 1) state->cursor.line++;
                     }
-                    state->prefix_count = 0;
-                    state->current_col = state->ideal_col;
-                    state->is_dirty = true;
+                    state->input.prefix_count = 0;
+                    state->cursor.col = state->cursor.ideal_col;
+                    state->buffer.is_dirty = true;
                     break;
                 }
                 case 'k':
                 case KEY_LEFT:
-                    if (state->current_col > 0) {
-                        state->current_col--;
-                        while (state->current_col > 0 && (state->lines[state->current_line][state->current_col] & 0xC0) == 0x80) {
-                            state->current_col--;
+                    if (state->cursor.col > 0) {
+                        state->cursor.col--;
+                        while (state->cursor.col > 0 && (state->buffer.lines[state->cursor.line][state->cursor.col] & 0xC0) == 0x80) {
+                            state->cursor.col--;
                         }
                     }
-                    state->ideal_col = state->current_col;
-                    state->is_dirty = true;
+                    state->cursor.ideal_col = state->cursor.col;
+                    state->buffer.is_dirty = true;
                     break;
                 case 231: // ç
                 case KEY_RIGHT: {
-                    char* line = state->lines[state->current_line];
-                    if (line && state->current_col < (int)strlen(line)) {
-                        state->current_col++;
-                        while (line[state->current_col] != '\0' && (line[state->current_col] & 0xC0) == 0x80) {
-                            state->current_col++;
+                    char* line = state->buffer.lines[state->cursor.line];
+                    if (line && state->cursor.col < (int)strlen(line)) {
+                        state->cursor.col++;
+                        while (line[state->cursor.col] != '\0' && (line[state->cursor.col] & 0xC0) == 0x80) {
+                            state->cursor.col++;
                         }
                     }
-                    state->ideal_col = state->current_col;
-                    state->is_dirty = true;
+                    state->cursor.ideal_col = state->cursor.col;
+                    state->buffer.is_dirty = true;
                     } break;
                 case 'O':
-                case KEY_PPAGE: case KEY_SR: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line > 0) state->current_line--; state->current_col = state->ideal_col; state->is_dirty = true; break;
+                case KEY_PPAGE: case KEY_SR: for (int i = 0; i < PAGE_JUMP; i++) if (state->cursor.line > 0) state->cursor.line--; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true; break;
                 case 'L':
-                case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->current_line < state->num_lines - 1) state->current_line++; state->current_col = state->ideal_col; state->is_dirty = true; break;
+                case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->cursor.line < state->buffer.num_lines - 1) state->cursor.line++; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true; break;
                 case 'K':
-                case KEY_HOME: state->current_col = 0; state->ideal_col = 0; state->is_dirty = true; break;
+                case KEY_HOME: state->cursor.col = 0; state->cursor.ideal_col = 0; state->buffer.is_dirty = true; break;
                 case 199: // Ç
-                case KEY_END: { char* line = state->lines[state->current_line]; if(line) state->current_col = strlen(line); state->ideal_col = state->current_col; state->is_dirty = true; } break;
+                case KEY_END: { char* line = state->buffer.lines[state->cursor.line]; if(line) state->cursor.col = strlen(line); state->cursor.ideal_col = state->cursor.col; state->buffer.is_dirty = true; } break;
                 case KEY_SDC: editor_delete_line(state); break;
             }
             break;
         }
         case OPERATOR_PENDING: {
-                char op = state->pending_operator;
-                state->pending_operator = 0;
-                state->mode = NORMAL; // FIX: Return to NORMAL mode by default
+                char op = state->input.pending_operator;
+                state->input.pending_operator = 0;
+                state->input.mode = NORMAL; // FIX: Return to NORMAL mode by default
 
                 if (op == 'y' && ch == 'y') {
                     editor_yank_line(state);
@@ -516,18 +516,18 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     }
         
     // After processing an input key, check if we need to revert from single command mode.
-    if (state->single_command_mode) {
+    if (state->input.single_command_mode) {
         // If the command resulted in staying in NORMAL mode (e.g., a movement)
         // or finishing an operator (e.g., 'yy'), then revert to INSERT mode.
-        if (state->mode == NORMAL) {
-            state->mode = INSERT;
-            state->single_command_mode = false;
+        if (state->input.mode == NORMAL) {
+            state->input.mode = INSERT;
+            state->input.single_command_mode = false;
             editor_set_status_msg(state, "");
         }
         // If the command switched to another major mode (like COMMAND or VISUAL),
         // respect that new mode and just cancel the single command behavior.
-        else if (state->mode == COMMAND || state->mode == INSERT) {
-            state->single_command_mode = false;
+        else if (state->input.mode == COMMAND || state->input.mode == INSERT) {
+            state->input.single_command_mode = false;
         }
         // If we are in OPERATOR_PENDING, we do nothing and wait for the next keypress
         // to complete the operation.
@@ -612,15 +612,15 @@ int main(int argc, char *argv[]) {
         napms(500);
 
         if (argc > 2) {
-            state->current_line = atoi(argv[2]) - 1;
-            if (state->current_line >= state->num_lines) {
-                state->current_line = state->num_lines - 1;
+            state->cursor.line = atoi(argv[2]) - 1;
+            if (state->cursor.line >= state->buffer.num_lines) {
+                state->cursor.line = state->buffer.num_lines - 1;
             }
-            if (state->current_line < 0) {
-                state->current_line = 0;
+            if (state->cursor.line < 0) {
+                state->cursor.line = 0;
             }
-            state->ideal_col = 0;
-            state->top_line = state->current_line;
+            state->cursor.ideal_col = 0;
+            state->view.top_line = state->cursor.line;
         }
     }
 
@@ -637,7 +637,7 @@ int main(int argc, char *argv[]) {
                 Workspace *ws = ACTIVE_WS;
                 for (int i = 0; i < ws->num_windows; i++) {
                     if (ws->windows[i]->type == WINDOW_TYPE_EDITOR && ws->windows[i]->state) {
-                        ws->windows[i]->state->is_dirty = true;
+                        ws->windows[i]->state->buffer.is_dirty = true;
                     }
                 }
             }
@@ -661,9 +661,9 @@ int main(int argc, char *argv[]) {
                 if (jw->type == WINDOW_TYPE_TERMINAL && jw->term.pty_fd != -1) {
                     FD_SET(jw->term.pty_fd, &readfds);
                     if (jw->term.pty_fd > max_fd) max_fd = jw->term.pty_fd;
-                } else if (jw->type == WINDOW_TYPE_EDITOR && jw->state && jw->state->lsp_client && jw->state->lsp_client->stdout_fd != -1) {
-                    FD_SET(jw->state->lsp_client->stdout_fd, &readfds);
-                    if (jw->state->lsp_client->stdout_fd > max_fd) max_fd = jw->state->lsp_client->stdout_fd;
+                } else if (jw->type == WINDOW_TYPE_EDITOR && jw->state && jw->state->lsp.client && jw->state->lsp.client->stdout_fd != -1) {
+                    FD_SET(jw->state->lsp.client->stdout_fd, &readfds);
+                    if (jw->state->lsp.client->stdout_fd > max_fd) max_fd = jw->state->lsp.client->stdout_fd;
                 }
             }
             // Monitoring Floating Terminal PTY even if hidden
@@ -864,9 +864,9 @@ int main(int argc, char *argv[]) {
                     }
                 }
                 // Process LSP output
-                else if (jw->type == WINDOW_TYPE_EDITOR && jw->state && jw->state->lsp_client && jw->state->lsp_client->stdout_fd != -1 && FD_ISSET(jw->state->lsp_client->stdout_fd, &readfds)) {
+                else if (jw->type == WINDOW_TYPE_EDITOR && jw->state && jw->state->lsp.client && jw->state->lsp.client->stdout_fd != -1 && FD_ISSET(jw->state->lsp.client->stdout_fd, &readfds)) {
                     char buffer[4096];
-                    ssize_t bytes_lidos = read(jw->state->lsp_client->stdout_fd, buffer, sizeof(buffer) - 1);
+                    ssize_t bytes_lidos = read(jw->state->lsp.client->stdout_fd, buffer, sizeof(buffer) - 1);
                     if (bytes_lidos > 0) {
                         buffer[bytes_lidos] = '\0';
                         lsp_process_received_data(jw->state, buffer, bytes_lidos);
@@ -914,10 +914,10 @@ int main(int argc, char *argv[]) {
             Workspace *ws = workspace_manager.workspaces[i];
             for (int j = 0; j < ws->num_windows; j++) {
                 EditorWindow *jw = ws->windows[j];
-                if (jw->type == WINDOW_TYPE_EDITOR && jw->state && jw->state->buffer_modified) {
-                    if (current_time - jw->state->last_auto_save_time >= AUTO_SAVE_INTERVAL) {
+                if (jw->type == WINDOW_TYPE_EDITOR && jw->state && jw->state->buffer.modified) {
+                    if (current_time - jw->state->buffer.last_auto_save_time >= AUTO_SAVE_INTERVAL) {
                         auto_save(jw->state);
-                        jw->state->last_auto_save_time = current_time;
+                        jw->state->buffer.last_auto_save_time = current_time;
                     }
                 }
             }
@@ -928,19 +928,19 @@ int main(int argc, char *argv[]) {
             EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
             if (active_jw && active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
                 EditorState *active_state = active_jw->state;
-                if (active_state->lsp_completion_pending) {
+                if (active_state->lsp.completion_pending) {
                     struct timespec now;
                     clock_gettime(CLOCK_MONOTONIC, &now);
 
-                    long long elapsed_ns = (now.tv_sec - active_state->lsp_last_keystroke.tv_sec) * 1000000000LL;
-                    elapsed_ns += (now.tv_nsec - active_state->lsp_last_keystroke.tv_nsec);
+                    long long elapsed_ns = (now.tv_sec - active_state->lsp.last_keystroke.tv_sec) * 1000000000LL;
+                    elapsed_ns += (now.tv_nsec - active_state->lsp.last_keystroke.tv_nsec);
 
                     if (elapsed_ns > LSP_DEBOUNCE_NS) {
-                        active_state->lsp_completion_pending = false;
+                        active_state->lsp.completion_pending = false;
                         // Run local completion logic first to get the word to complete
                         editor_start_completion(active_state);
                         // Only send request if there's something to complete
-                        if(active_state->word_to_complete[0] != '\0') {
+                        if(active_state->input.word_to_complete[0] != '\0') {
                             lsp_send_completion_request(active_state);
                         }
                     }
@@ -953,45 +953,45 @@ int main(int argc, char *argv[]) {
             EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
             if (active_jw && active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
                 EditorState *active_state = active_jw->state;
-                if (active_state->spell_hover_pending && active_state->spell_checker.enabled) {
+                if (active_state->spell.hover_pending && active_state->spell.checker.enabled) {
                     struct timespec now;
                     clock_gettime(CLOCK_MONOTONIC, &now);
 
-                    long long elapsed_ns = (now.tv_sec - active_state->spell_hover_last_move.tv_sec) * 1000000000LL;
-                    elapsed_ns += (now.tv_nsec - active_state->spell_hover_last_move.tv_nsec);
+                    long long elapsed_ns = (now.tv_sec - active_state->spell.hover_last_move.tv_sec) * 1000000000LL;
+                    elapsed_ns += (now.tv_nsec - active_state->spell.hover_last_move.tv_nsec);
 
                     if (elapsed_ns > 250000000) { // 250ms debounce
-                        active_state->spell_hover_pending = false;
+                        active_state->spell.hover_pending = false;
                         
                         char word[100];
                         get_word_at_cursor(active_state, word, sizeof(word));
 
-                        if (strlen(word) > 0 && !spell_checker_check_word(&active_state->spell_checker, word)) {
+                        if (strlen(word) > 0 && !spell_checker_check_word(&active_state->spell.checker, word)) {
                             // Avoid re-generating message for the same word
-                            if (strcmp(active_state->spell_hover_word, word) != 0) {
+                            if (strcmp(active_state->spell.hover_word, word) != 0) {
                                 int n_sugg = 0;
-                                char** suggestions = spell_checker_suggest(&active_state->spell_checker, word, &n_sugg);
+                                char** suggestions = spell_checker_suggest(&active_state->spell.checker, word, &n_sugg);
                                 if (n_sugg > 0) {
                                     char popup_msg[256] = "Did you mean: ";
                                     for (int i = 0; i < n_sugg && i < 3; i++) {
                                         strcat(popup_msg, suggestions[i]);
                                         if (i < n_sugg - 1 && i < 2) strcat(popup_msg, ", ");
                                     }
-                                    if (active_state->spell_hover_message) free(active_state->spell_hover_message);
-                                    active_state->spell_hover_message = strdup(popup_msg);
-                                    strcpy(active_state->spell_hover_word, word);
-                                    active_state->is_dirty = true;
-                                    spell_checker_free_suggestions(&active_state->spell_checker, suggestions, n_sugg);
+                                    if (active_state->spell.hover_message) free(active_state->spell.hover_message);
+                                    active_state->spell.hover_message = strdup(popup_msg);
+                                    strcpy(active_state->spell.hover_word, word);
+                                    active_state->buffer.is_dirty = true;
+                                    spell_checker_free_suggestions(&active_state->spell.checker, suggestions, n_sugg);
                                 }
                             }
                         } else {
                             // Word is correct or empty, clear message
-                            if (active_state->spell_hover_message) {
-                                free(active_state->spell_hover_message);
-                                active_state->spell_hover_message = NULL;
-                                active_state->is_dirty = true;
+                            if (active_state->spell.hover_message) {
+                                free(active_state->spell.hover_message);
+                                active_state->spell.hover_message = NULL;
+                                active_state->buffer.is_dirty = true;
                             }
-                            active_state->spell_hover_word[0] = '\0';
+                            active_state->spell.hover_word[0] = '\0';
                         }
                     }
                 }
