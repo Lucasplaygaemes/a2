@@ -387,21 +387,6 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             }
             
             int line_len = strlen(line);
-            if (line_len == 0) {
-                if (visual_line_idx >= state->view.top_line) {
-                    wmove(win, screen_y + border_offset, border_offset);
-                    int y, x;
-                    getyx(win, y, x);
-                    int end_col = cols - border_offset;
-                    for (int i = x; i < end_col; i++) {
-                        mvwaddch(win, y, i, ' ');
-                    }
-                    screen_y++;
-                }
-                visual_line_idx++;
-                continue;
-            }
-
             int line_offset = 0;
             while(line_offset < line_len || line_len == 0) {
                 int content_width = cols - 2*border_offset - line_number_width;
