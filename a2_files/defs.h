@@ -558,6 +558,9 @@ typedef enum {
     ACT_PASTE_BELOW,       // Alt+p, u
     ACT_PASTE_GLOBAL_BELOW,// Alt+p, U
     ACT_GENERIC_INPUT,     // Alt+p, t
+    ACT_YANK_LOCAL,        // y
+    ACT_YANK_GLOBAL,       // Ctrl+y
+    ACT_YANK_CLIPBOARD,    // Alt+y, c
     ACT_YANK_PARAGRAPH,    // Alt+y, p
     ACT_NEXT_PARAGRAPH,    // }
     ACT_PREV_PARAGRAPH,    // {
