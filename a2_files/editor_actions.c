@@ -168,6 +168,26 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_PASTE_BELOW: { state->cursor.col = strlen(state->buffer.lines[state->cursor.line]); editor_handle_enter(state); editor_paste(state); } break;
         case ACT_PASTE_GLOBAL_BELOW: { state->cursor.col = strlen(state->buffer.lines[state->cursor.line]); editor_handle_enter(state); editor_global_paste(state); } break;
         case ACT_GENERIC_INPUT: { char mb[256] = ""; ui_ask_input("Generic Input:", mb, 256); } break;
+        case ACT_YANK_LOCAL: {
+            if (state->input.mode == VISUAL) {
+                editor_yank_selection(state);
+            } else {
+                state->input.mode = OPERATOR_PENDING;
+                state->input.pending_operator = 'y';
+            }
+        } break;
+        case ACT_YANK_GLOBAL: {
+            if (state->cursor.visual_selection_mode == VISUAL_MODE_NONE) {
+                state->cursor.selection_start_line = state->cursor.line;
+                state->cursor.selection_start_col = state->cursor.col;
+                state->cursor.visual_selection_mode = VISUAL_MODE_YANK;
+                editor_set_status_msg(state, "Global visual selection started");
+            } else {
+                editor_global_yank(state);
+                state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
+            }
+        } break;
+        case ACT_YANK_CLIPBOARD: copy_selection_to_clipboard(state); break;
         case ACT_YANK_PARAGRAPH: editor_yank_paragraph(state); break;
         case ACT_NEXT_PARAGRAPH: {
             state->buffer.is_dirty = true; bool fb = false; int i = state->cursor.line + 1;
