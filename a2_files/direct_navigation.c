@@ -17,21 +17,19 @@
 // ===================================================================
 // Debug Logging
 // ===================================================================
+#include "logger.h"
 
 void debug_log(const char *format, ...) {
-    char* log_filename = get_cache_filename("jntd_debug.log");
-    if (!log_filename) return;
-
-    FILE *log_file = fopen(log_filename, "a");
-    free(log_filename);
-
-    if (log_file) {
-        va_list args;
-        va_start(args, format);
-        vfprintf(log_file, format, args);
-        va_end(args);
-        fclose(log_file);
-    }
+    char buffer[4096];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    
+    size_t len = strlen(buffer);
+    if (len > 0 && buffer[len - 1] == '\n') buffer[len - 1] = '\0';
+    
+    A2_LOG(LOG_DEBUG, TAG_FS, "%s", buffer);
 }
 
 // ===================================================================

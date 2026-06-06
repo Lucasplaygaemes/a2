@@ -11,6 +11,7 @@
 #include "themes.h"
 #include "diff.h"
 #include "settings.h"
+#include "logger.h"
 
 #include <sys/stat.h>
 #include <ctype.h> // For isspace
@@ -23,6 +24,7 @@
 // ===================================================================
 
 void process_command(EditorState *state, bool *should_exit) {
+    A2_LOG(LOG_INFO, TAG_CORE, "Command: %s", state->input.command_buffer);
     if (state->input.command_buffer[0] == '!') {
         execute_shell_command(state);
         add_to_command_history(state, state->input.command_buffer);
@@ -55,14 +57,21 @@ void process_command(EditorState *state, bool *should_exit) {
         return;
     } else if (strcmp(command, "w") == 0) {
         if (strlen(args) > 0) {
-            strncpy(state->buffer.filename, args, sizeof(state->buffer.filename) - 1);
-            const char * syntax_file =  get_syntax_file_from_extension(args);
-            load_syntax_file(state, syntax_file);
+            char abs_path[PATH_MAX];
+            if (realpath(args, abs_path) == NULL) {
+                // File might not exist yet, so realpath fails. 
+                // We use the args as is, but we should ideally resolve the directory.
+                strncpy(state->buffer.filename, args, sizeof(state->buffer.filename) - 1);
+            } else {
+                strncpy(state->buffer.filename, abs_path, sizeof(state->buffer.filename) - 1);
             }
+            const char * syntax_file =  get_syntax_file_from_extension(state->buffer.filename);
+            load_syntax_file(state, syntax_file);
+        }
         save_file(state);
         if (state->lsp.enabled) {
             lsp_did_save(state);
-            }
+        }
     } else if (strcmp(command, "help") == 0) {
         display_help_viewer("a2_help.txt");
     } else if (strcmp(command, "about") == 0) {
@@ -140,6 +149,8 @@ void process_command(EditorState *state, bool *should_exit) {
         free(state->buffer.lines[i]); state->buffer.lines[i] = NULL; } }
         state->buffer.num_lines = 1; state->buffer.lines[0] = calloc(1, 1); strcpy(state->buffer.filename, "[No Name]");
         state->cursor.line = 0; state->cursor.col = 0; state->cursor.ideal_col = 0; state->view.top_line = 0; state->view.left_col = 0;
+        state->buffer.modified = false;
+        if (state->buffer.shadow_copy) { free(state->buffer.shadow_copy); state->buffer.shadow_copy = NULL; }
         editor_set_status_msg(state, "New file opened.");
     } else if (strcmp(command, "timer") == 0) {
         display_work_summary();
@@ -263,6 +274,16 @@ void process_command(EditorState *state, bool *should_exit) {
                 }
             } else if (strcmp(command, "list-projects") == 0) {
                 display_project_list();
+            } else if (strcmp(command, "logs") == 0) {
+                char *log_path = get_cache_filename("a2.log");
+                if (log_path) {
+                    if (access(log_path, F_OK) == 0) {
+                        display_output_screen("--- A2 Logs ---", log_path);
+                    } else {
+                        editor_set_status_msg(state, "Log file not found at: %s", log_path);
+                    }
+                    free(log_path);
+                }
             } else if (strcmp(command, "term") == 0) {
                 execute_command_in_new_workspace(args);
             

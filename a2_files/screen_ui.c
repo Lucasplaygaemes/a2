@@ -336,16 +336,47 @@ void editor_redraw(WINDOW *win, EditorState *state) {
     bool in_multiline_comment = false;
 
     // Scan from the beginning of the file to determine current multiline comment state
-    // For large files, this should ideally be cached, but we'll do a simple scan for now.
-    for (int i = 0; i < state->view.top_line && i < state->buffer.num_lines; i++) {
-        char *l = state->buffer.lines[i];
-        if (!l) continue;
-        char *p = l;
-        while (*p) {
-            if (!in_multiline_comment && p[0] == '/' && p[1] == '*') { in_multiline_comment = true; p++; }
-            else if (in_multiline_comment && p[0] == '*' && p[1] == '/') { in_multiline_comment = false; p++; }
-            p++;
+    // We must scan file lines, not visual lines.
+    for (int i = 0; i < state->buffer.num_lines; i++) {
+        // If we are NOT in wrap mode, we only need to scan up to top_line.
+        // If we ARE in wrap mode, we'd ideally know which file line corresponds to top_line,
+        // but for now, scanning all lines until the current visible one is safer.
+        // This scan is simplified: we stop when we reach the first visible file line.
+        
+        // Find which file line corresponds to the first visible visual line
+        int current_visual_line = 0;
+        int first_visible_file_line = 0;
+        if (state->view.word_wrap) {
+            for (int f = 0; f < state->buffer.num_lines; f++) {
+                int f_len = strlen(state->buffer.lines[f]);
+                int wraps = 0;
+                if (f_len > 0) {
+                    int content_w = cols - 2*border_offset - line_number_width;
+                    if (content_w <= 0) content_w = 1;
+                    // Approximate wrap count
+                    wraps = (f_len + content_w - 1) / content_w;
+                } else {
+                    wraps = 1;
+                }
+                if (current_visual_line + wraps > state->view.top_line) {
+                    first_visible_file_line = f;
+                    break;
+                }
+                current_visual_line += wraps;
+            }
+        } else {
+            first_visible_file_line = state->view.top_line;
         }
+
+        for (int i = 0; i < first_visible_file_line && i < state->buffer.num_lines; i++) {
+            char *l = state->buffer.lines[i];
+            if (!l) continue;
+            for (int p = 0; l[p]; p++) {
+                if (!in_multiline_comment && l[p] == '/' && l[p+1] == '*') { in_multiline_comment = true; p++; }
+                else if (in_multiline_comment && l[p] == '*' && l[p+1] == '/') { in_multiline_comment = false; p++; }
+            }
+        }
+        break; // Exit the outer helper loop
     }
 
     if (state->view.word_wrap) {
@@ -356,7 +387,12 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             if (!line) continue;
             
             bool highlight_this_line = false;
-            bool is_line_comment = false; // Persistent // for this physical line
+            bool is_line_comment = false; 
+            bool is_directive = false;
+
+            int first_non_space = 0;
+            while (line[first_non_space] && isspace(line[first_non_space])) first_non_space++;
+            if (line[first_non_space] == '#') is_directive = true;
 
             // --- CONFLICT HIGHLIGHTING (WORD WRAP) ---
             if (strncmp(line, "<<<<<<<", 7) == 0) current_conflict_block = 1;
@@ -380,6 +416,18 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             
             int line_len = strlen(line);
             int line_offset = 0;
+            
+            // Per-file-line search regex compilation for efficiency
+            bool is_searching = (state->input.command_buffer[0] == '/');
+            const char *query = is_searching ? state->input.command_buffer + 1 : state->search.last_term;
+            regex_t regex;
+            bool has_regex = false;
+            if (query && query[0] != '\0') {
+                if (is_searching || state->search.is_regex) {
+                    if (regcomp(&regex, query, REG_EXTENDED | REG_NEWLINE) == 0) has_regex = true;
+                }
+            }
+
             while(line_offset < line_len || line_len == 0) {
                 int content_width = cols - 2*border_offset - line_number_width;
                 if (content_width <= 0) content_width = 1;
@@ -402,7 +450,9 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                 int break_pos;
                 if (line[line_offset + current_bytes] != '\0' && last_space_bytes != -1) break_pos = last_space_bytes;
                 else break_pos = current_bytes;
-                if (break_pos == 0 && (size_t)(line_offset + current_bytes) < strlen(line)) break_pos = current_bytes;
+                
+                // Safety: prevent infinite loops
+                if (break_pos == 0 && line[line_offset] != '\0') break_pos = 1;
 
                 if (visual_line_idx >= state->view.top_line && screen_y < content_height) {
                     wmove(win, screen_y + border_offset, border_offset + line_number_width);
@@ -422,8 +472,8 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         if (getcurx(win) >= cols - 1 - border_offset) break;
 
                         // 1. Handle Comments (Single and Multi)
-                        if (is_line_comment || in_multiline_comment || (line[token_start_in_line] == '/' && (line[token_start_in_line+1] == '/' || line[token_start_in_line+1] == '*'))) {
-                            if (!is_line_comment && !in_multiline_comment) {
+                        if (is_line_comment || in_multiline_comment || is_directive || (line[token_start_in_line] == '/' && (line[token_start_in_line+1] == '/' || line[token_start_in_line+1] == '*'))) {
+                            if (!is_line_comment && !in_multiline_comment && !is_directive) {
                                 if (line[token_start_in_line+1] == '/') is_line_comment = true;
                                 else in_multiline_comment = true;
                             }
@@ -436,7 +486,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                                 char *end_ptr = strstr(&line[token_start_in_line], "*/");
                                 if (end_ptr && (end_ptr - &line[token_start_in_line]) < segment_remaining) {
                                     int bytes_to_end = (end_ptr - &line[token_start_in_line]) + 2;
-                                    int bytes_to_print = bytes_to_end > visual_remaining ? visual_remaining : bytes_to_end; // Simplified check
+                                    int bytes_to_print = bytes_to_end > visual_remaining ? visual_remaining : bytes_to_end;
                                     waddnstr(win, &line[token_start_in_line], bytes_to_print);
                                     in_multiline_comment = false;
                                     current_pos_in_segment += bytes_to_end;
@@ -454,20 +504,25 @@ void editor_redraw(WINDOW *win, EditorState *state) {
 
                         // 2. Normal Highlighting
                         int token_start_in_segment = current_pos_in_segment;
-                        if (strchr(delimiters, line[token_start_in_line])) current_pos_in_segment++;
-                        else {
+                        if (strchr(delimiters, line[token_start_in_line])) {
+                            current_pos_in_segment++;
+                        } else {
                             while(current_pos_in_segment < break_pos && !strchr(delimiters, line[line_offset + current_pos_in_segment])) {
                                 if (line[line_offset + current_pos_in_segment] == '/' && (line[line_offset + current_pos_in_segment + 1] == '/' || line[line_offset + current_pos_in_segment + 1] == '*')) break;
                                 current_pos_in_segment++;
                             }
                         }
+                        
                         int token_len = current_pos_in_segment - token_start_in_segment;
                         if (token_len > 0) {
                             char *token_ptr = &line[token_start_in_line];
                             int color_pair = 0;
                             if (is_selected(state, file_line_idx, token_start_in_line) && state->cursor.visual_selection_mode == VISUAL_MODE_SELECT) color_pair = PAIR_SELECTION;
                             else if (token_len == 1 && is_unmatched_bracket(state, file_line_idx, token_start_in_line)) color_pair = 11;
-                            else if (line[token_start_in_line] == '#') { color_pair = PAIR_COMMENT; token_len = break_pos - current_pos_in_segment; current_pos_in_segment = break_pos; }
+                            else if (line[token_start_in_line] == '#') { 
+                                color_pair = PAIR_COMMENT; 
+                                // Directive highlight should ideally not skip the whole segment to allow wrap awareness
+                            }
                             else {
                                 for (int j = 0; j < state->buffer.num_syntax_rules; j++) {
                                     if (strlen(state->buffer.syntax_rules[j].word) == (size_t)token_len && strncmp(token_ptr, state->buffer.syntax_rules[j].word, token_len) == 0) {
@@ -485,19 +540,11 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     for (int i = x; i < end_col; i++) mvwaddch(win, y, i, ' ');
 
                     // --- REAL-TIME SEARCH HIGHLIGHT (WORD WRAP) ---
-                    bool is_searching = (state->input.command_buffer[0] == '/');
-                    const char *query = is_searching ? state->input.command_buffer + 1 : state->search.last_term;
-                    
-                    if (query && strlen(query) > 0) {
-                        regex_t regex;
-                        bool is_regex = false;
-                        if (is_searching) is_regex = (regcomp(&regex, query, REG_EXTENDED | REG_NEWLINE) == 0);
-                        else if (state->search.is_regex) is_regex = (regcomp(&regex, query, REG_EXTENDED | REG_NEWLINE) == 0);
-
+                    if (query && query[0] != '\0') {
                         int search_offset = line_offset;
                         while (search_offset < line_offset + break_pos) {
                             int match_start = -1, match_len = 0;
-                            if (is_regex) {
+                            if (has_regex) {
                                 regmatch_t pmatch[1];
                                 if (regexec(&regex, line + search_offset, 1, pmatch, 0) == 0) {
                                     match_start = search_offset + pmatch[0].rm_so;
@@ -524,18 +571,24 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                                 search_offset = match_start + match_len;
                             } else break;
                         }
-                        if (is_regex) regfree(&regex);
                     }
 
                     if (current_conflict_block != 0) wattroff(win, A_DIM);
                     if (strncmp(line, ">>>>>>>", 7) == 0) current_conflict_block = 0;
 
                     screen_y++;
+                } else {
+                    // Even if not visible, we must maintain multiline comment state
+                    for (int p = 0; p < break_pos; p++) {
+                        if (!in_multiline_comment && line[line_offset + p] == '/' && line[line_offset + p + 1] == '*') { in_multiline_comment = true; p++; }
+                        else if (in_multiline_comment && line[line_offset + p] == '*' && line[line_offset + p + 1] == '/') { in_multiline_comment = false; p++; }
+                    }
                 }
                 visual_line_idx++;
                 line_offset += break_pos;
                 if (line_len == 0) break;
             }
+            if (has_regex) regfree(&regex);
             if (highlight_this_line) wattroff(win, COLOR_PAIR(2));
         }
     } else { // NO WORD WRAP
@@ -558,15 +611,39 @@ void editor_redraw(WINDOW *win, EditorState *state) {
 
                 int current_col_val = 0, line_len = strlen(line);
                 bool is_line_comment = false;
+                bool is_directive = false;
+
+                int first_non_space = 0;
+                while (line[first_non_space] && isspace(line[first_non_space])) first_non_space++;
+                if (line[first_non_space] == '#') is_directive = true;
+
+                // Per-file-line search regex compilation
+                bool is_searching = (state->input.command_buffer[0] == '/');
+                const char *query = is_searching ? state->input.command_buffer + 1 : state->search.last_term;
+                regex_t regex;
+                bool has_regex = false;
+                if (query && query[0] != '\0') {
+                    if (is_searching || state->search.is_regex) {
+                        if (regcomp(&regex, query, REG_EXTENDED | REG_NEWLINE) == 0) has_regex = true;
+                    }
+                }
+
                 while(current_col_val < line_len) {
-                    if (current_col_val < state->view.left_col) { current_col_val++; continue; }
+                    if (current_col_val < state->view.left_col) {
+                        // Maintenance of multiline comment state even when skipped by horizontal scroll
+                        if (!is_line_comment && !in_multiline_comment && line[current_col_val] == '/' && line[current_col_val+1] == '/') is_line_comment = true;
+                        if (!is_line_comment && !in_multiline_comment && line[current_col_val] == '/' && line[current_col_val+1] == '*') { in_multiline_comment = true; current_col_val++; }
+                        else if (in_multiline_comment && line[current_col_val] == '*' && line[current_col_val+1] == '/') { in_multiline_comment = false; current_col_val++; }
+                        current_col_val++; 
+                        continue; 
+                    }
                     if (getcurx(win) >= cols - 1 - border_offset) break;
                     
                     // Comment Logic (Non-word-wrap)
                     if (!in_multiline_comment && line[current_col_val] == '/' && line[current_col_val+1] == '/') is_line_comment = true;
                     if (!is_line_comment && !in_multiline_comment && line[current_col_val] == '/' && line[current_col_val+1] == '*') in_multiline_comment = true;
 
-                    if (is_line_comment || in_multiline_comment) {
+                    if (is_line_comment || in_multiline_comment || is_directive) {
                         wattron(win, COLOR_PAIR(PAIR_COMMENT));
                         int line_remaining = line_len - current_col_val;
                         int visual_remaining = (cols - 1 - border_offset) - getcurx(win);
@@ -594,12 +671,18 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     int token_start = current_col_val, token_len;
                     char current_char = line[token_start];
                     if (strchr(delimiters, current_char)) token_len = 1;
-                    else { int end = token_start; while(end < line_len && !strchr(delimiters, line[end]) && !(line[end] == '/' && (line[end+1] == '/' || line[end+1] == '*'))) end++; token_len = end - token_start; }
+                    else { 
+                        int end = token_start; 
+                        while(end < line_len && !strchr(delimiters, line[end]) && !(line[end] == '/' && (line[end+1] == '/' || line[end+1] == '*'))) end++; 
+                        token_len = end - token_start; 
+                    }
                     
                     int color_pair = 0;
                     if (is_selected(state, line_idx, token_start) && state->cursor.visual_selection_mode == VISUAL_MODE_SELECT) color_pair = PAIR_SELECTION;
                     else if (token_len == 1 && is_unmatched_bracket(state, line_idx, token_start)) color_pair = 11;
-                    else if (current_char == '#') { color_pair = PAIR_COMMENT; token_len = line_len - current_col_val; }
+                    else if (current_char == '#') { 
+                        color_pair = PAIR_COMMENT; 
+                    }
                     else {
                         for (int j = 0; j < state->buffer.num_syntax_rules; j++) {
                             if (strlen(state->buffer.syntax_rules[j].word) == (size_t)token_len && strncmp(&line[token_start], state->buffer.syntax_rules[j].word, token_len) == 0) {
@@ -613,16 +696,49 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     if (color_pair) wattroff(win, COLOR_PAIR(color_pair));
                     current_col_val += token_len;
                 }
+
+                // --- REAL-TIME SEARCH HIGHLIGHT (NO WRAP) ---
+                if (query && query[0] != '\0') {
+                    int search_offset = state->view.left_col;
+                    while (search_offset < line_len) {
+                        int match_start = -1, match_len = 0;
+                        if (has_regex) {
+                            regmatch_t pmatch[1];
+                            if (regexec(&regex, line + search_offset, 1, pmatch, 0) == 0) {
+                                match_start = search_offset + pmatch[0].rm_so;
+                                match_len = pmatch[0].rm_eo - pmatch[0].rm_so;
+                                if (match_len == 0) match_len = 1;
+                            } else break;
+                        } else {
+                            char *match = strstr(line + search_offset, query);
+                            if (match) {
+                                match_start = match - line;
+                                match_len = strlen(query);
+                            } else break;
+                        }
+
+                        if (match_start != -1) {
+                            int s_start = max(match_start, state->view.left_col);
+                            int s_end = match_start + match_len;
+                            if (s_start < s_end) {
+                                int sx = border_offset + line_number_width + get_visual_col(line + state->view.left_col, s_start - state->view.left_col);
+                                int ex = border_offset + line_number_width + get_visual_col(line + state->view.left_col, s_end - state->view.left_col);
+                                int mx = cols - border_offset;
+                                if (sx < mx) mvwchgat(win, i + border_offset, sx, min(ex, mx) - sx, A_REVERSE, PAIR_WARNING, NULL);
+                            }
+                            search_offset = match_start + match_len;
+                        } else break;
+                    }
+                }
+                if (has_regex) regfree(&regex);
                 state->buffer.dirty_lines[line_idx] = false;
             } else {
                 // If line not dirty, we still need to maintain in_multiline_comment state
                 char *l = state->buffer.lines[line_idx];
                 if (l) {
-                    char *p = l;
-                    while (*p) {
-                        if (!in_multiline_comment && p[0] == '/' && p[1] == '*') { in_multiline_comment = true; p++; }
-                        else if (in_multiline_comment && p[0] == '*' && p[1] == '/') { in_multiline_comment = false; p++; }
-                        p++;
+                    for (int p = 0; l[p]; p++) {
+                        if (!in_multiline_comment && l[p] == '/' && l[p+1] == '*') { in_multiline_comment = true; p++; }
+                        else if (in_multiline_comment && l[p] == '*' && l[p+1] == '/') { in_multiline_comment = false; p++; }
                     }
                 }
             }
@@ -969,14 +1085,15 @@ void display_output_screen(const char *title, const char *filename) {
     FileViewer *viewer = create_file_viewer(filename);
     if (!viewer) { return; }
     
-    WINDOW *output_win = newwin(0, 0, 0, 0);
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+    WINDOW *output_win = newwin(rows, cols, 0, 0);
     keypad(output_win, TRUE);
     wbkgd(output_win, COLOR_PAIR(8));
 
     int top_line = 0;
     wint_t ch;
     while (1) {
-        int rows, cols;
         getmaxyx(output_win, rows, cols);
         werase(output_win);
 

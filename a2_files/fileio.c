@@ -9,6 +9,7 @@
 #include "window_managment.h"
 #include "cache.h"
 #include "settings.h"
+#include "logger.h"
 
 
 #include <limits.h> // For PATH_MAX
@@ -500,12 +501,14 @@ void save_file(EditorState *state) {
         fclose(file); 
         
         // Finalize standard save
-        char auto_save_filename[256];
+        char auto_save_filename[PATH_MAX + 10];
         snprintf(auto_save_filename, sizeof(auto_save_filename), "%s%s", state->buffer.filename, AUTO_SAVE_EXTENSION);
-        remove(auto_save_filename);
+        if (remove(auto_save_filename) != 0 && errno != ENOENT) {
+            A2_LOG(LOG_WARN, TAG_FS, "Could not remove auto-save file %s: %s", auto_save_filename, strerror(errno));
+        }
         
-        char display_filename[40]; 
-        strncpy(display_filename, state->buffer.filename, sizeof(display_filename) - 1);
+        char display_filename[64]; 
+        strncpy(display_filename, basename(state->buffer.filename), sizeof(display_filename) - 1);
         display_filename[sizeof(display_filename) - 1] = '\0';
         editor_set_status_msg(state, "%s written", display_filename);
         
@@ -521,6 +524,7 @@ void save_file(EditorState *state) {
     } else { 
         // --- SUDO SAVE FALLBACK ---
         if (errno == EACCES) {
+           A2_LOG(LOG_WARN, TAG_FS, "Permission denied for %s. Prompting for sudo save.", state->buffer.filename);
            if (ui_confirm("Permission denied. Save with sudo?")) {
                char *temp_filename = get_cache_filename("a2_sudo_save.XXXXXX");
                if (!temp_filename) return;
@@ -570,7 +574,7 @@ void auto_save(EditorState *state) {
     if (strcmp(state->buffer.filename, "[No Name]") == 0) return;
     if (!state->buffer.modified) return;
 
-    char auto_save_filename[256];
+    char auto_save_filename[PATH_MAX + 10];
     snprintf(auto_save_filename, sizeof(auto_save_filename), "%s%s", state->buffer.filename, AUTO_SAVE_EXTENSION);
 
     FILE *file = fopen(auto_save_filename, "w");
@@ -581,6 +585,8 @@ void auto_save(EditorState *state) {
             }
         }
         fclose(file);
+    } else {
+        A2_LOG(LOG_ERROR, TAG_FS, "Auto-save failed to open %s: %s", auto_save_filename, strerror(errno));
     }
 }
 
