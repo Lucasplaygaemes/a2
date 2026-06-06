@@ -254,3 +254,128 @@ void display_dynamic_ksc() {
     fprintf(f, "\n\n---\n*Use '/' to search for actions or keys.*");
     fclose(f); display_help_viewer(temp_file); free(temp_file);
 }
+
+void handle_normal_mode_key(EditorState *state, wint_t ch) {
+    char *line = state->buffer.lines[state->cursor.line];
+    bool is_conflict_line = (line && (strncmp(line, "<<<<<<<", 7) == 0 || strncmp(line, "=======", 7) == 0 || strncmp(line, ">>>>>>>", 7) == 0));
+    
+    if (is_conflict_line) {
+        if (tolower(ch) == 'm') { editor_resolve_conflict_interactive(state, 'm'); return; }
+        if (tolower(ch) == 't') { editor_resolve_conflict_interactive(state, 't'); return; }
+    }
+    if (ch == '[') { editor_jump_to_conflict(state, false); return; }
+    if (ch == ']') { editor_jump_to_conflict(state, true); return; }
+
+    switch (ch) {
+        case 22: editor_paste(state); break;
+        case KEY_BTAB: push_undo(state); editor_unindent_line(state, state->cursor.line); break;
+        case '>': push_undo(state); editor_ident_line(state, state->cursor.line); break;
+        case '<': push_undo(state); editor_unindent_line(state, state->cursor.line); break;
+        case 'd': state->input.mode = OPERATOR_PENDING; state->input.pending_operator = 'd'; break;
+        case KEY_ENTER: case '\n': push_undo(state); editor_handle_enter(state); break;
+        case 25: 
+            if (state->cursor.visual_selection_mode == VISUAL_MODE_NONE) {
+                state->cursor.selection_start_line = state->cursor.line; state->cursor.selection_start_col = state->cursor.col;
+                state->cursor.visual_selection_mode = VISUAL_MODE_YANK; editor_set_status_msg(state, "Global visual selection started");
+            } else { editor_global_yank(state); state->cursor.visual_selection_mode = VISUAL_MODE_NONE; }
+            break;
+        case 'p': editor_paste(state); break;
+        case 'y': state->input.mode = OPERATOR_PENDING; state->input.pending_operator = 'y'; break;
+        case 'm':
+            if (state->cursor.is_moving) { editor_paste_from_move_register(state); state->cursor.is_moving = false; free(state->cursor.move_register); state->cursor.move_register = NULL; editor_set_status_msg(state, "Text moved."); }
+            state->buffer.is_dirty = true; break;
+        case 'u': do_undo(state); break;
+        case 'U': state->buffer.is_dirty = true; state->cursor.col = strlen(state->buffer.lines[state->cursor.line]); editor_handle_enter(state); state->input.mode = INSERT; break;
+        case 'G': state->buffer.is_dirty = true; state->cursor.line = state->buffer.num_lines - 1; state->cursor.col = 0; state->cursor.ideal_col = 0; break;
+        case 'g': state->buffer.is_dirty = true; state->cursor.line = 0; state->cursor.col = 0; state->cursor.ideal_col = 0; break;
+        case 'v': state->input.mode = VISUAL; state->buffer.is_dirty = true; break;
+        case 'i': state->input.mode = INSERT; state->buffer.is_dirty = true; break;
+        case ':': state->input.mode = COMMAND; state->input.history_pos = state->input.history_count; state->input.command_buffer[0] = '\0'; state->input.command_pos = 0; state->buffer.is_dirty = true; break;
+        case KEY_CTRL_RIGHT_BRACKET: next_window(); state->buffer.is_dirty = true; break;
+        case KEY_CTRL_LEFT_BRACKET: previous_window(); state->buffer.is_dirty = true; break;
+        case '/': case 6: editor_find(state); break;
+        case 520: editor_delete_line(state); break;
+        case 11: editor_delete_line(state); state->buffer.is_dirty = true; break;
+        case 4: editor_find_next(state); break;
+        case 1: editor_find_previous(state); break;
+        case 7: display_directory_navigator(state); break;
+        case 'o': case KEY_UP: {
+            int r = (state->input.prefix_count > 0) ? state->input.prefix_count : 1;
+            for (int i = 0; i < r; i++) if (state->cursor.line > 0) state->cursor.line--;
+            state->input.prefix_count = 0; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true;
+            break; }
+        case 'l': case KEY_DOWN: {
+            int r = (state->input.prefix_count > 0) ? state->input.prefix_count : 1;
+            for (int i = 0; i < r; i++) if (state->cursor.line < state->buffer.num_lines - 1) state->cursor.line++;
+            state->input.prefix_count = 0; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true;
+            break; }
+        case 'k': case KEY_LEFT:
+            if (state->cursor.col > 0) { state->cursor.col--; while (state->cursor.col > 0 && (state->buffer.lines[state->cursor.line][state->cursor.col] & 0xC0) == 0x80) state->cursor.col--; }
+            state->cursor.ideal_col = state->cursor.col; state->buffer.is_dirty = true; break;
+        case 231: case KEY_RIGHT: {
+            char* l = state->buffer.lines[state->cursor.line];
+            if (l && state->cursor.col < (int)strlen(l)) { state->cursor.col++; while (l[state->cursor.col] != '\0' && (l[state->cursor.col] & 0xC0) == 0x80) state->cursor.col++; }
+            state->cursor.ideal_col = state->cursor.col; state->buffer.is_dirty = true; break; }
+        case 'O': case KEY_PPAGE: case KEY_SR: for (int i = 0; i < PAGE_JUMP; i++) if (state->cursor.line > 0) state->cursor.line--; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true; break;
+        case 'L': case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->cursor.line < state->buffer.num_lines - 1) state->cursor.line++; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true; break;
+        case 'K': case KEY_HOME: state->cursor.col = 0; state->cursor.ideal_col = 0; state->buffer.is_dirty = true; break;
+        case 199: case KEY_END: { char* l = state->buffer.lines[state->cursor.line]; if(l) state->cursor.col = strlen(l); state->cursor.ideal_col = state->cursor.col; state->buffer.is_dirty = true; } break;
+        case KEY_SDC: editor_delete_line(state); break;
+    }
+}
+
+void handle_visual_mode_key(EditorState *state, wint_t ch) {
+    switch (ch) {
+        case 22: editor_delete_selection(state); editor_paste(state); break;
+        case KEY_BTAB: {
+            push_undo(state); int sl, el;
+            if (state->cursor.selection_start_line < state->cursor.line) { sl = state->cursor.selection_start_line; el = state->cursor.line; }
+            else { sl = state->cursor.line; el = state->cursor.selection_start_line; }
+            for (int i = sl; i <= el; i++) editor_unindent_line(state, i);
+            break; }
+        case '>': {
+            push_undo(state); int sl, el;
+            if (state->cursor.selection_start_line < state->cursor.line) { sl = state->cursor.selection_start_line; el = state->cursor.line; }
+            else { sl = state->cursor.line; el = state->cursor.selection_start_line; }
+            for (int i = sl; i <= el; i++) editor_ident_line(state, i);
+            break; }
+        case '<': {
+            push_undo(state); int sl, el;
+            if (state->cursor.selection_start_line < state->cursor.line) { sl = state->cursor.selection_start_line; el = state->cursor.line; }
+            else { sl = state->cursor.line; el = state->cursor.selection_start_line; }
+            for (int i = sl; i <= el; i++) editor_unindent_line(state, i);
+            break; }
+        case 'd': editor_delete_selection(state); break;
+        case 25: 
+            if (state->cursor.visual_selection_mode == VISUAL_MODE_NONE) {
+                state->cursor.selection_start_line = state->cursor.line; state->cursor.selection_start_col = state->cursor.col;
+                state->cursor.visual_selection_mode = VISUAL_MODE_YANK; editor_set_status_msg(state, "Global visual selection started");
+            } else { editor_global_yank(state); state->cursor.visual_selection_mode = VISUAL_MODE_NONE; }
+            break;
+        case 's':
+            if (state->cursor.visual_selection_mode == VISUAL_MODE_NONE) {
+                state->cursor.selection_start_line = state->cursor.line; state->cursor.selection_start_col = state->cursor.col;
+                state->cursor.visual_selection_mode = VISUAL_MODE_SELECT; editor_set_status_msg(state, "Visual selection started");
+            } else state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
+            break;
+        case 'y':
+            if (state->cursor.visual_selection_mode == VISUAL_MODE_NONE) {
+                state->cursor.selection_start_line = state->cursor.line; state->cursor.selection_start_col = state->cursor.col;
+                state->cursor.visual_selection_mode = VISUAL_MODE_YANK; editor_set_status_msg(state, "Visual selection for yank started");
+            } else { editor_yank_selection(state); state->cursor.visual_selection_mode = VISUAL_MODE_NONE; }
+            state->buffer.is_dirty = true; break;
+        case 'm':
+            if (state->cursor.visual_selection_mode != VISUAL_MODE_NONE) { editor_yank_to_move_register(state); editor_delete_selection(state); state->cursor.is_moving = true; editor_set_status_msg(state, "Text cut. Press 'm' again to paste."); }
+            state->buffer.is_dirty = true; break;
+        case 'v': state->input.mode = NORMAL; state->buffer.is_dirty = true; break;
+        case 'o': case KEY_UP: if (state->cursor.line > 0) state->cursor.line--; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true; break;
+        case 'l': case KEY_DOWN: if (state->cursor.line < state->buffer.num_lines - 1) state->cursor.line++; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true; break;
+        case 'k': case KEY_LEFT:
+            if (state->cursor.col > 0) { state->cursor.col--; while (state->cursor.col > 0 && (state->buffer.lines[state->cursor.line][state->cursor.col] & 0xC0) == 0x80) state->cursor.col--; }
+            state->cursor.ideal_col = state->cursor.col; state->buffer.is_dirty = true; break;
+        case 231: case KEY_RIGHT: {
+            char* l = state->buffer.lines[state->cursor.line];
+            if (l && state->cursor.col < (int)strlen(l)) { state->cursor.col++; while (l[state->cursor.col] != '\0' && (l[state->cursor.col] & 0xC0) == 0x80) state->cursor.col++; }
+            state->cursor.ideal_col = state->cursor.col; state->buffer.is_dirty = true; break; }
+    }
+}

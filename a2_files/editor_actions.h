@@ -8,4 +8,7 @@ bool is_leader_key(int ch);
 void execute_action(EditorAction action, EditorState *state, bool *should_exit);
 void display_dynamic_ksc();
 
+void handle_normal_mode_key(EditorState *state, wint_t ch);
+void handle_visual_mode_key(EditorState *state, wint_t ch);
+
 #endif // EDITOR_ACTIONS_H
