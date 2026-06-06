@@ -94,7 +94,8 @@ typedef enum {
     SETTINGS_VIEW_THEME,
     SETTINGS_VIEW_SPELL,
     SETTINGS_VIEW_LSP,
-    SETTINGS_VIEW_KEYBINDINGS
+    SETTINGS_VIEW_KEYBINDINGS,
+    SETTINGS_VIEW_DEBUG
 } SettingsPanelView;
 
 typedef struct {
@@ -319,6 +320,8 @@ typedef struct {
     
     bool smart_save_enabled;
     bool git_gutter_enabled;
+    bool debug_enabled;
+    int log_level_filter;
 } A2Config;
 
 extern A2Config global_config;
@@ -335,110 +338,138 @@ typedef struct {
 } CompletionItem;
 #endif
 
-#ifndef EDITORSTATE_DEFINED
-#define EDITORSTATE_DEFINED
-typedef struct EditorState {
+#ifndef EDITOR_NESTED_STRUCTS_DEFINED
+#define EDITOR_NESTED_STRUCTS_DEFINED
+
+typedef struct {
+    int line;
+    int col;
+    int ideal_col;
     int selection_start_line;
     int selection_start_col;
     VisualSelectionMode visual_selection_mode;
     char* yank_register;
     char* move_register;
     bool is_moving;
+} EditorCursor;
+
+typedef struct {
     char *lines[MAX_LINES];
-    int num_lines, current_line, current_col, ideal_col, top_line, left_col, command_pos;
-    EditorMode mode;
-    char filename[256], status_msg[STATUS_MSG_LEN], command_buffer[100];
+    int num_lines;
+    char filename[256];
     char previous_filename[256];
+    bool modified;
+    time_t last_mod_time;
+    char *shadow_copy;
+    char *git_gutter;
     char git_branch[256];
-    char *command_history[MAX_COMMAND_HISTORY];
-    int history_count, history_pos;
-    CompletionMode completion_mode;
-    CompletionItem *completion_items;
-    int num_suggestions, selected_suggestion, completion_start_col, completion_scroll_top;
-    WINDOW *completion_win;
-    char word_to_complete[100];
-    SyntaxRule *syntax_rules;
-    int num_syntax_rules;
-    char last_search[100];
-    int last_match_line, last_match_col;
-    bool buffer_modified;
-    time_t last_file_mod_time;
     EditorSnapshot *undo_stack[MAX_UNDO_LEVELS];
     int undo_count;
     EditorSnapshot *redo_stack[MAX_UNDO_LEVELS];
     int redo_count;
     time_t last_auto_save_time;
-    bool auto_indent_on_newline;
-    bool paste_mode;
-    bool word_wrap_enabled;
-    bool show_line_numbers;
-    bool show_scrollbar;
-    DirectoryInfo **recent_dirs;
-    int num_recent_dirs;
+    SyntaxRule *syntax_rules;
+    int num_syntax_rules;
     BracketInfo *unmatched_brackets;
     int num_unmatched_brackets;
-    LspClient *lsp_client;
-    LspDocumentState *lsp_document;
-    bool lsp_enabled;
-    WINDOW *diagnostic_popup;
-    time_t last_change_time;
-    time_t lsp_init_time;
-    int lsp_init_retries;
-    FileInfo **recent_files;
-    int num_recent_files;
-
-    // Macro recording
-    char* macro_registers[26];
-    bool is_recording_macro;
-    int recording_register_idx; // 0-25 for a-z
-    
-    char pending_operator;
-    
-    char last_played_macro_register;
-    bool single_command_mode;    
-    
-    int status_bar_mode;
-    wint_t pending_sequence_key;
-    LspSymbol *symbols;
-    int num_symbols;
-    
-    bool last_search_is_regex;
-    regex_t compiled_regex;
-    
-    char *search_history[MAX_COMMAND_HISTORY];
-    int search_history_count, search_history_pos;
-
+    AssemblyMapping *mapping;
     bool is_dirty;
     bool *dirty_lines;
     int dirty_lines_cap;
-    
-    // Lsp new flags
-    bool lsp_completion_pending;         // Flag to indicate a requestion is in the line
+} EditorBuffer;
 
-    struct timespec lsp_last_keystroke; // Timestamp for the last relevant key
+typedef struct {
+    int top_line;
+    int left_col;
+    bool word_wrap;
+    bool show_line_numbers;
+    bool show_scrollbar;
+    int status_bar_mode;
+    char status_msg[STATUS_MSG_LEN];
+} EditorView;
 
-    // Assembly things
-    AssemblyMapping *mapping;
-
-    SpellChecker spell_checker;
-
-    // Spell checker hover state
-    struct timespec spell_hover_last_move;
-    bool spell_hover_pending;
-    char *spell_hover_message;
-    char spell_hover_word[100];
-
+typedef struct {
+    EditorMode mode;
+    bool single_command_mode;
+    char pending_operator;
+    wint_t pending_sequence_key;
     int prefix_count;
+    bool auto_indent;
+    bool paste_mode;
+    char command_buffer[100];
+    int command_pos;
+    char *command_history[MAX_COMMAND_HISTORY];
+    int history_count;
+    int history_pos;
+    CompletionMode completion_mode;
+    CompletionItem *completion_items;
+    int num_suggestions;
+    int selected_suggestion;
+    int completion_start_col;
+    int completion_scroll_top;
+    WINDOW *completion_win;
+    char word_to_complete[100];
+    char* macro_registers[26];
+    bool is_recording_macro;
+    int recording_register_idx;
+    char last_played_macro_register;
+} EditorInput;
 
-    int search_start_line;
-    int search_start_col;
-    char *shadow_copy;
+typedef struct {
+    char last_term[100];
+    int last_match_line;
+    int last_match_col;
+    bool is_regex;
+    regex_t compiled_regex;
+    char *history[MAX_COMMAND_HISTORY];
+    int history_count;
+    int history_pos;
+    int start_line;
+    int start_col;
+} EditorSearch;
 
-    // Git Gutter
-    char *git_gutter; // Array of chars [num_lines] storing '+', '-', '~' or ' '
+typedef struct {
+    LspClient *client;
+    LspDocumentState *document;
+    bool enabled;
+    WINDOW *diagnostic_popup;
+    time_t last_change_time;
+    time_t init_time;
+    int init_retries;
+    LspSymbol *symbols;
+    int num_symbols;
+    bool completion_pending;
+    struct timespec last_keystroke;
+    int watchdog_restart_attempts;
+    time_t watchdog_last_restart;
+    bool watchdog_disabled;
+} EditorLsp;
+
+typedef struct {
+    SpellChecker checker;
+    struct timespec hover_last_move;
+    bool hover_pending;
+    char *hover_message;
+    char hover_word[100];
+} EditorSpell;
+
+#endif
+
+#ifndef EDITORSTATE_DEFINED
+#define EDITORSTATE_DEFINED
+typedef struct EditorState {
+    EditorCursor cursor;
+    EditorBuffer buffer;
+    EditorView view;
+    EditorInput input;
+    EditorSearch search;
+    EditorLsp lsp;
+    EditorSpell spell;
     
-    
-    
+    DirectoryInfo **recent_dirs;
+    int num_recent_dirs;
+    FileInfo **recent_files;
+    int num_recent_files;
 } EditorState;
 
 #endif
@@ -533,6 +564,9 @@ typedef enum {
     ACT_PASTE_BELOW,       // Alt+p, u
     ACT_PASTE_GLOBAL_BELOW,// Alt+p, U
     ACT_GENERIC_INPUT,     // Alt+p, t
+    ACT_YANK_LOCAL,        // y
+    ACT_YANK_GLOBAL,       // Ctrl+y
+    ACT_YANK_CLIPBOARD,    // Alt+y, c
     ACT_YANK_PARAGRAPH,    // Alt+y, p
     ACT_NEXT_PARAGRAPH,    // }
     ACT_PREV_PARAGRAPH,    // {

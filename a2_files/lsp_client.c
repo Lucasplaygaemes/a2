@@ -4,6 +4,8 @@
 #include "cache.h"
 #include "fileio.h" // Para load_file()
 #include "project.h"
+#include "logger.h"
+#include "lsp_watchdog.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -193,7 +195,7 @@ void lsp_parse_diagnostics(EditorState *state, const char *json_response) {
     free(params_str);
     lsp_log("Parsing diagnostics: %s\n", json_response);
     lsp_log("Debug: Received diagnostic message\n");
-    lsp_log("Drawing %d diagnostics\n", state->lsp_document->diagnostics_count);
+    lsp_log("Drawing %d diagnostics\n", state->lsp.document->diagnostics_count);
     if (!msg || !msg->params) {
         lsp_free_message(msg);
         return;
@@ -203,7 +205,7 @@ void lsp_parse_diagnostics(EditorState *state, const char *json_response) {
     lsp_cleanup_diagnostics(state);
         
     static int diagnostic_counter = 0;
-    if (state->lsp_enabled) {
+    if (state->lsp.enabled) {
         if (diagnostic_counter++ % 100 == 0) {
             lsp_request_diagnostics(state);
             }
@@ -218,12 +220,12 @@ void lsp_parse_diagnostics(EditorState *state, const char *json_response) {
     
     size_t num_diagnostics = json_array_size(diagnostics);
     if (num_diagnostics > 0) {
-        state->lsp_document->diagnostics = malloc(num_diagnostics * sizeof(LspDiagnostic));
-        state->lsp_document->diagnostics_count = num_diagnostics;
+        state->lsp.document->diagnostics = malloc(num_diagnostics * sizeof(LspDiagnostic));
+        state->lsp.document->diagnostics_count = num_diagnostics;
         
         for (size_t i = 0; i < num_diagnostics; i++) {
             json_t *diag_obj = json_array_get(diagnostics, i);
-            LspDiagnostic *diag = &state->lsp_document->diagnostics[i];
+            LspDiagnostic *diag = &state->lsp.document->diagnostics[i];
             
             // Initialize with defaults
             diag->range.start.line = 0;
@@ -288,13 +290,13 @@ void lsp_parse_diagnostics(EditorState *state, const char *json_response) {
     }
     
     lsp_free_message(msg);
-    lsp_log("Debug: %d diagnostics processed\n", state->lsp_document->diagnostics_count);
+    lsp_log("Debug: %d diagnostics processed\n", state->lsp.document->diagnostics_count);
 }
 
 void process_lsp_status(EditorState *state) {
-    if (state->lsp_enabled && state->lsp_client) {
+    if (state->lsp.enabled && state->lsp.client) {
         editor_set_status_msg(state, "LSP active for %s (PID: %d)", 
-                state->lsp_client->languageId, state->lsp_client->server_pid);
+                state->lsp.client->languageId, state->lsp.client->server_pid);
     } else {
         editor_set_status_msg(state, "LSP not active");
     }
@@ -327,20 +329,20 @@ void process_lsp_symbols(EditorState *state) {
     int function_count = 0;
     int variable_count = 0;
     
-    for (int i = 0; i < state->num_lines; i++) {
-        if (state->lines[i]) {
+    for (int i = 0; i < state->buffer.num_lines; i++) {
+        if (state->buffer.lines[i]) {
             // Search for functions
-            if (strstr(state->lines[i], "(") && strstr(state->lines[i], ")")) {
-                if (strstr(state->lines[i], "void") || strstr(state->lines[i], "int") ||
-                    strstr(state->lines[i], "char") || strstr(state->lines[i], "float") ||
-                    strstr(state->lines[i], "double")) {
+            if (strstr(state->buffer.lines[i], "(") && strstr(state->buffer.lines[i], ")")) {
+                if (strstr(state->buffer.lines[i], "void") || strstr(state->buffer.lines[i], "int") ||
+                    strstr(state->buffer.lines[i], "char") || strstr(state->buffer.lines[i], "float") ||
+                    strstr(state->buffer.lines[i], "double")) {
                     function_count++;
                 }
             }
             // Search for variables (simplified)
-            if (strstr(state->lines[i], "=") && 
-                (strstr(state->lines[i], "int") || strstr(state->lines[i], "char") ||
-                 strstr(state->lines[i], "float") || strstr(state->lines[i], "double"))) {
+            if (strstr(state->buffer.lines[i], "=") && 
+                (strstr(state->buffer.lines[i], "int") || strstr(state->buffer.lines[i], "char") ||
+                 strstr(state->buffer.lines[i], "float") || strstr(state->buffer.lines[i], "double"))) {
                 variable_count++;
             }
         }
@@ -359,8 +361,8 @@ void lsp_did_change(EditorState *state) {
     // The new diagnostics will come from the LSP server.
     lsp_cleanup_diagnostics(state);
     
-    state->lsp_document->needs_update = true;
-    state->lsp_document->version++;
+    state->lsp.document->needs_update = true;
+    state->lsp.document->version++;
     
     // Sends the change notification immediately to get quick feedback.
     lsp_send_did_change(state);
@@ -370,78 +372,78 @@ void lsp_did_change(EditorState *state) {
 void lsp_did_save(EditorState *state) {
     if (!lsp_is_available(state)) return;
     
-    char *uri = lsp_get_uri_from_path(state->filename);
+    char *uri = lsp_get_uri_from_path(state->buffer.filename);
     if (!uri) return;
     
     char *save_msg = "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didSave\",\"params\":{\"textDocument\":{\"uri\":\"%s\"}}}";
     char save_buf[1024];
     snprintf(save_buf, sizeof(save_buf), save_msg, uri);
     
-    write(state->lsp_client->stdin_fd, save_buf, strlen(save_buf));
+    write(state->lsp.client->stdin_fd, save_buf, strlen(save_buf));
     
     free(uri); // Free the memory allocated for the URI
 }
 
 
 void lsp_shutdown(EditorState *state) {
-    if (!state || !state->lsp_client) return;
+    if (!state || !state->lsp.client) return;
 
-    if ((uintptr_t)state->lsp_client < 0x1000) {
-        state->lsp_client = NULL;
+    if ((uintptr_t)state->lsp.client < 0x1000) {
+        state->lsp.client = NULL;
         return;
     }
 
-    if (state->lsp_client->stdin_fd != -1) {
+    if (state->lsp.client->stdin_fd != -1) {
         char *shutdown_msg = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"shutdown\",\"params\":{}}";
-        write(state->lsp_client->stdin_fd, shutdown_msg, strlen(shutdown_msg));
+        write(state->lsp.client->stdin_fd, shutdown_msg, strlen(shutdown_msg));
         char *exit_msg = "{\"jsonrpc\":\"2.0\",\"method\":\"exit\",\"params\":{}}";
-        write(state->lsp_client->stdin_fd, exit_msg, strlen(exit_msg));
+        write(state->lsp.client->stdin_fd, exit_msg, strlen(exit_msg));
     }
 
-    if (state->lsp_client->stdin_fd != -1) {
-        close(state->lsp_client->stdin_fd);
-        state->lsp_client->stdin_fd = -1;
+    if (state->lsp.client->stdin_fd != -1) {
+        close(state->lsp.client->stdin_fd);
+        state->lsp.client->stdin_fd = -1;
     }
-    if (state->lsp_client->stdout_fd != -1) {
-        close(state->lsp_client->stdout_fd);
-        state->lsp_client->stdout_fd = -1;
+    if (state->lsp.client->stdout_fd != -1) {
+        close(state->lsp.client->stdout_fd);
+        state->lsp.client->stdout_fd = -1;
     }
-    if (state->lsp_client->stderr_fd != -1) {
-        close(state->lsp_client->stderr_fd);
-        state->lsp_client->stderr_fd = -1;
+    if (state->lsp.client->stderr_fd != -1) {
+        close(state->lsp.client->stderr_fd);
+        state->lsp.client->stderr_fd = -1;
     }
 
-    if (state->lsp_client->server_pid != -1) {
+    if (state->lsp.client->server_pid != -1) {
         // Use WNOHANG to prevent blocking if the server is slow to exit.
         // The main loop's waitpid will clean up the zombie process later.
-        waitpid(state->lsp_client->server_pid, NULL, WNOHANG);
-        state->lsp_client->server_pid = -1;
+        waitpid(state->lsp.client->server_pid, NULL, WNOHANG);
+        state->lsp.client->server_pid = -1;
     }
 
-    if (state->lsp_client->languageId) {
-        free(state->lsp_client->languageId);
-        state->lsp_client->languageId = NULL;
+    if (state->lsp.client->languageId) {
+        free(state->lsp.client->languageId);
+        state->lsp.client->languageId = NULL;
     }
-    if (state->lsp_client->rootUri) {
-        free(state->lsp_client->rootUri);
-        state->lsp_client->rootUri = NULL;
+    if (state->lsp.client->rootUri) {
+        free(state->lsp.client->rootUri);
+        state->lsp.client->rootUri = NULL;
     }
-    if (state->lsp_client->workspaceFolders) {
-        free(state->lsp_client->workspaceFolders);
-        state->lsp_client->workspaceFolders = NULL;
+    if (state->lsp.client->workspaceFolders) {
+        free(state->lsp.client->workspaceFolders);
+        state->lsp.client->workspaceFolders = NULL;
     }
-    if (state->lsp_client->compilerFlags) {
-        free(state->lsp_client->compilerFlags);
-        state->lsp_client->compilerFlags = NULL;
+    if (state->lsp.client->compilerFlags) {
+        free(state->lsp.client->compilerFlags);
+        state->lsp.client->compilerFlags = NULL;
     }
-    if (state->lsp_client->compilationDatabase) {
-        free(state->lsp_client->compilationDatabase);
-        state->lsp_client->compilationDatabase = NULL;
+    if (state->lsp.client->compilationDatabase) {
+        free(state->lsp.client->compilationDatabase);
+        state->lsp.client->compilationDatabase = NULL;
     }
 
-    free(state->lsp_client);
-    state->lsp_client = NULL;
-    state->lsp_enabled = false;
+    free(state->lsp.client);
+    state->lsp.client = NULL;
+    state->lsp.enabled = false;
 
     lsp_free_document_state(state);
 }
@@ -449,13 +451,13 @@ void lsp_shutdown(EditorState *state) {
 void lsp_did_open(EditorState *state) {
     if (!lsp_is_available(state)) return;
     
-    lsp_log("Sending didOpen for: %s\n", state->filename);
+    lsp_log("Sending didOpen for: %s\n", state->buffer.filename);
     
     // Build the file content
     size_t total_length = 0;
-    for (int i = 0; i < state->num_lines; i++) {
-        if (state->lines[i]) {
-            total_length += strlen(state->lines[i]) + 1; // +1 for newline
+    for (int i = 0; i < state->buffer.num_lines; i++) {
+        if (state->buffer.lines[i]) {
+            total_length += strlen(state->buffer.lines[i]) + 1; // +1 for newline
         }
     }
     
@@ -463,9 +465,9 @@ void lsp_did_open(EditorState *state) {
     if (!content) return;
     
     content[0] = '\0';
-    for (int i = 0; i < state->num_lines; i++) {
-        if (state->lines[i]) {
-            strcat(content, state->lines[i]);
+    for (int i = 0; i < state->buffer.num_lines; i++) {
+        if (state->buffer.lines[i]) {
+            strcat(content, state->buffer.lines[i]);
             strcat(content, "\n");
         }
     }
@@ -480,10 +482,10 @@ void lsp_did_open(EditorState *state) {
     }
     
     // Create didOpen message
-    char *uri = lsp_get_uri_from_path(state->filename);
+    char *uri = lsp_get_uri_from_path(state->buffer.filename);
     char *open_msg_format = "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"%s\",\"languageId\":\"%s\",\"version\":1,\"text\":\"%s\"}}}";
     
-    size_t needed_size = snprintf(NULL, 0, open_msg_format, uri, state->lsp_client->languageId, escaped_content) + 1;
+    size_t needed_size = snprintf(NULL, 0, open_msg_format, uri, state->lsp.client->languageId, escaped_content) + 1;
     char *open_buf = malloc(needed_size);
     if (!open_buf) {
         lsp_log("Failed to allocate buffer for didOpen\n");
@@ -491,7 +493,7 @@ void lsp_did_open(EditorState *state) {
         free(escaped_content);
         return;
     }
-    snprintf(open_buf, needed_size, open_msg_format, uri, state->lsp_client->languageId, escaped_content);
+    snprintf(open_buf, needed_size, open_msg_format, uri, state->lsp.client->languageId, escaped_content);
     
     lsp_log("didOpen message: %s\n", open_buf);
     
@@ -503,10 +505,10 @@ void lsp_did_open(EditorState *state) {
     free(escaped_content);
     
     // Initialize the document state if it doesn't exist
-    if (!state->lsp_document) {
+    if (!state->lsp.document) {
         lsp_init_document_state(state);
     }
-    state->lsp_document->needs_update = false;
+    state->lsp.document->needs_update = false;
 }
 
 char* json_escape_string(const char *str) {
@@ -595,16 +597,16 @@ void lsp_force_diagnostics(EditorState *state) {
 }
 
 LspDiagnostic* get_diagnostic_under_cursor(EditorState *state) {
-    if (!state->lsp_document || state->lsp_document->diagnostics_count == 0) {
+    if (!state->lsp.document || state->lsp.document->diagnostics_count == 0) {
         return NULL;
     }
 
     // Converts the cursor column from bytes to characters before comparing
-    int cursor_char_col = get_character_col_from_byte(state->lines[state->current_line], state->current_col);
+    int cursor_char_col = get_character_col_from_byte(state->buffer.lines[state->cursor.line], state->cursor.col);
 
-    for (int i = 0; i < state->lsp_document->diagnostics_count; i++) {
-        LspDiagnostic *diag = &state->lsp_document->diagnostics[i];
-        if (state->current_line == diag->range.start.line && 
+    for (int i = 0; i < state->lsp.document->diagnostics_count; i++) {
+        LspDiagnostic *diag = &state->lsp.document->diagnostics[i];
+        if (state->cursor.line == diag->range.start.line && 
             cursor_char_col >= diag->range.start.character && 
             cursor_char_col <= diag->range.end.character) {
             return diag;
@@ -614,14 +616,14 @@ LspDiagnostic* get_diagnostic_under_cursor(EditorState *state) {
 }
 
 void process_lsp_restart(EditorState *state) {
-    if (state->lsp_client) {
+    if (state->lsp.client) {
         lsp_shutdown(state);
     }
-    if (state->lsp_enabled) {
+    if (state->lsp.enabled) {
         napms(500);
         lsp_did_open(state);
     }
-    if (state->lsp_enabled) {
+    if (state->lsp.enabled) {
         lsp_did_open(state);
     }
     editor_set_status_msg(state, "LSP restarted");
@@ -633,9 +635,9 @@ void process_lsp_diagnostics(EditorState *state) {
         return;
     }
     
-    if (state->lsp_document && state->lsp_document->diagnostics_count > 0) {
+    if (state->lsp.document && state->lsp.document->diagnostics_count > 0) {
         // Show the first diagnostic as an example
-        LspDiagnostic *diag = &state->lsp_document->diagnostics[0];
+        LspDiagnostic *diag = &state->lsp.document->diagnostics[0];
         editor_set_status_msg(state, "Diagnostic: %s (Line %d)", 
                 diag->message, diag->range.start.line + 1);
     } else {
@@ -655,12 +657,12 @@ void process_lsp_definition(EditorState *state) {
 
     json_t *params = json_object();
     json_t *textDocument = json_object();
-    json_object_set_new(textDocument, "uri", json_string(state->lsp_document->uri));
+    json_object_set_new(textDocument, "uri", json_string(state->lsp.document->uri));
     json_object_set_new(params, "textDocument", textDocument);
 
     json_t *position = json_object();
-    json_object_set_new(position, "line", json_integer(state->current_line));
-    json_object_set_new(position, "character", json_integer(state->current_col));
+    json_object_set_new(position, "line", json_integer(state->cursor.line));
+    json_object_set_new(position, "character", json_integer(state->cursor.col));
     json_object_set_new(params, "position", position);
     
     msg->params = params;
@@ -684,8 +686,8 @@ void process_lsp_references(EditorState *state) {
     get_word_at_cursor(state, current_word, sizeof(current_word));
     
     int count = 0;
-    for (int i = 0; i < state->num_lines; i++) {
-        if (strstr(state->lines[i], current_word)) {
+    for (int i = 0; i < state->buffer.num_lines; i++) {
+        if (strstr(state->buffer.lines[i], current_word)) {
             count++;
         }
     }
@@ -709,22 +711,22 @@ void process_lsp_rename(EditorState *state, const char *new_name) {
     }
     
     int count = 0;
-    for (int i = 0; i < state->num_lines; i++) {
-        if (state->lines[i]) {
-            char *pos = state->lines[i];
+    for (int i = 0; i < state->buffer.num_lines; i++) {
+        if (state->buffer.lines[i]) {
+            char *pos = state->buffer.lines[i];
             while ((pos = strstr(pos, current_word)) != NULL) {
                 // Check if it is a whole word (not part of another word)
-                if ((pos == state->lines[i] || !isalnum(pos[-1])) && 
+                if ((pos == state->buffer.lines[i] || !isalnum(pos[-1])) && 
                     !isalnum(pos[strlen(current_word)])) {
                     // Replace the word
                     char new_line[MAX_LINE_LEN];
-                    strncpy(new_line, state->lines[i], pos - state->lines[i]);
-                    new_line[pos - state->lines[i]] = '\0';
+                    strncpy(new_line, state->buffer.lines[i], pos - state->buffer.lines[i]);
+                    new_line[pos - state->buffer.lines[i]] = '\0';
                     strcat(new_line, new_name);
                     strcat(new_line, pos + strlen(current_word));
                     
-                    free(state->lines[i]);
-                    state->lines[i] = strdup(new_line);
+                    free(state->buffer.lines[i]);
+                    state->buffer.lines[i] = strdup(new_line);
                     count++;
                 }
                 pos += strlen(current_word);
@@ -734,30 +736,30 @@ void process_lsp_rename(EditorState *state, const char *new_name) {
     
     editor_set_status_msg(state, "Renamed %s to %s (%d occurrences)", 
             current_word, new_name, count);
-    state->buffer_modified = true;
+    state->buffer.modified = true;
 }
 
 // Helper function to get the word under the cursor
 void get_word_at_cursor(EditorState *state, char *buffer, size_t buffer_size) {
-    if (state->current_line < 0 || state->current_line >= state->num_lines) {
+    if (state->cursor.line < 0 || state->cursor.line >= state->buffer.num_lines) {
         buffer[0] = '\0';
         return;
     }
     
-    char *line = state->lines[state->current_line];
-    if (!line || state->current_col >= (int)strlen(line)) {
+    char *line = state->buffer.lines[state->cursor.line];
+    if (!line || state->cursor.col >= (int)strlen(line)) {
         buffer[0] = '\0';
         return;
     }
     
     // Find the start of the word
-    int start = state->current_col;
+    int start = state->cursor.col;
     while (start > 0 && isalnum(line[start - 1])) {
         start--;
     }
     
     // Find the end of the word
-    int end = state->current_col;
+    int end = state->cursor.col;
     int line_len = (int)strlen(line);
     while (end < line_len && isalnum(line[end])) {
         end++;
@@ -774,44 +776,44 @@ void get_word_at_cursor(EditorState *state, char *buffer, size_t buffer_size) {
 }
 
 void lsp_initialize(EditorState *state) {
-    if (state->lsp_client) {
+    if (state->lsp.client) {
         lsp_shutdown(state);
     }
-    state->lsp_init_time = time(NULL);
-    state->lsp_init_retries = 0;
+    state->lsp.init_time = time(NULL);
+    state->lsp.init_retries = 0;
 
-    state->lsp_client = malloc(sizeof(LspClient));
-    if (!state->lsp_client) {
+    state->lsp.client = malloc(sizeof(LspClient));
+    if (!state->lsp.client) {
         editor_set_status_msg(state, "Allocation error for LSP");
         return;
     }
-    memset(state->lsp_client, 0, sizeof(LspClient)); // Initialize with zeros
+    memset(state->lsp.client, 0, sizeof(LspClient)); // Initialize with zeros
 
     bool lsp_will_be_enabled = false;
-    const char *ext = strrchr(state->filename, '.');
+    const char *ext = strrchr(state->buffer.filename, '.');
 
     // Determine languageId and if LSP will be used
     if (ext) {
         if (strcmp(ext, ".c") == 0 || strcmp(ext, ".h") == 0) {
-            state->lsp_client->languageId = strdup("c");
+            state->lsp.client->languageId = strdup("c");
             lsp_will_be_enabled = true;
         } else if (strcmp(ext, ".cpp") == 0 || strcmp(ext, ".hpp") == 0) {
-            state->lsp_client->languageId = strdup("cpp");
+            state->lsp.client->languageId = strdup("cpp");
             lsp_will_be_enabled = true;
         } else if (strcmp(ext, ".py") == 0) {
-            state->lsp_client->languageId = strdup("python");
+            state->lsp.client->languageId = strdup("python");
             lsp_will_be_enabled = true;
         } else {
-            state->lsp_client->languageId = strdup("plaintext");
+            state->lsp.client->languageId = strdup("plaintext");
         }
     } else {
-        state->lsp_client->languageId = strdup("plaintext");
+        state->lsp.client->languageId = strdup("plaintext");
     }
 
-    if (!state->lsp_client->languageId) {
+    if (!state->lsp.client->languageId) {
         editor_set_status_msg(state, "Allocation error for languageId");
-        free(state->lsp_client);
-        state->lsp_client = NULL;
+        free(state->lsp.client);
+        state->lsp.client = NULL;
         return;
     }
 
@@ -819,17 +821,17 @@ void lsp_initialize(EditorState *state) {
     bool enable_spell_check = ((ext && strcmp(ext, ".txt") == 0) || !lsp_will_be_enabled) && global_config.spell_checker_enabled;
 
     if (enable_spell_check && global_config.default_spell_lang[0] != '\0') {
-        spell_checker_load_dict(&state->spell_checker, global_config.default_spell_lang);
+        spell_checker_load_dict(&state->spell.checker, global_config.default_spell_lang);
     } else {
-        spell_checker_unload_dict(&state->spell_checker);
+        spell_checker_unload_dict(&state->spell.checker);
     }
 
     // Now, proceed with LSP initialization if needed
     if (!lsp_will_be_enabled || !global_config.lsp_enabled) {
-        free(state->lsp_client->languageId);
-        free(state->lsp_client);
-        state->lsp_client = NULL;
-        state->lsp_enabled = false;
+        free(state->lsp.client->languageId);
+        free(state->lsp.client);
+        state->lsp.client = NULL;
+        state->lsp.enabled = false;
         return;
     }
     
@@ -838,9 +840,9 @@ void lsp_initialize(EditorState *state) {
     
     if (pipe(stdin_pipe) != 0 || pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0) {
         editor_set_status_msg(state, "Error creating pipes for LSP");
-        free(state->lsp_client->languageId);
-        free(state->lsp_client);
-        state->lsp_client = NULL;
+        free(state->lsp.client->languageId);
+        free(state->lsp.client);
+        state->lsp.client = NULL;
         return;
     }
     
@@ -863,13 +865,13 @@ void lsp_initialize(EditorState *state) {
         // Start the LSP server
         // In lsp_initialize, use optimized arguments:
         
-        if (strcmp(state->lsp_client->languageId, "c") == 0 || strcmp(state->lsp_client->languageId, "cpp") == 0) {
+        if (strcmp(state->lsp.client->languageId, "c") == 0 || strcmp(state->lsp.client->languageId, "cpp") == 0) {
             execlp("clangd", "clangd", 
                    "--background-index", 
                    "--log=error",
                    "--pretty",
                    NULL);
-        } else if (strcmp(state->lsp_client->languageId, "python") == 0) {
+        } else if (strcmp(state->lsp.client->languageId, "python") == 0) {
             execlp("pylsp", "pylsp", NULL);
         }
         exit(1);
@@ -879,20 +881,20 @@ void lsp_initialize(EditorState *state) {
         close(stdout_pipe[1]);
         close(stderr_pipe[1]);
         
-        state->lsp_client->server_pid = pid;
-        state->lsp_client->stdin_fd = stdin_pipe[1];
-        state->lsp_client->stdout_fd = stdout_pipe[0];
-        state->lsp_client->stderr_fd = stderr_pipe[0];
+        state->lsp.client->server_pid = pid;
+        state->lsp.client->stdin_fd = stdin_pipe[1];
+        state->lsp.client->stdout_fd = stdout_pipe[0];
+        state->lsp.client->stderr_fd = stderr_pipe[0];
         
-        fcntl(state->lsp_client->stdout_fd, F_SETFL, O_NONBLOCK);
-        fcntl(state->lsp_client->stderr_fd, F_SETFL, O_NONBLOCK);
+        fcntl(state->lsp.client->stdout_fd, F_SETFL, O_NONBLOCK);
+        fcntl(state->lsp.client->stderr_fd, F_SETFL, O_NONBLOCK);
         
         lsp_init_document_state(state);
         lsp_send_initialize(state);
         
-        editor_set_status_msg(state, "LSP initialized for %s", state->lsp_client->languageId);
-        state->lsp_enabled = true;
-        state->lsp_client->initialized = true;
+        editor_set_status_msg(state, "LSP initialized for %s", state->lsp.client->languageId);
+        state->lsp.enabled = true;
+        state->lsp.client->initialized = true;
     } else {
         editor_set_status_msg(state, "Error starting LSP: %s", strerror(errno));
         
@@ -904,15 +906,15 @@ void lsp_initialize(EditorState *state) {
         close(stderr_pipe[0]);
         close(stderr_pipe[1]);
         
-        free(state->lsp_client->languageId);
-        free(state->lsp_client);
-        state->lsp_client = NULL;
+        free(state->lsp.client->languageId);
+        free(state->lsp.client);
+        state->lsp.client = NULL;
     }
 }
 
 // Checks if LSP is available
 bool lsp_is_available(EditorState *state) {
-    return state && state->lsp_client && (uintptr_t)state->lsp_client >= 0x1000 && state->lsp_client->initialized;
+    return state && state->lsp.client && (uintptr_t)state->lsp.client >= 0x1000 && state->lsp.client->initialized;
 }
 
 
@@ -954,50 +956,50 @@ char* lsp_get_uri_from_path(const char *path) {
 }
 // Initializes the LSP document state
 void lsp_init_document_state(EditorState *state) {
-    if (!state->lsp_document) {
-        state->lsp_document = malloc(sizeof(LspDocumentState));
-        memset(state->lsp_document, 0, sizeof(LspDocumentState));
+    if (!state->lsp.document) {
+        state->lsp.document = malloc(sizeof(LspDocumentState));
+        memset(state->lsp.document, 0, sizeof(LspDocumentState));
     } else {
         // Free previous URI if it exists
-        if (state->lsp_document->uri) {
-            free(state->lsp_document->uri);
-            state->lsp_document->uri = NULL;
+        if (state->lsp.document->uri) {
+            free(state->lsp.document->uri);
+            state->lsp.document->uri = NULL;
         }
     }
     
-    state->lsp_document->uri = lsp_get_uri_from_path(state->filename);
-    state->lsp_document->version = 1;
-    state->lsp_document->diagnostics = NULL;
-    state->lsp_document->diagnostics_count = 0;
-    state->lsp_document->needs_update = false;
+    state->lsp.document->uri = lsp_get_uri_from_path(state->buffer.filename);
+    state->lsp.document->version = 1;
+    state->lsp.document->diagnostics = NULL;
+    state->lsp.document->diagnostics_count = 0;
+    state->lsp.document->needs_update = false;
 }
 
 void lsp_free_document_state(EditorState *state) {
-    if (!state->lsp_document) return;
+    if (!state->lsp.document) return;
     
-    if (state->lsp_document->uri) {
-        free(state->lsp_document->uri);
-        state->lsp_document->uri = NULL;
+    if (state->lsp.document->uri) {
+        free(state->lsp.document->uri);
+        state->lsp.document->uri = NULL;
     }
     
     lsp_cleanup_diagnostics(state);
     
-    free(state->lsp_document);
-    state->lsp_document = NULL;
+    free(state->lsp.document);
+    state->lsp.document = NULL;
 }
 
 // Clears LSP diagnostics
 void lsp_cleanup_diagnostics(EditorState *state) {
-    if (!state->lsp_document || !state->lsp_document->diagnostics) return;
+    if (!state->lsp.document || !state->lsp.document->diagnostics) return;
     
-    for (int i = 0; i < state->lsp_document->diagnostics_count; i++) {
-        free(state->lsp_document->diagnostics[i].message);
-        free(state->lsp_document->diagnostics[i].code);
+    for (int i = 0; i < state->lsp.document->diagnostics_count; i++) {
+        free(state->lsp.document->diagnostics[i].message);
+        free(state->lsp.document->diagnostics[i].code);
     }
     
-    free(state->lsp_document->diagnostics);
-    state->lsp_document->diagnostics = NULL;
-    state->lsp_document->diagnostics_count = 0;
+    free(state->lsp.document->diagnostics);
+    state->lsp.document->diagnostics = NULL;
+    state->lsp.document->diagnostics_count = 0;
 }
 
 // Parses completion suggestions from LSP
@@ -1022,10 +1024,10 @@ void lsp_parse_completion(EditorState *state, const char *json_response) {
     }
     
     // Only now, when we know we have suggestions, do we enter completion mode.
-    if (state->completion_mode == COMPLETION_NONE) {
-        state->completion_mode = COMPLETION_TEXT;
-        state->selected_suggestion = 0;
-        state->completion_scroll_top = 0;
+    if (state->input.completion_mode == COMPLETION_NONE) {
+        state->input.completion_mode = COMPLETION_TEXT;
+        state->input.selected_suggestion = 0;
+        state->input.completion_scroll_top = 0;
     }
     
     size_t num_items = json_array_size(items);
@@ -1044,12 +1046,12 @@ void lsp_parse_completion(EditorState *state, const char *json_response) {
         }
     }
     
-    if (state->num_suggestions > 0 && !state->completion_win) {
+    if (state->input.num_suggestions > 0 && !state->input.completion_win) {
         // Create completion window if it doesn't exist
-        int win_height = min(10, state->num_suggestions);
+        int win_height = min(10, state->input.num_suggestions);
         int win_width = 50; // Wider to show more information
-        int start_y = state->current_line - state->top_line + 1;
-        int start_x = state->current_col - state->left_col;
+        int start_y = state->cursor.line - state->view.top_line + 1;
+        int start_x = state->cursor.col - state->view.left_col;
         
         if (start_y + win_height > getmaxy(stdscr)) {
             start_y = getmaxy(stdscr) - win_height;
@@ -1059,8 +1061,8 @@ void lsp_parse_completion(EditorState *state, const char *json_response) {
             start_x = getmaxx(stdscr) - win_width;
         }
         
-        state->completion_win = newwin(win_height, win_width, start_y, start_x);
-        keypad(state->completion_win, TRUE);
+        state->input.completion_win = newwin(win_height, win_width, start_y, start_x);
+        keypad(state->input.completion_win, TRUE);
     }
     
     lsp_free_message(msg);
@@ -1101,7 +1103,7 @@ void lsp_send_initialize(EditorState *state) {
     json_object_set_new(params, "processId", json_integer(getpid()));
     json_object_set_new(params, "capabilities", capabilities);
 
-    char* project_root = find_project_root(state->filename);
+    char* project_root = find_project_root(state->buffer.filename);
     char root_path_buffer[PATH_MAX]; // Buffer para o fallback
     char* root_path_for_lsp = NULL;
 
@@ -1125,11 +1127,11 @@ void lsp_send_initialize(EditorState *state) {
     }
 
     json_t *initOptions = json_object();
-    if (strcmp(state->lsp_client->languageId, "c") == 0 || strcmp(state->lsp_client->languageId, "cpp") == 0) {
+    if (strcmp(state->lsp.client->languageId, "c") == 0 || strcmp(state->lsp.client->languageId, "cpp") == 0) {
         if (root_path_for_lsp) {
             json_object_set_new(initOptions, "compilationDatabasePath", json_string(root_path_for_lsp));
         }
-    } else if (strcmp(state->lsp_client->languageId, "python") == 0) {
+    } else if (strcmp(state->lsp.client->languageId, "python") == 0) {
         json_t *pylsp_plugins = json_object();
         json_t *ruff_plugin = json_object();
         json_object_set_new(ruff_plugin, "enabled", json_true());
@@ -1155,14 +1157,7 @@ void lsp_send_initialize(EditorState *state) {
     msg->params = params;
     char *json_str = lsp_serialize_message(msg);
     
-    char* log_filename = get_cache_filename("lsp_log.txt");
-    FILE *log = fopen(log_filename, "a");
-    free(log_filename);
-
-    if (log) {
-        fprintf(log, "Sending initialization message:\n%s\n", json_str);
-        fclose(log);
-    }
+    A2_LOG(LOG_DEBUG, TAG_LSP, "Sending initialization message:\n%s", json_str);
     
     // Add Content-Length header as per LSP protocol
     char header[100];
@@ -1170,18 +1165,11 @@ void lsp_send_initialize(EditorState *state) {
     snprintf(header, sizeof(header), "Content-Length: %zu\r\n\r\n", content_length);
     
     // Send header followed by JSON content
-    write(state->lsp_client->stdin_fd, header, strlen(header));
-    ssize_t bytes_written = write(state->lsp_client->stdin_fd, json_str, content_length);
+    write(state->lsp.client->stdin_fd, header, strlen(header));
+    ssize_t bytes_written = write(state->lsp.client->stdin_fd, json_str, content_length);
     
-    char* log_filename2 = get_cache_filename("lsp_log.txt");
-    log = fopen(log_filename2, "a");
-    free(log_filename2);
-
-    if (log) {
-        fprintf(log, "Bytes written: %zd (header: %zu, content: %zu)\n", 
-                bytes_written, strlen(header), content_length);
-        fclose(log);
-    }
+    A2_LOG(LOG_DEBUG, TAG_LSP, "Bytes written: %zd (header: %zu, content: %zu)", 
+            bytes_written, strlen(header), content_length);
 
     if (project_root) {
         free(project_root);
@@ -1203,8 +1191,8 @@ void lsp_send_message(EditorState *state, const char *json_message) {
     lsp_log("Sending header: %s", header);
     lsp_log("Sending message: %s\n", json_message);
     
-    write(state->lsp_client->stdin_fd, header, strlen(header));
-    write(state->lsp_client->stdin_fd, json_message, content_length);
+    write(state->lsp.client->stdin_fd, header, strlen(header));
+    write(state->lsp.client->stdin_fd, json_message, content_length);
 }
 
 void lsp_send_did_change(EditorState *state) {
@@ -1212,9 +1200,9 @@ void lsp_send_did_change(EditorState *state) {
     
     // Build the file content in a simpler way
     size_t total_length = 0;
-    for (int i = 0; i < state->num_lines; i++) {
-        if (state->lines[i]) {
-            total_length += strlen(state->lines[i]) + 1; // +1 for newline
+    for (int i = 0; i < state->buffer.num_lines; i++) {
+        if (state->buffer.lines[i]) {
+            total_length += strlen(state->buffer.lines[i]) + 1; // +1 for newline
         }
     }
     
@@ -1222,9 +1210,9 @@ void lsp_send_did_change(EditorState *state) {
     if (!content) return;
     
     content[0] = '\0';
-    for (int i = 0; i < state->num_lines; i++) {
-        if (state->lines[i]) {
-            strcat(content, state->lines[i]);
+    for (int i = 0; i < state->buffer.num_lines; i++) {
+        if (state->buffer.lines[i]) {
+            strcat(content, state->buffer.lines[i]);
             strcat(content, "\n");
         }
     }
@@ -1239,10 +1227,10 @@ void lsp_send_did_change(EditorState *state) {
     }
     
     // Create didChange message
-    char *uri = lsp_get_uri_from_path(state->filename);
+    char *uri = lsp_get_uri_from_path(state->buffer.filename);
     char *change_msg_format = "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"textDocument\":{\"uri\":\"%s\",\"version\":%d},\"contentChanges\":[{\"text\":\"%s\"}]}}";
     
-    size_t needed_size = snprintf(NULL, 0, change_msg_format, uri, state->lsp_document->version, escaped_content) + 1;
+    size_t needed_size = snprintf(NULL, 0, change_msg_format, uri, state->lsp.document->version, escaped_content) + 1;
     char *change_buf = malloc(needed_size);
     if (!change_buf) {
         lsp_log("Failed to allocate buffer for didChange\n");
@@ -1251,7 +1239,7 @@ void lsp_send_did_change(EditorState *state) {
         return;
     }
     snprintf(change_buf, needed_size, change_msg_format, uri, 
-             state->lsp_document->version, escaped_content);
+             state->lsp.document->version, escaped_content);
     
     lsp_log("Sending didChange: %s\n", change_buf);
     
@@ -1260,15 +1248,15 @@ void lsp_send_did_change(EditorState *state) {
     free(change_buf);
     free(uri);
     free(escaped_content);
-    state->lsp_document->version++;
-    state->lsp_document->needs_update = false;
+    state->lsp.document->version++;
+    state->lsp.document->needs_update = false;
 }
 
 bool lsp_process_alive(EditorState *state) {
-    if (!state->lsp_client) return false;
+    if (!state->lsp.client) return false;
     
     int status;
-    pid_t result = waitpid(state->lsp_client->server_pid, &status, WNOHANG);
+    pid_t result = waitpid(state->lsp.client->server_pid, &status, WNOHANG);
     
     if (result == 0) {
         return true; // Process is still running
@@ -1279,9 +1267,9 @@ bool lsp_process_alive(EditorState *state) {
 
 
 bool lsp_is_ready(EditorState *state) {
-    return state->lsp_client != NULL && 
-           state->lsp_client->initialized && 
-           state->lsp_document != NULL;
+    return state->lsp.client != NULL && 
+           state->lsp.client->initialized && 
+           state->lsp.document != NULL;
 }
 
 void lsp_process_messages(EditorState *state) {
@@ -1291,22 +1279,22 @@ void lsp_process_messages(EditorState *state) {
     struct timeval tv = {0, 10000}; // 10ms timeout
     
     FD_ZERO(&readfds);
-    FD_SET(state->lsp_client->stdout_fd, &readfds);
+    FD_SET(state->lsp.client->stdout_fd, &readfds);
     
-    int retval = select(state->lsp_client->stdout_fd + 1, &readfds, NULL, NULL, &tv);
+    int retval = select(state->lsp.client->stdout_fd + 1, &readfds, NULL, NULL, &tv);
     if (retval <= 0) return;
     
     char buffer[4096];
-    ssize_t bytes_read = read(state->lsp_client->stdout_fd, buffer, sizeof(buffer) - 1);
+    ssize_t bytes_read = read(state->lsp.client->stdout_fd, buffer, sizeof(buffer) - 1);
     
     time_t now = time(NULL);
-    if (state->lsp_client && !state->lsp_client->initialized && 
-        now - state->lsp_init_time > 5) {
-        if (state->lsp_init_retries < 3) {
+    if (state->lsp.client && !state->lsp.client->initialized && 
+        now - state->lsp.init_time > 5) {
+        if (state->lsp.init_retries < 3) {
             lsp_log("LSP initialization timeout, retrying...\n");
             lsp_send_initialize(state);
-            state->lsp_init_time = now;
-            state->lsp_init_retries++;
+            state->lsp.init_time = now;
+            state->lsp.init_retries++;
         } else {
             lsp_log("LSP initialization failed after multiple retries\n");
             lsp_shutdown(state);
@@ -1396,9 +1384,9 @@ void lsp_process_received_data(EditorState *state, const char *buffer, size_t bu
                 lsp_log("Document symbols received\n");
                 json_t *symbols_array = msg->result;
                 if (json_is_array(symbols_array)) {
-                    state->num_symbols = json_array_size(symbols_array);
-                    state->symbols = malloc(sizeof(LspSymbol) * state->num_symbols);
-                    for (int i = 0; i < state->num_symbols; i++) {
+                    state->lsp.num_symbols = json_array_size(symbols_array);
+                    state->lsp.symbols = malloc(sizeof(LspSymbol) * state->lsp.num_symbols);
+                    for (int i = 0; i < state->lsp.num_symbols; i++) {
                         json_t *symbol_obj = json_array_get(symbols_array, i);
                         const char *name = json_string_value(json_object_get(symbol_obj, "name"));
                         int kind = json_integer_value(json_object_get(symbol_obj, "kind"));
@@ -1408,9 +1396,9 @@ void lsp_process_received_data(EditorState *state, const char *buffer, size_t bu
                         json_t *start = json_object_get(range, "start");
                         int line = json_integer_value(json_object_get(start, "line"));
 
-                        state->symbols[i].name = strdup(name ? name : "unknown");
-                        state->symbols[i].kind = kind;
-                        state->symbols[i].line = line;
+                        state->lsp.symbols[i].name = strdup(name ? name : "unknown");
+                        state->lsp.symbols[i].kind = kind;
+                        state->lsp.symbols[i].line = line;
                     }
                 }
             }
@@ -1446,20 +1434,20 @@ void lsp_log(const char *format, ...) {
 }
 
 void lsp_draw_diagnostics(WINDOW *win, EditorState *state) {
-    if (!state->lsp_document || state->lsp_document->diagnostics_count == 0) {
+    if (!state->lsp.document || state->lsp.document->diagnostics_count == 0) {
         return;
     }
     
-    for (int i = 0; i < state->lsp_document->diagnostics_count; i++) {
-        LspDiagnostic *diag = &state->lsp_document->diagnostics[i];
+    for (int i = 0; i < state->lsp.document->diagnostics_count; i++) {
+        LspDiagnostic *diag = &state->lsp.document->diagnostics[i];
         
         // Check if the diagnostic is in the visible area
-        if (diag->range.start.line >= state->top_line && 
-            diag->range.start.line < state->top_line + getmaxy(win) - 2) {
+        if (diag->range.start.line >= state->view.top_line && 
+            diag->range.start.line < state->view.top_line + getmaxy(win) - 2) {
             
-            int y = diag->range.start.line - state->top_line;
-            int start_x = diag->range.start.character - state->left_col;
-            int end_x = diag->range.end.character - state->left_col;
+            int y = diag->range.start.line - state->view.top_line;
+            int start_x = diag->range.start.character - state->view.left_col;
+            int end_x = diag->range.end.character - state->view.left_col;
             
             // Adjust coordinates to be inside the visible window
             if (start_x < 0) start_x = 0;
@@ -1492,7 +1480,7 @@ void lsp_draw_diagnostics(WINDOW *win, EditorState *state) {
                 wattroff(win, COLOR_PAIR(color_pair));
                 
                 // Show message in status if the cursor is on the line
-                if (state->current_line == diag->range.start.line) {
+                if (state->cursor.line == diag->range.start.line) {
                     editor_set_status_msg(state, "[%s] %s", 
                             diag->code, diag->message);
                 }
@@ -1511,12 +1499,12 @@ void lsp_send_completion_request(EditorState *state) {
     json_t *params = json_object();
     
     json_t *textDocument = json_object();
-    json_object_set_new(textDocument, "uri", json_string(state->lsp_document->uri));
+    json_object_set_new(textDocument, "uri", json_string(state->lsp.document->uri));
     json_object_set_new(params, "textDocument", textDocument);
 
     json_t *position = json_object();
-    json_object_set_new(position, "line", json_integer(state->current_line));
-    json_object_set_new(position, "character", json_integer(state->current_col));
+    json_object_set_new(position, "line", json_integer(state->cursor.line));
+    json_object_set_new(position, "character", json_integer(state->cursor.col));
     json_object_set_new(params, "position", position);
     
     msg->params = params;
@@ -1533,17 +1521,17 @@ void lsp_check_and_process_messages(EditorState *state) {
 
     fd_set readfds;
     FD_ZERO(&readfds);
-    FD_SET(state->lsp_client->stdout_fd, &readfds);
+    FD_SET(state->lsp.client->stdout_fd, &readfds);
 
     struct timeval timeout;
     timeout.tv_sec = 0;
     timeout.tv_usec = 0; // Timeout zero para não bloquear
 
-    int activity = select(state->lsp_client->stdout_fd + 1, &readfds, NULL, NULL, &timeout);
+    int activity = select(state->lsp.client->stdout_fd + 1, &readfds, NULL, NULL, &timeout);
 
-    if (activity > 0 && FD_ISSET(state->lsp_client->stdout_fd, &readfds)) {
+    if (activity > 0 && FD_ISSET(state->lsp.client->stdout_fd, &readfds)) {
         char buffer[4096];
-        ssize_t bytes_lidos = read(state->lsp_client->stdout_fd, buffer, sizeof(buffer) - 1);
+        ssize_t bytes_lidos = read(state->lsp.client->stdout_fd, buffer, sizeof(buffer) - 1);
         if (bytes_lidos > 0) {
             buffer[bytes_lidos] = '\0';
             lsp_process_received_data(state, buffer, bytes_lidos);
@@ -1575,10 +1563,10 @@ void lsp_handle_definition_response(EditorState *state, json_t *result) {
     // Checa se o arquivo já está aberto em alguma janela
     for (int i = 0; i < ACTIVE_WS->num_windows; i++) {
         EditorWindow *jw = ACTIVE_WS->windows[i];
-        if (jw->type == WINDOW_TYPE_EDITOR && strcmp(jw->state->filename, path) == 0) {
+        if (jw->type == WINDOW_TYPE_EDITOR && strcmp(jw->state->buffer.filename, path) == 0) {
             ACTIVE_WS->active_window_idx = i;
-            jw->state->current_line = line;
-            jw->state->current_col = character;
+            jw->state->cursor.line = line;
+            jw->state->cursor.col = character;
             editor_set_status_msg(jw->state, "Jumped to definition.");
             return;
         }
@@ -1586,8 +1574,8 @@ void lsp_handle_definition_response(EditorState *state, json_t *result) {
 
     // Se não, abre no editor atual
     load_file(state, path);
-    state->current_line = line;
-    state->current_col = character;
+    state->cursor.line = line;
+    state->cursor.col = character;
     editor_set_status_msg(state, "Jumped to definition.");
 }
 
@@ -1595,13 +1583,13 @@ void lsp_request_document_symbols(EditorState *state) {
     if (!lsp_is_available(state)) return;
 
     // Limpa o cache de símbolos antigo
-    if (state->symbols) {
-        for (int i = 0; i < state->num_symbols; i++) {
-            free(state->symbols[i].name);
+    if (state->lsp.symbols) {
+        for (int i = 0; i < state->lsp.num_symbols; i++) {
+            free(state->lsp.symbols[i].name);
         }
-        free(state->symbols);
-        state->symbols = NULL;
-        state->num_symbols = 0;
+        free(state->lsp.symbols);
+        state->lsp.symbols = NULL;
+        state->lsp.num_symbols = 0;
     }
 
     LspMessage *msg = lsp_create_message();
@@ -1610,7 +1598,7 @@ void lsp_request_document_symbols(EditorState *state) {
 
     json_t *params = json_object();
     json_t *textDocument = json_object();
-    json_object_set_new(textDocument, "uri", json_string(state->lsp_document->uri));
+    json_object_set_new(textDocument, "uri", json_string(state->lsp.document->uri));
     json_object_set_new(params, "textDocument", textDocument);
     
     msg->params = params;

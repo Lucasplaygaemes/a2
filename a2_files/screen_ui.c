@@ -108,6 +108,13 @@ void ui_show_message(const char *title, const char *message) {
     }
 }
 
+void draw_settings_header(WINDOW *win, const char *title, int width) {
+    wattron(win, COLOR_PAIR(PAIR_STATUS_BAR) | A_BOLD);
+    for (int i = 0; i < width; i++) mvwaddch(win, 0, i, ' ');
+    mvwprintw(win, 0, 2, " %s ", title);
+    wattroff(win, COLOR_PAIR(PAIR_STATUS_BAR) | A_BOLD);
+}
+
 WINDOW *draw_pop_up(const char *message, int y, int x) {
     if (!message || !*message) {
         return NULL;
@@ -231,14 +238,14 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
     int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
     
     int line_number_width = 0;
-    if (state->show_line_numbers) {
-        int max_lines = state->num_lines > 0 ? state->num_lines : 1;
+    if (state->view.show_line_numbers) {
+        int max_lines = state->buffer.num_lines > 0 ? state->buffer.num_lines : 1;
         line_number_width = snprintf(NULL, 0, "%d", max_lines) + 1;
         if (line_number_width < 4) line_number_width = 4;
     }
 
-    cursor_y = (visual_y - state->top_line) + border_offset;
-    cursor_x = (visual_x - state->left_col) + border_offset + line_number_width;
+    cursor_y = (visual_y - state->view.top_line) + border_offset;
+    cursor_x = (visual_x - state->view.left_col) + border_offset + line_number_width;
 
     win_y = getbegy(main_win) + cursor_y + 1;
     win_x = getbegx(main_win) + cursor_x;
@@ -252,9 +259,9 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
     if (win_x < 0) win_x = 0;
     if (win_y < 0) win_y = 0; // FIX: was 'y = 0', now is 'win_y = 0'
 
-    state->diagnostic_popup = newwin(win_height, win_width, win_y, win_x);
-    wbkgd(state->diagnostic_popup, COLOR_PAIR(8));
-    box(state->diagnostic_popup, 0, 0);
+    state->lsp.diagnostic_popup = newwin(win_height, win_width, win_y, win_x);
+    wbkgd(state->lsp.diagnostic_popup, COLOR_PAIR(8));
+    box(state->lsp.diagnostic_popup, 0, 0);
 
     ptr = message;
     for (int i = 0; i < num_lines; i++) {
@@ -274,17 +281,17 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
             line_len = win_width - 4;
         }
 
-        mvwprintw(state->diagnostic_popup, i + 1, 2, "%.*s", line_len, line_start);
+        mvwprintw(state->lsp.diagnostic_popup, i + 1, 2, "%.*s", line_len, line_start);
     }
 
-    wnoutrefresh(state->diagnostic_popup);
+    wnoutrefresh(state->lsp.diagnostic_popup);
 }
 
 
 void editor_redraw(WINDOW *win, EditorState *state) {
     wbkgd(win, COLOR_PAIR(PAIR_DEFAULT));
 
-    if (state->buffer_modified) {
+    if (state->buffer.modified) {
         editor_find_unmatched_brackets(state);
     }
 
@@ -293,17 +300,17 @@ void editor_redraw(WINDOW *win, EditorState *state) {
     int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
     
     int line_number_width = 0;
-    if (state->show_line_numbers) {
-        int max_lines = state->num_lines > 0 ? state->num_lines : 1;
+    if (state->view.show_line_numbers) {
+        int max_lines = state->buffer.num_lines > 0 ? state->buffer.num_lines : 1;
         line_number_width = snprintf(NULL, 0, "%d", max_lines) + 1;
         if (line_number_width < 4) line_number_width = 4;
     }
 
     // Store old viewport to detect scrolling
-    int old_top_line = state->top_line;
-    int old_left_col = state->left_col;
+    int old_top_line = state->view.top_line;
+    int old_left_col = state->view.left_col;
     adjust_viewport(win, state);
-    bool scrolled = (state->top_line != old_top_line) || (state->left_col != old_left_col);
+    bool scrolled = (state->view.top_line != old_top_line) || (state->view.left_col != old_left_col);
 
     if (scrolled) {
         werase(win); // If scrolled, a full erase is the simplest, most reliable way
@@ -326,18 +333,67 @@ void editor_redraw(WINDOW *win, EditorState *state) {
     int content_height = rows - (border_offset + 1); 
     int screen_y = 0;
     int current_conflict_block = 0; // 0: none, 1: MINE, 2: THEIRS
+    bool in_multiline_comment = false;
 
-    if (state->word_wrap_enabled) {
-        state->left_col = 0;
+    // Scan from the beginning of the file to determine current multiline comment state
+    // We must scan file lines, not visual lines.
+    for (int i = 0; i < state->buffer.num_lines; i++) {
+        // If we are NOT in wrap mode, we only need to scan up to top_line.
+        // If we ARE in wrap mode, we'd ideally know which file line corresponds to top_line,
+        // but for now, scanning all lines until the current visible one is safer.
+        // This scan is simplified: we stop when we reach the first visible file line.
+        
+        // Find which file line corresponds to the first visible visual line
+        int current_visual_line = 0;
+        int first_visible_file_line = 0;
+        if (state->view.word_wrap) {
+            for (int f = 0; f < state->buffer.num_lines; f++) {
+                int f_len = strlen(state->buffer.lines[f]);
+                int wraps = 0;
+                if (f_len > 0) {
+                    int content_w = cols - 2*border_offset - line_number_width;
+                    if (content_w <= 0) content_w = 1;
+                    // Approximate wrap count
+                    wraps = (f_len + content_w - 1) / content_w;
+                } else {
+                    wraps = 1;
+                }
+                if (current_visual_line + wraps > state->view.top_line) {
+                    first_visible_file_line = f;
+                    break;
+                }
+                current_visual_line += wraps;
+            }
+        } else {
+            first_visible_file_line = state->view.top_line;
+        }
+
+        for (int i = 0; i < first_visible_file_line && i < state->buffer.num_lines; i++) {
+            char *l = state->buffer.lines[i];
+            if (!l) continue;
+            for (int p = 0; l[p]; p++) {
+                if (!in_multiline_comment && l[p] == '/' && l[p+1] == '*') { in_multiline_comment = true; p++; }
+                else if (in_multiline_comment && l[p] == '*' && l[p+1] == '/') { in_multiline_comment = false; p++; }
+            }
+        }
+        break; // Exit the outer helper loop
+    }
+
+    if (state->view.word_wrap) {
+        state->view.left_col = 0;
         int visual_line_idx = 0;
-        for (int file_line_idx = 0; file_line_idx < state->num_lines && screen_y < content_height; file_line_idx++) {
-            char *line = state->lines[file_line_idx];
+        for (int file_line_idx = 0; file_line_idx < state->buffer.num_lines && screen_y < content_height; file_line_idx++) {
+            char *line = state->buffer.lines[file_line_idx];
             if (!line) continue;
             
-            // logic highlight
-            
             bool highlight_this_line = false;
-            
+            bool is_line_comment = false; 
+            bool is_directive = false;
+
+            int first_non_space = 0;
+            while (line[first_non_space] && isspace(line[first_non_space])) first_non_space++;
+            if (line[first_non_space] == '#') is_directive = true;
+
             // --- CONFLICT HIGHLIGHTING (WORD WRAP) ---
             if (strncmp(line, "<<<<<<<", 7) == 0) current_conflict_block = 1;
             else if (strncmp(line, "=======", 7) == 0) current_conflict_block = 2;
@@ -345,57 +401,33 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             if (current_conflict_block == 1) wattron(win, COLOR_PAIR(PAIR_SELECTION) | A_DIM);
             else if (current_conflict_block == 2) wattron(win, COLOR_PAIR(PAIR_DIFF_ADD) | A_DIM);
 
-            if (state->mapping) {
-                // case 1, drawing in assembly trying to find in the windown in C
-                EditorState *source = find_source_state_for_assembly(state->filename);
+            if (state->buffer.mapping) {
+                EditorState *source = find_source_state_for_assembly(state->buffer.filename);
                 if (source) {
-                    int c_cursor = source->current_line;
-                    // verify if the c cursor falls between the assembly line
-                    if (c_cursor < state->mapping->source_line_count) {
-                        AsmRange range = state->mapping->source_to_asm[c_cursor];
-                        // if the current line is inside the range
-                        if (range.active && file_line_idx >= range.start_line && file_line_idx <= range.end_line) {
-                            highlight_this_line = true;
-                        }
-                    }
-                }
-            } else {
-                EditorState *asm_state = find_source_state_for_assembly(state->filename);
-                
-                if (asm_state && asm_state->mapping) {
-                    int asm_cursor = asm_state->current_line;
-                    //verify if the assembly cursor is poiting where wh are
-                    if (asm_cursor < asm_state->mapping->asm_line_count) {
-                        int target_c_line = asm_state->mapping->asm_to_source[asm_cursor];
-                        
-                        if (target_c_line == file_line_idx) {
-                            highlight_this_line = true;
-                        }
+                    int c_cursor = source->cursor.line;
+                    if (c_cursor < state->buffer.mapping->source_line_count) {
+                        AsmRange range = state->buffer.mapping->source_to_asm[c_cursor];
+                        if (range.active && file_line_idx >= range.start_line && file_line_idx <= range.end_line) highlight_this_line = true;
                     }
                 }
             }
             
-            if (highlight_this_line) {
-                wattron(win, COLOR_PAIR(12));
-            }
+            if (highlight_this_line) wattron(win, COLOR_PAIR(12));
             
             int line_len = strlen(line);
-            if (line_len == 0) {
-                if (visual_line_idx >= state->top_line) {
-                    wmove(win, screen_y + border_offset, border_offset);
-                    int y, x;
-                    getyx(win, y, x);
-                    int end_col = cols - border_offset;
-                    for (int i = x; i < end_col; i++) {
-                        mvwaddch(win, y, i, ' ');
-                    }
-                    screen_y++;
+            int line_offset = 0;
+            
+            // Per-file-line search regex compilation for efficiency
+            bool is_searching = (state->input.command_buffer[0] == '/');
+            const char *query = is_searching ? state->input.command_buffer + 1 : state->search.last_term;
+            regex_t regex;
+            bool has_regex = false;
+            if (query && query[0] != '\0') {
+                if (is_searching || state->search.is_regex) {
+                    if (regcomp(&regex, query, REG_EXTENDED | REG_NEWLINE) == 0) has_regex = true;
                 }
-                visual_line_idx++;
-                continue;
             }
 
-            int line_offset = 0;
             while(line_offset < line_len || line_len == 0) {
                 int content_width = cols - 2*border_offset - line_number_width;
                 if (content_width <= 0) content_width = 1;
@@ -407,186 +439,112 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     wchar_t wc;
                     int bytes_consumed = mbtowc(&wc, &line[line_offset + current_bytes], MB_CUR_MAX);
                     if (bytes_consumed <= 0) { bytes_consumed = 1; wc = ' '; } 
-                    
                     int char_width = wcwidth(wc);
                     if (char_width < 0) char_width = 1;
                     if (current_width + char_width > content_width) break;
-
                     current_width += char_width;
-                    if (iswspace(wc)) {
-                        last_space_bytes = current_bytes + bytes_consumed;
-                    }
+                    if (iswspace(wc)) last_space_bytes = current_bytes + bytes_consumed;
                     current_bytes += bytes_consumed;
                 }
 
                 int break_pos;
-                if (line[line_offset + current_bytes] != '\0' && last_space_bytes != -1) {
-                    break_pos = last_space_bytes;
-                } else {
-                    break_pos = current_bytes;
-                }
+                if (line[line_offset + current_bytes] != '\0' && last_space_bytes != -1) break_pos = last_space_bytes;
+                else break_pos = current_bytes;
+                
+                // Safety: prevent infinite loops
+                if (break_pos == 0 && line[line_offset] != '\0') break_pos = 1;
 
-                if (break_pos == 0 && (size_t)(line_offset + current_bytes) < strlen(line)) {
-                    break_pos = current_bytes;
-                }
-
-                if (visual_line_idx >= state->top_line && screen_y < content_height) {
+                if (visual_line_idx >= state->view.top_line && screen_y < content_height) {
                     wmove(win, screen_y + border_offset, border_offset + line_number_width);
                     
-                    if (state->show_line_numbers && line_offset == 0) {
+                    if (state->view.show_line_numbers && line_offset == 0) {
                         wattron(win, COLOR_PAIR(8) | A_DIM);
-                        int display_num;
-                        if (global_config.relative_line_numbers) {
-                            if (file_line_idx == state->current_line) {
-                                display_num = file_line_idx + 1;
-                                wattroff(win, A_DIM);
-                                wattron(win, A_BOLD);
-                            } else {
-                                display_num = abs(file_line_idx - state->current_line);
-                            }
-                        } else {
-                            display_num = file_line_idx + 1;
-                        }
+                        int display_num = global_config.relative_line_numbers ? (file_line_idx == state->cursor.line ? file_line_idx + 1 : abs(file_line_idx - state->cursor.line)) : file_line_idx + 1;
+                        if (global_config.relative_line_numbers && file_line_idx == state->cursor.line) { wattroff(win, A_DIM); wattron(win, A_BOLD); }
                         mvwprintw(win, screen_y + border_offset, border_offset, "%*d ", line_number_width - 1, display_num);
-                        
-                        // Draw git gutter marker (only on the first line of the wrapped block)
-                        if (state->git_gutter && file_line_idx < state->num_lines) {
-                            char marker = state->git_gutter[file_line_idx];
-                            if (marker == '+') {
-                                wattron(win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
-                                mvwaddch(win, screen_y + border_offset, border_offset + line_number_width - 1, '+');
-                                wattroff(win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
-                            } else if (marker == '-') {
-                                wattron(win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
-                                mvwaddch(win, screen_y + border_offset, border_offset + line_number_width - 1, '-');
-                                wattroff(win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
-                            } else if (marker == '~') {
-                                wattron(win, COLOR_PAIR(PAIR_WARNING) | A_BOLD);
-                                mvwaddch(win, screen_y + border_offset, border_offset + line_number_width - 1, '~');
-                                wattroff(win, COLOR_PAIR(PAIR_WARNING) | A_BOLD);
-                            }
-                        }
-
-                        wattroff(win, A_BOLD);
-                        wattroff(win, COLOR_PAIR(8) | A_DIM);
+                        wattroff(win, A_BOLD); wattroff(win, COLOR_PAIR(8) | A_DIM);
                         wmove(win, screen_y + border_offset, border_offset + line_number_width);
                     }
 
                     int current_pos_in_segment = 0;
                     while(current_pos_in_segment < break_pos) {
-                        if (getcurx(win) >= cols - 1 - border_offset) break;
                         int token_start_in_line = line_offset + current_pos_in_segment;
-                        if (line[token_start_in_line] == '#' || (line[token_start_in_line] == '/' && (size_t)token_start_in_line + 1 < strlen(line) && line[token_start_in_line + 1] == '/')) {
-                            wattron(win, COLOR_PAIR(PAIR_COMMENT)); mvwprintw(win, screen_y + border_offset, getcurx(win), "%.*s", cols - getcurx(win) - border_offset, &line[token_start_in_line]); wattroff(win, COLOR_PAIR(PAIR_COMMENT)); break;
+                        if (getcurx(win) >= cols - 1 - border_offset) break;
+
+                        // 1. Handle Comments (Single and Multi)
+                        if (is_line_comment || in_multiline_comment || is_directive || (line[token_start_in_line] == '/' && (line[token_start_in_line+1] == '/' || line[token_start_in_line+1] == '*'))) {
+                            if (!is_line_comment && !in_multiline_comment && !is_directive) {
+                                if (line[token_start_in_line+1] == '/') is_line_comment = true;
+                                else in_multiline_comment = true;
+                            }
+                            
+                            wattron(win, COLOR_PAIR(PAIR_COMMENT));
+                            int segment_remaining = break_pos - current_pos_in_segment;
+                            int visual_remaining = (cols - 1 - border_offset) - getcurx(win);
+
+                            if (in_multiline_comment) {
+                                char *end_ptr = strstr(&line[token_start_in_line], "*/");
+                                if (end_ptr && (end_ptr - &line[token_start_in_line]) < segment_remaining) {
+                                    int bytes_to_end = (end_ptr - &line[token_start_in_line]) + 2;
+                                    int bytes_to_print = bytes_to_end > visual_remaining ? visual_remaining : bytes_to_end;
+                                    waddnstr(win, &line[token_start_in_line], bytes_to_print);
+                                    in_multiline_comment = false;
+                                    current_pos_in_segment += bytes_to_end;
+                                    wattroff(win, COLOR_PAIR(PAIR_COMMENT));
+                                    continue;
+                                }
+                            }
+                            
+                            int bytes_to_print = segment_remaining > visual_remaining ? visual_remaining : segment_remaining;
+                            waddnstr(win, &line[token_start_in_line], bytes_to_print);
+                            current_pos_in_segment += segment_remaining;
+                            wattroff(win, COLOR_PAIR(PAIR_COMMENT));
+                            continue;
                         }
+
+                        // 2. Normal Highlighting
                         int token_start_in_segment = current_pos_in_segment;
                         if (strchr(delimiters, line[token_start_in_line])) {
                             current_pos_in_segment++;
                         } else {
-                            while(current_pos_in_segment < break_pos && !strchr(delimiters, line[line_offset + current_pos_in_segment])) current_pos_in_segment++;
+                            while(current_pos_in_segment < break_pos && !strchr(delimiters, line[line_offset + current_pos_in_segment])) {
+                                if (line[line_offset + current_pos_in_segment] == '/' && (line[line_offset + current_pos_in_segment + 1] == '/' || line[line_offset + current_pos_in_segment + 1] == '*')) break;
+                                current_pos_in_segment++;
+                            }
                         }
+                        
                         int token_len = current_pos_in_segment - token_start_in_segment;
                         if (token_len > 0) {
                             char *token_ptr = &line[token_start_in_line];
                             int color_pair = 0;
-                            bool selected = is_selected(state, file_line_idx, token_start_in_line);
-
-                            if (selected && state->visual_selection_mode == VISUAL_MODE_SELECT) {
-                                color_pair = PAIR_SELECTION;
-                            } else if (token_len == 1 && is_unmatched_bracket(state, file_line_idx, token_start_in_line)) {
-                                color_pair = 11; // Red
-                            } else if (!strchr(delimiters, *token_ptr)) {
-                                bool is_misspelled = false;
-                                if (state->spell_checker.enabled && !isdigit(token_ptr[0])) {
-                                    char *word_to_check = strndup(token_ptr, token_len);
-                                    if (word_to_check) {
-                                        if (!spell_checker_check_word(&state->spell_checker, word_to_check)) {
-                                            is_misspelled = true;
-                                        }
-                                        free(word_to_check);
-                                    }
-                                }
-
-                                if (is_misspelled) {
-                                    color_pair = PAIR_SPELL_ERROR;
-                                } else {
-                                    for (int j = 0; j < state->num_syntax_rules; j++) {
-                                        if (strlen(state->syntax_rules[j].word) == (size_t)token_len && strncmp(token_ptr, state->syntax_rules[j].word, token_len) == 0) {
-                                            switch(state->syntax_rules[j].type) {
-                                                case SYNTAX_KEYWORD: color_pair = PAIR_KEYWORD; break;
-                                                case SYNTAX_TYPE: color_pair = PAIR_TYPE; break;
-                                                case SYNTAX_STD_FUNCTION: color_pair = PAIR_STD_FUNCTION; break;
-                                            }
-                                            break;
-                                        }
+                            if (is_selected(state, file_line_idx, token_start_in_line) && state->cursor.visual_selection_mode == VISUAL_MODE_SELECT) color_pair = PAIR_SELECTION;
+                            else if (token_len == 1 && is_unmatched_bracket(state, file_line_idx, token_start_in_line)) color_pair = 11;
+                            else if (line[token_start_in_line] == '#') { 
+                                color_pair = PAIR_COMMENT; 
+                                // Directive highlight should ideally not skip the whole segment to allow wrap awareness
+                            }
+                            else {
+                                for (int j = 0; j < state->buffer.num_syntax_rules; j++) {
+                                    if (strlen(state->buffer.syntax_rules[j].word) == (size_t)token_len && strncmp(token_ptr, state->buffer.syntax_rules[j].word, token_len) == 0) {
+                                        switch(state->buffer.syntax_rules[j].type) { case SYNTAX_KEYWORD: color_pair = PAIR_KEYWORD; break; case SYNTAX_TYPE: color_pair = PAIR_TYPE; break; case SYNTAX_STD_FUNCTION: color_pair = PAIR_STD_FUNCTION; break; }
+                                        break;
                                     }
                                 }
                             }
-                            if (color_pair && !highlight_this_line) wattron(win, COLOR_PAIR(color_pair));
-                            if (color_pair == PAIR_SPELL_ERROR) wattron(win, A_UNDERLINE);
-                            int remaining_width = (cols - 1 - border_offset) - getcurx(win);
-                            if (token_len > remaining_width) token_len = remaining_width;
-                            if (token_len > 0) wprintw(win, "%.*s", token_len, token_ptr);
-                            if (color_pair == PAIR_SPELL_ERROR) wattroff(win, A_UNDERLINE);
-                            if (color_pair && !highlight_this_line) wattroff(win, COLOR_PAIR(color_pair));
+                            if (color_pair) wattron(win, COLOR_PAIR(color_pair));
+                            wprintw(win, "%.*s", token_len, token_ptr);
+                            if (color_pair) wattroff(win, COLOR_PAIR(color_pair));
                         }
                     }
-                    int y, x;
-                    getyx(win, y, x);
-                    int end_col = cols - border_offset;
-                    for (int i = x; i < end_col; i++) {
-                        mvwaddch(win, y, i, ' ');
-                    }
-                    
-                    if (state->lsp_document) {
-                        for (int d = 0; d < state->lsp_document->diagnostics_count; d++) {
-                            LspDiagnostic *diag = &state->lsp_document->diagnostics[d];
-                            if (diag->range.start.line == file_line_idx) {
-                                int diag_start_col = diag->range.start.character;
-                                int diag_end_col = diag->range.end.character;
-                                int segment_start_col = line_offset;
-                                int segment_end_col = line_offset + break_pos;
-
-                                if (max(segment_start_col, diag_start_col) < min(segment_end_col, diag_end_col)) {
-                                    int y_pos = screen_y + border_offset;
-                                    int start_x = border_offset + line_number_width + get_visual_col(line + segment_start_col, max(0, diag_start_col - segment_start_col));
-                                    int end_x = border_offset + line_number_width + get_visual_col(line + segment_start_col, min(break_pos, diag_end_col - segment_start_col));
-                                    
-                                    int color_pair;
-                                    switch (diag->severity) {
-                                        case LSP_SEVERITY_ERROR: color_pair = 11; break;
-                                        case LSP_SEVERITY_WARNING: color_pair = 3; break;
-                                        default: color_pair = 8; break;
-                                    }
-
-                                    wattron(win, COLOR_PAIR(color_pair));
-                                    if (start_x >= 1) mvwaddch(win, y_pos, start_x - 1, '[');
-                                    wattroff(win, COLOR_PAIR(color_pair));
-
-                                    mvwchgat(win, y_pos, start_x, (end_x - start_x), A_UNDERLINE, color_pair, NULL);
-
-                                    wattron(win, COLOR_PAIR(color_pair));
-                                    if (end_x < cols - 1) mvwaddch(win, y_pos, end_x + 1, ']');
-                                    wattroff(win, COLOR_PAIR(color_pair));
-                                }
-                            }
-                        }
-                    }
+                    int y, x; getyx(win, y, x); int end_col = cols - border_offset;
+                    for (int i = x; i < end_col; i++) mvwaddch(win, y, i, ' ');
 
                     // --- REAL-TIME SEARCH HIGHLIGHT (WORD WRAP) ---
-                    bool is_searching = (state->command_buffer[0] == '/');
-                    const char *query = is_searching ? state->command_buffer + 1 : state->last_search;
-                    
-                    if (query && strlen(query) > 0) {
-                        regex_t regex;
-                        bool is_regex = false;
-                        if (is_searching) is_regex = (regcomp(&regex, query, REG_EXTENDED | REG_NEWLINE) == 0);
-                        else if (state->last_search_is_regex) is_regex = (regcomp(&regex, query, REG_EXTENDED | REG_NEWLINE) == 0);
-
+                    if (query && query[0] != '\0') {
                         int search_offset = line_offset;
                         while (search_offset < line_offset + break_pos) {
                             int match_start = -1, match_len = 0;
-                            if (is_regex) {
+                            if (has_regex) {
                                 regmatch_t pmatch[1];
                                 if (regexec(&regex, line + search_offset, 1, pmatch, 0) == 0) {
                                     match_start = search_offset + pmatch[0].rm_so;
@@ -613,229 +571,138 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                                 search_offset = match_start + match_len;
                             } else break;
                         }
-                        if (is_regex) regfree(&regex);
                     }
 
                     if (current_conflict_block != 0) wattroff(win, A_DIM);
                     if (strncmp(line, ">>>>>>>", 7) == 0) current_conflict_block = 0;
 
                     screen_y++;
+                } else {
+                    // Even if not visible, we must maintain multiline comment state
+                    for (int p = 0; p < break_pos; p++) {
+                        if (!in_multiline_comment && line[line_offset + p] == '/' && line[line_offset + p + 1] == '*') { in_multiline_comment = true; p++; }
+                        else if (in_multiline_comment && line[line_offset + p] == '*' && line[line_offset + p + 1] == '/') { in_multiline_comment = false; p++; }
+                    }
                 }
                 visual_line_idx++;
                 line_offset += break_pos;
                 if (line_len == 0) break;
             }
-            if (highlight_this_line) {
-                wattroff(win, COLOR_PAIR(2));
-            }
+            if (has_regex) regfree(&regex);
+            if (highlight_this_line) wattroff(win, COLOR_PAIR(2));
         }
     } else { // NO WORD WRAP
         for (int i = 0; i < content_height; i++) {
-            int line_idx = state->top_line + i;
+            int line_idx = state->view.top_line + i;
+            if (line_idx >= state->buffer.num_lines) { if (scrolled) { wmove(win, i + border_offset, border_offset + line_number_width); wclrtoeol(win); } continue; }
 
-            if (line_idx >= state->num_lines) {
-                // Clear lines below the end of the file
-                if (scrolled) { // Only clear if we have to
-                    wmove(win, i + border_offset, border_offset + line_number_width);
-                    wclrtoeol(win);
-                }
-                continue;
-            }
-
-            // Only redraw if scrolled or the line is specifically marked as dirty
-            if (scrolled || (line_idx < state->dirty_lines_cap && state->dirty_lines[line_idx])) {
-                 wmove(win, i + border_offset, border_offset + line_number_width);
-                 wclrtoeol(win);
-                 wmove(win, i + border_offset, border_offset + line_number_width);
-
-                char *line = state->lines[line_idx];
-
-                if (state->show_line_numbers) {
-                    wattron(win, COLOR_PAIR(8) | A_DIM); // Cor padrão, um pouco esmaecida
-                    int display_num;
-                    if (global_config.relative_line_numbers) {
-                        if (line_idx == state->current_line) {
-                            display_num = line_idx + 1;
-                            wattroff(win, A_DIM);
-                            wattron(win, A_BOLD);
-                        } else {
-                            display_num = abs(line_idx - state->current_line);
-                        }
-                    } else {
-                        display_num = line_idx + 1;
-                    }
-                        
-                    // Desenha alinhado à direita
+            if (scrolled || (line_idx < state->buffer.dirty_lines_cap && state->buffer.dirty_lines[line_idx])) {
+                wmove(win, i + border_offset, border_offset + line_number_width); wclrtoeol(win);
+                wmove(win, i + border_offset, border_offset);
+                char *line = state->buffer.lines[line_idx];
+                if (state->view.show_line_numbers) {
+                    wattron(win, COLOR_PAIR(8) | A_DIM);
+                    int display_num = global_config.relative_line_numbers ? (line_idx == state->cursor.line ? line_idx + 1 : abs(line_idx - state->cursor.line)) : line_idx + 1;
+                    if (global_config.relative_line_numbers && line_idx == state->cursor.line) { wattroff(win, A_DIM); wattron(win, A_BOLD); }
                     mvwprintw(win, i + border_offset, border_offset, "%*d ", line_number_width - 1, display_num);
-                    
-                    // Draw git gutter marker
-                    if (state->git_gutter && line_idx < state->num_lines) {
-                        char marker = state->git_gutter[line_idx];
-                        if (marker == '+') {
-                            wattron(win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
-                            mvwaddch(win, i + border_offset, border_offset + line_number_width - 1, '+');
-                            wattroff(win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
-                        } else if (marker == '-') {
-                            wattron(win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
-                            mvwaddch(win, i + border_offset, border_offset + line_number_width - 1, '-');
-                            wattroff(win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
-                        } else if (marker == '~') {
-                            wattron(win, COLOR_PAIR(PAIR_WARNING) | A_BOLD);
-                            mvwaddch(win, i + border_offset, border_offset + line_number_width - 1, '~');
-                            wattroff(win, COLOR_PAIR(PAIR_WARNING) | A_BOLD);
-                        }
-                    }
-
-                    wattroff(win, COLOR_PAIR(8) | A_DIM);
-                    wmove(win, i + border_offset, border_offset + line_number_width);
+                    wattroff(win, A_BOLD); wattroff(win, COLOR_PAIR(8) | A_DIM);
                 }
+                wmove(win, i + border_offset, border_offset + line_number_width);
 
-                if (!line) continue;
+                int current_col_val = 0, line_len = strlen(line);
+                bool is_line_comment = false;
+                bool is_directive = false;
 
-                // --- CONFLICT HIGHLIGHTING ---
-                if (strncmp(line, "<<<<<<<", 7) == 0) current_conflict_block = 1;
-                else if (strncmp(line, "=======", 7) == 0) current_conflict_block = 2;
-                
-                if (current_conflict_block == 1) wattron(win, COLOR_PAIR(PAIR_SELECTION) | A_DIM);
-                else if (current_conflict_block == 2) wattron(win, COLOR_PAIR(PAIR_DIFF_ADD) | A_DIM);
+                int first_non_space = 0;
+                while (line[first_non_space] && isspace(line[first_non_space])) first_non_space++;
+                if (line[first_non_space] == '#') is_directive = true;
 
-                bool highlight_this_line = false;
-                if (state->mapping) {
-                    EditorState *source = find_source_state_for_assembly(state->filename);
-                    if (source) {
-                        int c_cursor = source->current_line;
-                        if (c_cursor < state->mapping->source_line_count) {
-                            AsmRange range = state->mapping->source_to_asm[c_cursor];
-                            if (range.active && line_idx >= range.start_line && line_idx <= range.end_line) {
-                                highlight_this_line = true;
-                            }
-                        }
+                // Per-file-line search regex compilation
+                bool is_searching = (state->input.command_buffer[0] == '/');
+                const char *query = is_searching ? state->input.command_buffer + 1 : state->search.last_term;
+                regex_t regex;
+                bool has_regex = false;
+                if (query && query[0] != '\0') {
+                    if (is_searching || state->search.is_regex) {
+                        if (regcomp(&regex, query, REG_EXTENDED | REG_NEWLINE) == 0) has_regex = true;
                     }
                 }
-                if (highlight_this_line) wattron(win, COLOR_PAIR(2));
-                
-                int line_len = strlen(line);
-                int current_col = 0;
 
-                while(current_col < line_len) {
-                    if (current_col < state->left_col) { current_col++; continue; }
+                while(current_col_val < line_len) {
+                    if (current_col_val < state->view.left_col) {
+                        // Maintenance of multiline comment state even when skipped by horizontal scroll
+                        if (!is_line_comment && !in_multiline_comment && line[current_col_val] == '/' && line[current_col_val+1] == '/') is_line_comment = true;
+                        if (!is_line_comment && !in_multiline_comment && line[current_col_val] == '/' && line[current_col_val+1] == '*') { in_multiline_comment = true; current_col_val++; }
+                        else if (in_multiline_comment && line[current_col_val] == '*' && line[current_col_val+1] == '/') { in_multiline_comment = false; current_col_val++; }
+                        current_col_val++; 
+                        continue; 
+                    }
                     if (getcurx(win) >= cols - 1 - border_offset) break;
-
-                    int token_start = current_col;
-                    char current_char = line[token_start];
-                    int token_len;
-
-                    if (strchr(delimiters, current_char)) {
-                        token_len = 1;
-                    } else {
-                        int end = token_start;
-                        while(end < line_len && !strchr(delimiters, line[end])) end++;
-                        token_len = end - token_start;
-                    }
-
-                    char *token_ptr = &line[token_start];
-                    int color_pair = 0;
-                    bool selected = is_selected(state, line_idx, token_start);
-
-                    if (selected && state->visual_selection_mode == VISUAL_MODE_SELECT) {
-                        color_pair = PAIR_SELECTION;
-                    } else if (token_len == 1 && is_unmatched_bracket(state, line_idx, token_start)) {
-                        color_pair = 11; // Red
-                    } else if (current_char == '#' || (current_char == '/' && (size_t)token_start + 1 < strlen(line) && line[token_start + 1] == '/')) {
-                        color_pair = PAIR_COMMENT;
-                        token_len = line_len - token_start;
-                    } else if (!strchr(delimiters, current_char)) {
-                        bool is_misspelled = false;
-                        if (state->spell_checker.enabled && !isdigit(token_ptr[0])) {
-                            char *word_to_check = strndup(token_ptr, token_len);
-                            if (word_to_check) {
-                                bool is_correct = spell_checker_check_word(&state->spell_checker, word_to_check);
-                                if (!is_correct) {
-                                    is_misspelled = true;
-                                }
-                                free(word_to_check);
-                            }
-                        }
-
-                        if (is_misspelled) {
-                            color_pair = PAIR_SPELL_ERROR;
-                        } else {
-                            for (int j = 0; j < state->num_syntax_rules; j++) {
-                                if (strlen(state->syntax_rules[j].word) == (size_t)token_len && strncmp(token_ptr, state->syntax_rules[j].word, token_len) == 0) {
-                                    switch(state->syntax_rules[j].type) {
-                                        case SYNTAX_KEYWORD: color_pair = PAIR_KEYWORD; break;
-                                        case SYNTAX_TYPE: color_pair = PAIR_TYPE; break;
-                                        case SYNTAX_STD_FUNCTION: color_pair = PAIR_STD_FUNCTION; break;
-                                    }                            
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    if (color_pair && !highlight_this_line) wattron(win, COLOR_PAIR(color_pair));
-                    if (color_pair == PAIR_SPELL_ERROR) wattron(win, A_UNDERLINE);
-
-                    int remaining_width = (cols - 1 - border_offset) - getcurx(win);
-                    if (token_len > remaining_width) token_len = remaining_width;
-                    if (token_len > 0) wprintw(win, "%.*s", token_len, token_ptr);
-
-                    if (color_pair == PAIR_SPELL_ERROR) wattroff(win, A_UNDERLINE);
-                    if (color_pair && !highlight_this_line) wattroff(win, COLOR_PAIR(color_pair));
                     
-                    current_col += token_len;
-                }
-                if (highlight_this_line) wattroff(win, COLOR_PAIR(2));
+                    // Comment Logic (Non-word-wrap)
+                    if (!in_multiline_comment && line[current_col_val] == '/' && line[current_col_val+1] == '/') is_line_comment = true;
+                    if (!is_line_comment && !in_multiline_comment && line[current_col_val] == '/' && line[current_col_val+1] == '*') in_multiline_comment = true;
 
-                if (state->lsp_document) {
-                    for (int d = 0; d < state->lsp_document->diagnostics_count; d++) {
-                        LspDiagnostic *diag = &state->lsp_document->diagnostics[d];
-                        if (diag->range.start.line == line_idx) {
-                            int y_pos = i + border_offset;
-                            int start_x = border_offset + line_number_width + get_visual_col(line, diag->range.start.character) - state->left_col;
-                            int end_x = border_offset + line_number_width + get_visual_col(line, diag->range.end.character) - state->left_col;
+                    if (is_line_comment || in_multiline_comment || is_directive) {
+                        wattron(win, COLOR_PAIR(PAIR_COMMENT));
+                        int line_remaining = line_len - current_col_val;
+                        int visual_remaining = (cols - 1 - border_offset) - getcurx(win);
 
-                            if (start_x < border_offset + line_number_width) start_x = border_offset + line_number_width;
-                            if (end_x > cols - border_offset) end_x = cols - border_offset;
+                        if (in_multiline_comment) {
+                            char *end_ptr = strstr(&line[current_col_val], "*/");
+                            if (end_ptr) {
+                                int bytes_to_end = (end_ptr - &line[current_col_val]) + 2;
+                                int bytes_to_print = bytes_to_end > visual_remaining ? visual_remaining : bytes_to_end;
+                                waddnstr(win, &line[current_col_val], bytes_to_print);
+                                in_multiline_comment = false;
+                                current_col_val += bytes_to_end;
+                                wattroff(win, COLOR_PAIR(PAIR_COMMENT));
+                                continue;
+                            }
+                        }
+                        
+                        int bytes_to_print = line_remaining > visual_remaining ? visual_remaining : line_remaining;
+                        waddnstr(win, &line[current_col_val], bytes_to_print);
+                        current_col_val += line_remaining;
+                        wattroff(win, COLOR_PAIR(PAIR_COMMENT));
+                        continue;
+                    }
 
-                            if (start_x < end_x) {
-                                int lsp_color_pair;
-                                switch (diag->severity) {
-                                    case LSP_SEVERITY_ERROR: lsp_color_pair = 11; break;
-                                    case LSP_SEVERITY_WARNING: lsp_color_pair = 3; break;
-                                    default: lsp_color_pair = 8; break;
-                                }
-
-                                wattron(win, COLOR_PAIR(lsp_color_pair));
-                                if (start_x > border_offset) mvwaddch(win, y_pos, start_x - 1, '[');
-                                wattroff(win, COLOR_PAIR(lsp_color_pair));
-
-                                mvwchgat(win, y_pos, start_x, (end_x - start_x), A_UNDERLINE, lsp_color_pair, NULL);
-
-                                wattron(win, COLOR_PAIR(lsp_color_pair));
-                                if (end_x < cols - 1 - border_offset) mvwaddch(win, y_pos, end_x + 1, ']');
-                                wattroff(win, COLOR_PAIR(lsp_color_pair));
+                    int token_start = current_col_val, token_len;
+                    char current_char = line[token_start];
+                    if (strchr(delimiters, current_char)) token_len = 1;
+                    else { 
+                        int end = token_start; 
+                        while(end < line_len && !strchr(delimiters, line[end]) && !(line[end] == '/' && (line[end+1] == '/' || line[end+1] == '*'))) end++; 
+                        token_len = end - token_start; 
+                    }
+                    
+                    int color_pair = 0;
+                    if (is_selected(state, line_idx, token_start) && state->cursor.visual_selection_mode == VISUAL_MODE_SELECT) color_pair = PAIR_SELECTION;
+                    else if (token_len == 1 && is_unmatched_bracket(state, line_idx, token_start)) color_pair = 11;
+                    else if (current_char == '#') { 
+                        color_pair = PAIR_COMMENT; 
+                    }
+                    else {
+                        for (int j = 0; j < state->buffer.num_syntax_rules; j++) {
+                            if (strlen(state->buffer.syntax_rules[j].word) == (size_t)token_len && strncmp(&line[token_start], state->buffer.syntax_rules[j].word, token_len) == 0) {
+                                switch(state->buffer.syntax_rules[j].type) { case SYNTAX_KEYWORD: color_pair = PAIR_KEYWORD; break; case SYNTAX_TYPE: color_pair = PAIR_TYPE; break; case SYNTAX_STD_FUNCTION: color_pair = PAIR_STD_FUNCTION; break; }
+                                break;
                             }
                         }
                     }
+                    if (color_pair) wattron(win, COLOR_PAIR(color_pair));
+                    wprintw(win, "%.*s", token_len, &line[token_start]);
+                    if (color_pair) wattroff(win, COLOR_PAIR(color_pair));
+                    current_col_val += token_len;
                 }
 
-                bool is_searching = (state->command_buffer[0] == '/');
-                const char *query = is_searching ? state->command_buffer + 1 : state->last_search;
-                
-                if (query && strlen(query) > 0) {
-                    regex_t regex;
-                    bool is_regex = false;
-                    if (is_searching) {
-                        is_regex = (regcomp(&regex, query, REG_EXTENDED | REG_NEWLINE) == 0);
-                    } else if (state->last_search_is_regex) {
-                        is_regex = (regcomp(&regex, query, REG_EXTENDED | REG_NEWLINE) == 0);
-                    }
-
-                    int search_offset = 0;
+                // --- REAL-TIME SEARCH HIGHLIGHT (NO WRAP) ---
+                if (query && query[0] != '\0') {
+                    int search_offset = state->view.left_col;
                     while (search_offset < line_len) {
                         int match_start = -1, match_len = 0;
-                        if (is_regex) {
+                        if (has_regex) {
                             regmatch_t pmatch[1];
                             if (regexec(&regex, line + search_offset, 1, pmatch, 0) == 0) {
                                 match_start = search_offset + pmatch[0].rm_so;
@@ -851,34 +718,35 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         }
 
                         if (match_start != -1) {
-                            int start_x = border_offset + line_number_width + get_visual_col(line, match_start) - state->left_col;
-                            int end_x = border_offset + line_number_width + get_visual_col(line, match_start + match_len) - state->left_col;
-                            int min_x = border_offset + line_number_width;
-                            int max_x = cols - border_offset;
-                            int draw_start = (start_x < min_x) ? min_x : start_x;
-                            int draw_end = (end_x > max_x) ? max_x : end_x;
-                            if (draw_start < draw_end) {
-                                mvwchgat(win, i + border_offset, draw_start, draw_end - draw_start, A_REVERSE, PAIR_WARNING, NULL);
+                            int s_start = max(match_start, state->view.left_col);
+                            int s_end = match_start + match_len;
+                            if (s_start < s_end) {
+                                int sx = border_offset + line_number_width + get_visual_col(line + state->view.left_col, s_start - state->view.left_col);
+                                int ex = border_offset + line_number_width + get_visual_col(line + state->view.left_col, s_end - state->view.left_col);
+                                int mx = cols - border_offset;
+                                if (sx < mx) mvwchgat(win, i + border_offset, sx, min(ex, mx) - sx, A_REVERSE, PAIR_WARNING, NULL);
                             }
                             search_offset = match_start + match_len;
                         } else break;
                     }
-                    if (is_regex) regfree(&regex);
                 }
-
-                if (current_conflict_block != 0) wattroff(win, A_DIM);
-                if (strncmp(line, ">>>>>>>", 7) == 0) current_conflict_block = 0;
-
-                // After drawing, mark the line as clean
-                if (line_idx < state->dirty_lines_cap) {
-                    state->dirty_lines[line_idx] = false;
+                if (has_regex) regfree(&regex);
+                state->buffer.dirty_lines[line_idx] = false;
+            } else {
+                // If line not dirty, we still need to maintain in_multiline_comment state
+                char *l = state->buffer.lines[line_idx];
+                if (l) {
+                    for (int p = 0; l[p]; p++) {
+                        if (!in_multiline_comment && l[p] == '/' && l[p+1] == '*') { in_multiline_comment = true; p++; }
+                        else if (in_multiline_comment && l[p] == '*' && l[p+1] == '/') { in_multiline_comment = false; p++; }
+                    }
                 }
             }
         }
     }
 
     // logic for the scrollbar
-    if (state->show_scrollbar) {
+    if (state->view.show_scrollbar) {
         int sb_rows, sb_cols;
         getmaxyx(win, sb_rows, sb_cols);
         int sb_content_height = sb_rows - (border_offset + 1);
@@ -890,24 +758,24 @@ void editor_redraw(WINDOW *win, EditorState *state) {
 
         // draws error/warning markers at the trail
         // inrs if the name is trail, lateral bar? idk
-        if (state->lsp_document) {
-            for (int i = 0; i < state->lsp_document->diagnostics_count; i++) {
-                LspDiagnostic *diag = &state->lsp_document->diagnostics[i];
-                int marker_y = (diag->range.start.line * sb_content_height) / (state->num_lines > 0 ? state->num_lines : 1);
+        if (state->lsp.document) {
+            for (int i = 0; i < state->lsp.document->diagnostics_count; i++) {
+                LspDiagnostic *diag = &state->lsp.document->diagnostics[i];
+                int marker_y = (diag->range.start.line * sb_content_height) / (state->buffer.num_lines > 0 ? state->buffer.num_lines : 1);
                 int color = (diag->severity == LSP_SEVERITY_ERROR) ? 11 : 3;
                 mvwaddch(win, marker_y + border_offset, sb_cols - 1, 'o' | COLOR_PAIR(color) | A_BOLD);
             }
         }
         
         // Draws the indicatior of the current position, the "thumb"
-        int cursor_y_in_sb = (state->current_line * sb_content_height) / (state->num_lines > 0 ? state->num_lines : 1);
+        int cursor_y_in_sb = (state->cursor.line * sb_content_height) / (state->buffer.num_lines > 0 ? state->buffer.num_lines : 1);
         wattron(win, COLOR_PAIR(PAIR_STATUS_BAR));
         mvwprintw(win, cursor_y_in_sb + border_offset, sb_cols - 1, "█");
         wattroff(win, COLOR_PAIR(PAIR_STATUS_BAR));
     }
 
     LspDiagnostic *diag = NULL;
-    if (state->lsp_enabled) {
+    if (state->lsp.enabled) {
         diag = get_diagnostic_under_cursor(state);
         if (diag) {
             editor_set_status_msg(state, "[%s] %s", diag->code, diag->message);
@@ -915,11 +783,11 @@ void editor_redraw(WINDOW *win, EditorState *state) {
     }
 
     int color_pair = 8; // Cor padrão
-    if (state->is_moving) {
+    if (state->cursor.is_moving) {
         color_pair = 2;
-    } else if (strstr(state->status_msg, "Warning:") != NULL || strstr(state->status_msg, "Error:") != NULL) {
+    } else if (strstr(state->view.status_msg, "Warning:") != NULL || strstr(state->view.status_msg, "Error:") != NULL) {
         color_pair = 11;
-    } else if (state->mode == VISUAL) {
+    } else if (state->input.mode == VISUAL) {
         color_pair = 1;
     }
     
@@ -928,75 +796,73 @@ void editor_redraw(WINDOW *win, EditorState *state) {
         mvwaddch(win, rows - 1, i, ' ');
     }
 
-    if (state->mode == COMMAND) {
-        mvwprintw(win, rows - 1, 1, ":%.*s", cols-2, state->command_buffer);
+    if (state->input.mode == COMMAND) {
+        mvwprintw(win, rows - 1, 1, ":%.*s", cols-2, state->input.command_buffer);
     } else {
         char mode_str[20];
-        switch (state->mode) {
+        switch (state->input.mode) {
             case NORMAL: strcpy(mode_str, "-- NORMAL --"); break; 
             case INSERT: strcpy(mode_str, "-- INSERT --"); break;
             case VISUAL: strcpy(mode_str, "-- VISUAL --"); break;
-            case OPERATOR_PENDING: snprintf(mode_str, sizeof(mode_str), "-- (%c) --", state->pending_operator); break;
+            case OPERATOR_PENDING: snprintf(mode_str, sizeof(mode_str), "-- (%c) --", state->input.pending_operator); break;
             default: strcpy(mode_str, "--          --"); break;
         }
         
-        int visual_col = get_visual_col(state->lines[state->current_line], state->current_col);
+        int visual_col = get_visual_col(state->buffer.lines[state->cursor.line], state->cursor.col);
 
-        if (state->status_bar_mode == 1) { // New robust style
+        if (state->view.status_bar_mode == 1) { // New robust style
             char left_bar[256], right_bar[256], display_filename[64], error_count_str[64] = "";
             
             if (global_config.abbreviate_filename) {
-                char *fname_copy = strdup(state->filename);
+                char *fname_copy = strdup(state->buffer.filename);
                 if (fname_copy) {
                     strncpy(display_filename, basename(fname_copy), sizeof(display_filename) - 1);
                     free(fname_copy);
                 }
             } else {
-                strncpy(display_filename, state->filename, sizeof(display_filename) - 1);
+                strncpy(display_filename, state->buffer.filename, sizeof(display_filename) - 1);
             }
             display_filename[sizeof(display_filename) - 1] = '\0';
 
-            if (global_config.show_error_count && state->lsp_document && state->lsp_document->diagnostics_count > 0) {
+            if (global_config.show_error_count && state->lsp.document && state->lsp.document->diagnostics_count > 0) {
                 int errors = 0, warnings = 0;
-                for (int i = 0; i < state->lsp_document->diagnostics_count; i++) {
-                    if (state->lsp_document->diagnostics[i].severity == LSP_SEVERITY_ERROR) errors++;
-                    else if (state->lsp_document->diagnostics[i].severity == LSP_SEVERITY_WARNING) warnings++;
+                for (int i = 0; i < state->lsp.document->diagnostics_count; i++) {
+                    if (state->lsp.document->diagnostics[i].severity == LSP_SEVERITY_ERROR) errors++;
+                    else if (state->lsp.document->diagnostics[i].severity == LSP_SEVERITY_WARNING) warnings++;
                 }
                 if (errors > 0 || warnings > 0) snprintf(error_count_str, sizeof(error_count_str), "☒ %d ⚠ %d | ", errors, warnings);
             }
 
-            snprintf(left_bar, sizeof(left_bar), "WS %d | %s | %s%s%s", workspace_manager.active_workspace_idx + 1, mode_str, error_count_str, display_filename, state->buffer_modified ? "*" : "");
+            snprintf(left_bar, sizeof(left_bar), "WS %d | %s | %s%s%s", workspace_manager.active_workspace_idx + 1, mode_str, error_count_str, display_filename, state->buffer.modified ? "*" : "");
 
             time_t now = time(NULL);
             struct tm *info = localtime(&now);
             char time_buf[16];
             strftime(time_buf, sizeof(time_buf), "%H:%M:%S", info);
 
-            snprintf(right_bar, sizeof(right_bar), " %s | L:%d/%d, C:%d", time_buf, state->current_line + 1, state->num_lines, visual_col + 1);
+            snprintf(right_bar, sizeof(right_bar), " %s | L:%d/%d, C:%d", time_buf, state->cursor.line + 1, state->buffer.num_lines, visual_col + 1);
 
             mvwprintw(win, rows - 1, 1, "%s", left_bar);
             mvwprintw(win, rows - 1, cols - 1 - strlen(right_bar), "%s", right_bar);
 
             int left_len = strlen(left_bar), right_len = strlen(right_bar);
             int available = (cols - 1 - right_len) - (left_len + 3);
-            if (available > 5 && state->status_msg[0] != '\0') {
-                mvwprintw(win, rows - 1, left_len + 2, "| %.*s", available - 2, state->status_msg);
+            if (available > 5 && state->view.status_msg[0] != '\0') {
+                mvwprintw(win, rows - 1, left_len + 2, "| %.*s", available - 2, state->view.status_msg);
             }
         } else {
             char left_bar[256], right_bar[64], error_count_str[32] = "";
-            int diag_count = state->lsp_document ? state->lsp_document->diagnostics_count : 0;
+            int diag_count = state->lsp.document ? state->lsp.document->diagnostics_count : 0;
             if (diag_count > 0) snprintf(error_count_str, sizeof(error_count_str), " [!%d]", diag_count);
 
-            snprintf(left_bar, sizeof(left_bar), "%s %s%s%s", mode_str, state->filename, state->buffer_modified ? "*" : "", error_count_str);
-            snprintf(right_bar, sizeof(right_bar), "L:%d/%d, C:%d ", state->current_line + 1, state->num_lines, state->current_col + 1);
+            snprintf(left_bar, sizeof(left_bar), "%s %s%s%s", mode_str, state->buffer.filename, state->buffer.modified ? "*" : "", error_count_str);
+            snprintf(right_bar, sizeof(right_bar), "L:%d/%d, C:%d ", state->cursor.line + 1, state->buffer.num_lines, state->cursor.col + 1);
 
             mvwprintw(win, rows - 1, 1, "%s", left_bar);
             mvwprintw(win, rows - 1, cols - strlen(right_bar) - 1, "%s", right_bar);
         }
     }
 }
-
-
 
 void adjust_viewport(WINDOW *win, EditorState *state) {
     ensure_cursor_in_bounds(state);
@@ -1006,8 +872,8 @@ void adjust_viewport(WINDOW *win, EditorState *state) {
     int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
     
     int line_number_width = 0;
-    if (state->show_line_numbers) {
-        int max_lines = state->num_lines > 0 ? state->num_lines : 1;
+    if (state->view.show_line_numbers) {
+        int max_lines = state->buffer.num_lines > 0 ? state->buffer.num_lines : 1;
         line_number_width = snprintf(NULL, 0, "%d", max_lines) + 1;
         if (line_number_width < 4) line_number_width = 4;
     }
@@ -1018,25 +884,25 @@ void adjust_viewport(WINDOW *win, EditorState *state) {
     int visual_y, visual_x;
     get_visual_pos(win, state, &visual_y, &visual_x);
 
-    if (state->word_wrap_enabled) {
-        if (visual_y < state->top_line) {
-            state->top_line = visual_y;
+    if (state->view.word_wrap) {
+        if (visual_y < state->view.top_line) {
+            state->view.top_line = visual_y;
         }
-        if (visual_y >= state->top_line + content_height) {
-            state->top_line = visual_y - content_height + 1;
+        if (visual_y >= state->view.top_line + content_height) {
+            state->view.top_line = visual_y - content_height + 1;
         }
     } else {
-        if (state->current_line < state->top_line) {
-            state->top_line = state->current_line;
+        if (state->cursor.line < state->view.top_line) {
+            state->view.top_line = state->cursor.line;
         }
-        if (state->current_line >= state->top_line + content_height) {
-            state->top_line = state->current_line - content_height + 1;
+        if (state->cursor.line >= state->view.top_line + content_height) {
+            state->view.top_line = state->cursor.line - content_height + 1;
         }
-        if (visual_x < state->left_col) {
-            state->left_col = visual_x;
+        if (visual_x < state->view.left_col) {
+            state->view.left_col = visual_x;
         }
-        if (visual_x >= state->left_col + content_width) {
-            state->left_col = visual_x - content_width + 1;
+        if (visual_x >= state->view.left_col + content_width) {
+            state->view.left_col = visual_x - content_width + 1;
         }
     }
 }
@@ -1049,8 +915,8 @@ void get_visual_pos(WINDOW *win, EditorState *state, int *visual_y, int *visual_
     int border_offset = ACTIVE_WS->num_windows > 1 ? 1 : 0;
     
     int line_number_width = 0;
-    if (state->show_line_numbers) {
-        int max_lines = state->num_lines > 0 ? state->num_lines : 1;
+    if (state->view.show_line_numbers) {
+        int max_lines = state->buffer.num_lines > 0 ? state->buffer.num_lines : 1;
         line_number_width = snprintf(NULL, 0, "%d", max_lines) + 1;
         if (line_number_width < 4) line_number_width = 4;
     }
@@ -1061,9 +927,9 @@ void get_visual_pos(WINDOW *win, EditorState *state, int *visual_y, int *visual_
     int y = 0;
     int x = 0;
 
-    if (state->word_wrap_enabled) {
-        for (int i = 0; i < state->current_line; i++) {
-            char *line = state->lines[i];
+    if (state->view.word_wrap) {
+        for (int i = 0; i < state->cursor.line; i++) {
+            char *line = state->buffer.lines[i];
             if (!line) continue;
             int line_len = strlen(line);
             if (line_len == 0) {
@@ -1107,9 +973,9 @@ void get_visual_pos(WINDOW *win, EditorState *state, int *visual_y, int *visual_
             }
         }
 
-        char *current_line_str = state->lines[state->current_line];
+        char *current_line_str = state->buffer.lines[state->cursor.line];
         int line_offset = 0;
-        while (line_offset < state->current_col) {
+        while (line_offset < state->cursor.col) {
             int current_bytes = 0;
             int current_width = 0;
             int last_space_bytes = -1;
@@ -1140,18 +1006,18 @@ void get_visual_pos(WINDOW *win, EditorState *state, int *visual_y, int *visual_
                 break_pos = current_bytes;
             }
 
-            if (line_offset + break_pos < state->current_col) {
+            if (line_offset + break_pos < state->cursor.col) {
                 y++;
                 line_offset += break_pos;
             } else { 
                 break; 
             } 
         }
-        x = get_visual_col(current_line_str + line_offset, state->current_col - line_offset);
+        x = get_visual_col(current_line_str + line_offset, state->cursor.col - line_offset);
 
     } else { 
-        y = state->current_line;
-        x = get_visual_col(state->lines[state->current_line], state->current_col);
+        y = state->cursor.line;
+        x = get_visual_col(state->buffer.lines[state->cursor.line], state->cursor.col);
     }
 
     *visual_y = y;
@@ -1185,22 +1051,22 @@ int get_visual_col(const char *line, int byte_col) {
 }
 
 bool is_selected(EditorState *state, int line_idx, int col_idx) {
-    if (state->visual_selection_mode == VISUAL_MODE_NONE) {
+    if (state->cursor.visual_selection_mode == VISUAL_MODE_NONE) {
         return false;
     }
 
     int start_line, start_col, end_line, end_col;
-    if (state->selection_start_line < state->current_line ||
-        (state->selection_start_line == state->current_line && state->selection_start_col <= state->current_col)) {
-        start_line = state->selection_start_line;
-        start_col = state->selection_start_col;
-        end_line = state->current_line;
-        end_col = state->current_col;
+    if (state->cursor.selection_start_line < state->cursor.line ||
+        (state->cursor.selection_start_line == state->cursor.line && state->cursor.selection_start_col <= state->cursor.col)) {
+        start_line = state->cursor.selection_start_line;
+        start_col = state->cursor.selection_start_col;
+        end_line = state->cursor.line;
+        end_col = state->cursor.col;
     } else {
-        start_line = state->current_line;
-        start_col = state->current_col;
-        end_line = state->selection_start_line;
-        end_col = state->selection_start_col;
+        start_line = state->cursor.line;
+        start_col = state->cursor.col;
+        end_line = state->cursor.selection_start_line;
+        end_col = state->cursor.selection_start_col;
     }
 
     if (line_idx < start_line || line_idx > end_line) {
@@ -1219,14 +1085,15 @@ void display_output_screen(const char *title, const char *filename) {
     FileViewer *viewer = create_file_viewer(filename);
     if (!viewer) { return; }
     
-    WINDOW *output_win = newwin(0, 0, 0, 0);
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+    WINDOW *output_win = newwin(rows, cols, 0, 0);
     keypad(output_win, TRUE);
     wbkgd(output_win, COLOR_PAIR(8));
 
     int top_line = 0;
     wint_t ch;
     while (1) {
-        int rows, cols;
         getmaxyx(output_win, rows, cols);
         werase(output_win);
 
@@ -1262,7 +1129,7 @@ void display_output_screen(const char *title, const char *filename) {
     end_viewer:
     for (int i = 0; i < ACTIVE_WS->num_windows; i++) {
         EditorWindow *jw = ACTIVE_WS->windows[i];
-        if (jw->type == WINDOW_TYPE_EDITOR && jw->state) jw->state->is_dirty = true;
+        if (jw->type == WINDOW_TYPE_EDITOR && jw->state) jw->state->buffer.is_dirty = true;
         else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) jw->explorer_state->is_dirty = true;
         else if (jw->type == WINDOW_TYPE_HELP && jw->help_state) jw->help_state->is_dirty = true;
     }
@@ -1295,7 +1162,7 @@ void destroy_file_viewer(FileViewer* viewer) {
 }
 
 void display_diagnostics_list(EditorState *state) {
-    if (!state->lsp_enabled || !state->lsp_document || state->lsp_document->diagnostics_count == 0) {
+    if (!state->lsp.enabled || !state->lsp.document || state->lsp.document->diagnostics_count == 0) {
         editor_set_status_msg(state, "No diagnostics to display.");
         return;
     }
@@ -1324,8 +1191,8 @@ void display_diagnostics_list(EditorState *state) {
 
     fprintf(temp_file, "--- LSP Diagnostics ---\n\n");
 
-    for (int i = 0; i < state->lsp_document->diagnostics_count; i++) {
-        LspDiagnostic *diag = &state->lsp_document->diagnostics[i];
+    for (int i = 0; i < state->lsp.document->diagnostics_count; i++) {
+        LspDiagnostic *diag = &state->lsp.document->diagnostics[i];
         char severity_str[20];
         switch (diag->severity) {
             case LSP_SEVERITY_ERROR:   strcpy(severity_str, "[Error]");   break;
@@ -1336,7 +1203,7 @@ void display_diagnostics_list(EditorState *state) {
         }
         fprintf(temp_file, "%s %s:%d:%d: %s\n", 
                 severity_str, 
-                state->filename, 
+                state->buffer.filename, 
                 diag->range.start.line + 1, 
                 diag->range.start.character + 1, 
                 diag->message);
@@ -1411,12 +1278,12 @@ void display_macros_list(EditorState *state) {
 
     bool found_any = false;
     for (int i = 0; i < 26; i++) {
-        if (state->macro_registers[i] && state->macro_registers[i][0] != '\0') {
+        if (state->input.macro_registers[i] && state->input.macro_registers[i][0] != '\0') {
             found_any = true;
             char reg_char = 'a' + i;
             char display_buf[MAX_LINE_LEN]; // Re-use a defined constant for buffer size
 
-            format_macro_for_display(state->macro_registers[i], display_buf, sizeof(display_buf));
+            format_macro_for_display(state->input.macro_registers[i], display_buf, sizeof(display_buf));
 
             fprintf(temp_file, "    @%c: %s\n", reg_char, display_buf);
         }

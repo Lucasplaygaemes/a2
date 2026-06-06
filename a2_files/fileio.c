@@ -9,6 +9,7 @@
 #include "window_managment.h"
 #include "cache.h"
 #include "settings.h"
+#include "logger.h"
 
 
 #include <limits.h> // For PATH_MAX
@@ -28,15 +29,15 @@
 
 char* editor_buffer_to_string(EditorState *state) {
     size_t total_len = 0;
-    for (int i = 0; i < state->num_lines; i++) {
-        if (state->lines[i]) total_len += strlen(state->lines[i]) + 1;
+    for (int i = 0; i < state->buffer.num_lines; i++) {
+        if (state->buffer.lines[i]) total_len += strlen(state->buffer.lines[i]) + 1;
     }
     char *buf = malloc(total_len + 1);
     if (!buf) return NULL;
     buf[0] = '\0';
-    for (int i = 0; i < state->num_lines; i++) {
-        if (state->lines[i]) {
-            strcat(buf, state->lines[i]);
+    for (int i = 0; i < state->buffer.num_lines; i++) {
+        if (state->buffer.lines[i]) {
+            strcat(buf, state->buffer.lines[i]);
             strcat(buf, "\n");
         }
     }
@@ -61,10 +62,10 @@ bool perform_smart_merge(EditorState *state) {
     if (current_str) free(current_str);
 
     f = fopen(tmp_base, "w"); 
-    if (f) { fputs(state->shadow_copy ? state->shadow_copy : "", f); fclose(f); }
+    if (f) { fputs(state->buffer.shadow_copy ? state->buffer.shadow_copy : "", f); fclose(f); }
 
     char cmd[PATH_MAX * 3 + 100];
-    snprintf(cmd, sizeof(cmd), "git merge-file -p \"%s\" \"%s\" \"%s\" > \"%s\"", tmp_current, tmp_base, state->filename, tmp_disk);
+    snprintf(cmd, sizeof(cmd), "git merge-file -p \"%s\" \"%s\" \"%s\" > \"%s\"", tmp_current, tmp_base, state->buffer.filename, tmp_disk);
     
     int exit_status = system(cmd);
 
@@ -73,7 +74,7 @@ bool perform_smart_merge(EditorState *state) {
         if (code >= 0) {
             // Save original filename to restore it after loading merged content
             char original_filename[PATH_MAX];
-            strncpy(original_filename, state->filename, PATH_MAX - 1);
+            strncpy(original_filename, state->buffer.filename, PATH_MAX - 1);
             original_filename[PATH_MAX - 1] = '\0';
 
             if (code > 0) {
@@ -85,20 +86,20 @@ bool perform_smart_merge(EditorState *state) {
                 // 1. Result (Center) - Load merged content into the ACTIVE buffer
                 load_file_core(state, tmp_disk);
                 // Restore the original filename so we don't save to the temp file!
-                strncpy(state->filename, original_filename, sizeof(state->filename) - 1);
+                strncpy(state->buffer.filename, original_filename, sizeof(state->buffer.filename) - 1);
                 
                 // 2. Mine/Base (Left) - Create a TEMPORARY window for context
                 create_new_window(NULL); 
                 EditorState *base_state = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->state;
                 load_file_core(base_state, tmp_base);
-                strcpy(base_state->filename, "[BASE VERSION]"); 
+                strcpy(base_state->buffer.filename, "[BASE VERSION]"); 
                 move_window_to_position(0); 
                 
                 // 3. Theirs/Disk (Right)
                 create_new_window(NULL);
                 EditorState *disk_state = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->state;
                 load_file_core(disk_state, original_filename); 
-                strcpy(disk_state->filename, "[DISK VERSION]"); 
+                strcpy(disk_state->buffer.filename, "[DISK VERSION]"); 
                 
                 ws->active_window_idx = 1;
                 editor_jump_to_conflict(ws->windows[1]->state, true);
@@ -106,13 +107,13 @@ bool perform_smart_merge(EditorState *state) {
                 ui_show_message("MERGE SUCCESSFUL", "Your changes and external changes were merged successfully.");
                 load_file_core(state, tmp_disk);
                 // Restore the original filename so we don't save to the temp file!
-                strncpy(state->filename, original_filename, sizeof(state->filename) - 1);
+                strncpy(state->buffer.filename, original_filename, sizeof(state->buffer.filename) - 1);
             }            
-            state->buffer_modified = true;
+            state->buffer.modified = true;
             // IMPORTANT: Update shadow_copy to the new common ancestor (what was just on disk)
             // so future saves are compared correctly.
-            if(state->shadow_copy) free(state->shadow_copy);
-            state->shadow_copy = editor_buffer_to_string(state);
+            if(state->buffer.shadow_copy) free(state->buffer.shadow_copy);
+            state->buffer.shadow_copy = editor_buffer_to_string(state);
         }
     }
 
@@ -151,21 +152,21 @@ bool file_content_matches_shadow_copy(const char *filename, const char *shadow_c
 
 // Returns true if the buffer has any conflict markers
 bool editor_has_conflicts(EditorState *state) {
-    for (int i = 0; i < state->num_lines; i++) {
-        if (state->lines[i] && strncmp(state->lines[i], "<<<<<<<", 7) == 0) return true;
+    for (int i = 0; i < state->buffer.num_lines; i++) {
+        if (state->buffer.lines[i] && strncmp(state->buffer.lines[i], "<<<<<<<", 7) == 0) return true;
     }
     return false;
 }
 
 // Navigates to the next or previous conflict marker
 void editor_jump_to_conflict(EditorState *state, bool next) {
-    int start = state->current_line + (next ? 1 : -1);
-    for (int i = 0; i < state->num_lines; i++) {
-        int idx = (start + (next ? i : -i) + state->num_lines) % state->num_lines;
-        if (state->lines[idx] && strncmp(state->lines[idx], "<<<<<<<", 7) == 0) {
-            state->current_line = idx;
-            state->current_col = 0;
-            state->ideal_col = 0;
+    int start = state->cursor.line + (next ? 1 : -1);
+    for (int i = 0; i < state->buffer.num_lines; i++) {
+        int idx = (start + (next ? i : -i) + state->buffer.num_lines) % state->buffer.num_lines;
+        if (state->buffer.lines[idx] && strncmp(state->buffer.lines[idx], "<<<<<<<", 7) == 0) {
+            state->cursor.line = idx;
+            state->cursor.col = 0;
+            state->cursor.ideal_col = 0;
             editor_set_status_msg(state, "Conflict found!");
             return;
         }
@@ -178,15 +179,15 @@ void editor_resolve_conflict_interactive(EditorState *state, char choice) {
     int start = -1, mid = -1, end = -1;
 
     // Scan up for start
-    for (int i = state->current_line; i >= 0; i--) {
-        if (state->lines[i] && strncmp(state->lines[i], "<<<<<<<", 7) == 0) { start = i; break; }
-        if (i < state->current_line - 100) break;
+    for (int i = state->cursor.line; i >= 0; i--) {
+        if (state->buffer.lines[i] && strncmp(state->buffer.lines[i], "<<<<<<<", 7) == 0) { start = i; break; }
+        if (i < state->cursor.line - 100) break;
     }
     // Scan down for mid and end
     if (start != -1) {
-        for (int i = start; i < state->num_lines; i++) {
-            if (state->lines[i] && strncmp(state->lines[i], "=======", 7) == 0) mid = i;
-            if (state->lines[i] && strncmp(state->lines[i], ">>>>>>>", 7) == 0) { end = i; break; }
+        for (int i = start; i < state->buffer.num_lines; i++) {
+            if (state->buffer.lines[i] && strncmp(state->buffer.lines[i], "=======", 7) == 0) mid = i;
+            if (state->buffer.lines[i] && strncmp(state->buffer.lines[i], ">>>>>>>", 7) == 0) { end = i; break; }
             if (i > start + 200) break;
         }
     }
@@ -205,7 +206,7 @@ void editor_resolve_conflict_interactive(EditorState *state, char choice) {
         editor_delete_specific_line(state, end - (mid - start + 1));
     }
 
-    state->buffer_modified = true;
+    state->buffer.modified = true;
     mark_all_lines_dirty(state);
     
     // Jump to next if exists
@@ -218,8 +219,8 @@ void editor_resolve_conflict_interactive(EditorState *state, char choice) {
         for (int i = 0; i < ws->num_windows; i++) {
             EditorWindow *jw = ws->windows[i];
             if (jw->type == WINDOW_TYPE_EDITOR && jw->state &&
-                (strcmp(jw->state->filename, "[BASE VERSION]") == 0 || 
-                 strcmp(jw->state->filename, "[DISK VERSION]") == 0)) {
+                (strcmp(jw->state->buffer.filename, "[BASE VERSION]") == 0 || 
+                 strcmp(jw->state->buffer.filename, "[DISK VERSION]") == 0)) {
                 
                 // We use a internal-like close logic to avoid interactive prompts
                 // and because these are pseudo-files without modifications anyway.
@@ -275,7 +276,7 @@ const char * get_syntax_file_from_extension(const char* filename) {
 }
 
 void asm_convert_file(EditorState *state, const char *filename) {
-    if (strcmp(state->filename, "[No Name]") == 0) {
+    if (strcmp(state->buffer.filename, "[No Name]") == 0) {
         editor_set_status_msg(state, "No name file. Save with :w <filename>");
         return;
     }
@@ -295,10 +296,10 @@ void asm_convert_file(EditorState *state, const char *filename) {
 }
 
 void load_file_core(EditorState *state, const char *filename) {
-    for (int i = 0; i < state->num_lines; i++) { if(state->lines[i]) free(state->lines[i]); state->lines[i] = NULL; }
-    state->num_lines = 0;
-    strncpy(state->filename, filename, sizeof(state->filename) - 1);
-    state->filename[sizeof(state->filename) - 1] = '\0';
+    for (int i = 0; i < state->buffer.num_lines; i++) { if(state->buffer.lines[i]) free(state->buffer.lines[i]); state->buffer.lines[i] = NULL; }
+    state->buffer.num_lines = 0;
+    strncpy(state->buffer.filename, filename, sizeof(state->buffer.filename) - 1);
+    state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
 
     char absolute_path[PATH_MAX];
     if (realpath(filename, absolute_path) == NULL) {
@@ -307,63 +308,63 @@ void load_file_core(EditorState *state, const char *filename) {
         absolute_path[PATH_MAX - 1] = '\0';
     }
 
-    for (int i = 0; i < state->num_lines; i++) { if(state->lines[i]) free(state->lines[i]); state->lines[i] = NULL; }
-    state->num_lines = 0;
-    strncpy(state->filename, absolute_path, sizeof(state->filename) - 1);
-    state->filename[sizeof(state->filename) - 1] = '\0';
+    for (int i = 0; i < state->buffer.num_lines; i++) { if(state->buffer.lines[i]) free(state->buffer.lines[i]); state->buffer.lines[i] = NULL; }
+    state->buffer.num_lines = 0;
+    strncpy(state->buffer.filename, absolute_path, sizeof(state->buffer.filename) - 1);
+    state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
 
     FILE *file = fopen(filename, "r");
     if (file) {
         char line[MAX_LINE_LEN];
-        while (fgets(line, sizeof(line), file) && state->num_lines < MAX_LINES) {
+        while (fgets(line, sizeof(line), file) && state->buffer.num_lines < MAX_LINES) {
             line[strcspn(line, "\n")] = 0;
-            state->lines[state->num_lines] = strdup(line);
-            if (!state->lines[state->num_lines]) { fclose(file); return; }
-            state->num_lines++;
+            state->buffer.lines[state->buffer.num_lines] = strdup(line);
+            if (!state->buffer.lines[state->buffer.num_lines]) { fclose(file); return; }
+            state->buffer.num_lines++;
         }
         fclose(file);
         editor_set_status_msg(state, "%s loaded", filename);
     } else {
         if (errno == ENOENT) {
-            state->lines[0] = calloc(1, 1);
-            if (!state->lines[0]) return; 
-            state->num_lines = 1;
+            state->buffer.lines[0] = calloc(1, 1);
+            if (!state->buffer.lines[0]) return; 
+            state->buffer.num_lines = 1;
             editor_set_status_msg(state, "New file: \"%s\"", filename);
         } else {
             editor_set_status_msg(state, "Error opening file: %s", strerror(errno));
         }
     }
 
-    if (state->num_lines == 0) {
-        state->lines[0] = calloc(1, 1);
-        state->num_lines = 1;
+    if (state->buffer.num_lines == 0) {
+        state->buffer.lines[0] = calloc(1, 1);
+        state->buffer.num_lines = 1;
     }
-    state->current_line = load_last_line(filename);
-    if (state->current_line >= state->num_lines) {
-        state->current_line = state->num_lines > 0 ? state->num_lines - 1 : 0;
+    state->cursor.line = load_last_line(filename);
+    if (state->cursor.line >= state->buffer.num_lines) {
+        state->cursor.line = state->buffer.num_lines > 0 ? state->buffer.num_lines - 1 : 0;
     }
-    if (state->current_line < 0) {
-        state->current_line = 0;
+    if (state->cursor.line < 0) {
+        state->cursor.line = 0;
     }
-    state->current_col = 0;
-    state->ideal_col = 0;
-    state->top_line = state->current_line;
-    state->left_col = 0;
-    state->buffer_modified = false;
-    state->last_file_mod_time = get_file_mod_time(state->filename);
+    state->cursor.col = 0;
+    state->cursor.ideal_col = 0;
+    state->view.top_line = state->cursor.line;
+    state->view.left_col = 0;
+    state->buffer.modified = false;
+    state->buffer.last_mod_time = get_file_mod_time(state->buffer.filename);
     editor_find_unmatched_brackets(state);
     mark_all_lines_dirty(state);
 
-    if (state->shadow_copy) free(state->shadow_copy);
-    state->shadow_copy = editor_buffer_to_string(state);
+    if (state->buffer.shadow_copy) free(state->buffer.shadow_copy);
+    state->buffer.shadow_copy = editor_buffer_to_string(state);
     editor_update_git_gutter(state);
 }
 
 void load_file(EditorState *state, const char *filename) {
     editor_update_git_branch(state);
     // Save the previous filename before loading a new one
-    if (strcmp(state->filename, filename) != 0) {
-        strncpy(state->previous_filename, state->filename, sizeof(state->previous_filename) - 1);
+    if (strcmp(state->buffer.filename, filename) != 0) {
+        strncpy(state->buffer.previous_filename, state->buffer.filename, sizeof(state->buffer.previous_filename) - 1);
     }
     add_to_file_history(state, filename);
 
@@ -399,7 +400,7 @@ void load_file(EditorState *state, const char *filename) {
 }
 
 void save_file(EditorState *state) {
-    if (strcmp(state->filename, "[No Name]") == 0) { 
+    if (strcmp(state->buffer.filename, "[No Name]") == 0) { 
         editor_set_status_msg(state, "No file name. Use :w <filename>"); 
         return; 
     } 
@@ -412,26 +413,26 @@ void save_file(EditorState *state) {
     }
 
     // Initialize shadow_copy if missing (e.g. file was already open)
-    if (state->shadow_copy == NULL && access(state->filename, F_OK) == 0) {
-        FILE *f = fopen(state->filename, "r");
+    if (state->buffer.shadow_copy == NULL && access(state->buffer.filename, F_OK) == 0) {
+        FILE *f = fopen(state->buffer.filename, "r");
         if (f) {
             fseek(f, 0, SEEK_END);
             long size = ftell(f);
             fseek(f, 0, SEEK_SET);
-            state->shadow_copy = malloc(size + 1);
-            if (state->shadow_copy) {
-                size_t n = fread(state->shadow_copy, 1, size, f);
-                state->shadow_copy[n] = '\0';
+            state->buffer.shadow_copy = malloc(size + 1);
+            if (state->buffer.shadow_copy) {
+                size_t n = fread(state->buffer.shadow_copy, 1, size, f);
+                state->buffer.shadow_copy[n] = '\0';
             }
             fclose(f);
         }
     }
 
     // --- DISCREPANCY DETECTION (SMART SAVE) ---
-    if (global_config.smart_save_enabled && state->shadow_copy != NULL) {
+    if (global_config.smart_save_enabled && state->buffer.shadow_copy != NULL) {
         // DO NOT check for discrepancies in temporary pseudo-windows
-        if (strncmp(state->filename, "[", 1) != 0) {
-            if (!file_content_matches_shadow_copy(state->filename, state->shadow_copy)) {
+        if (strncmp(state->buffer.filename, "[", 1) != 0) {
+            if (!file_content_matches_shadow_copy(state->buffer.filename, state->buffer.shadow_copy)) {
             
             // Build conflict resolution UI
             WINDOW *win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win;
@@ -476,7 +477,7 @@ void save_file(EditorState *state) {
                         if (f) { fputs(current_str ? current_str : "", f); fclose(f); }
                         if (current_str) free(current_str);
                         char diff_cmd[PATH_MAX * 2 + 100];
-                        snprintf(diff_cmd, sizeof(diff_cmd), "git diff --no-index -- \"%s\" \"%s\"", state->filename, tmp_current);
+                        snprintf(diff_cmd, sizeof(diff_cmd), "git diff --no-index -- \"%s\" \"%s\"", state->buffer.filename, tmp_current);
                         run_and_display_command(diff_cmd, "--- DISK vs CURRENT BUFFER ---");
                         remove(tmp_current); free(tmp_current);
                     }
@@ -492,35 +493,38 @@ void save_file(EditorState *state) {
     }
     
     // --- ACTUAL FILE SAVING LOGIC ---
-    FILE *file = fopen(state->filename, "w");
+    FILE *file = fopen(state->buffer.filename, "w");
     if (file) {
-        for (int i = 0; i < state->num_lines; i++) {
-            if (state->lines[i]) fprintf(file, "%s\n", state->lines[i]);
+        for (int i = 0; i < state->buffer.num_lines; i++) {
+            if (state->buffer.lines[i]) fprintf(file, "%s\n", state->buffer.lines[i]);
         }
         fclose(file); 
         
         // Finalize standard save
-        char auto_save_filename[256];
-        snprintf(auto_save_filename, sizeof(auto_save_filename), "%s%s", state->filename, AUTO_SAVE_EXTENSION);
-        remove(auto_save_filename);
+        char auto_save_filename[PATH_MAX + 10];
+        snprintf(auto_save_filename, sizeof(auto_save_filename), "%s%s", state->buffer.filename, AUTO_SAVE_EXTENSION);
+        if (remove(auto_save_filename) != 0 && errno != ENOENT) {
+            A2_LOG(LOG_WARN, TAG_FS, "Could not remove auto-save file %s: %s", auto_save_filename, strerror(errno));
+        }
         
-        char display_filename[40]; 
-        strncpy(display_filename, state->filename, sizeof(display_filename) - 1);
+        char display_filename[64]; 
+        strncpy(display_filename, basename(state->buffer.filename), sizeof(display_filename) - 1);
         display_filename[sizeof(display_filename) - 1] = '\0';
         editor_set_status_msg(state, "%s written", display_filename);
         
-        state->buffer_modified = false;
-        state->last_file_mod_time = get_file_mod_time(state->filename);
+        state->buffer.modified = false;
+        state->buffer.last_mod_time = get_file_mod_time(state->buffer.filename);
         
         // Sync Shadow Copy
-        if (state->shadow_copy) free(state->shadow_copy);
-        state->shadow_copy = editor_buffer_to_string(state);
+        if (state->buffer.shadow_copy) free(state->buffer.shadow_copy);
+        state->buffer.shadow_copy = editor_buffer_to_string(state);
         editor_update_git_gutter(state);
 
-        if (state->lsp_enabled) lsp_did_save(state);
+        if (state->lsp.enabled) lsp_did_save(state);
     } else { 
         // --- SUDO SAVE FALLBACK ---
         if (errno == EACCES) {
+           A2_LOG(LOG_WARN, TAG_FS, "Permission denied for %s. Prompting for sudo save.", state->buffer.filename);
            if (ui_confirm("Permission denied. Save with sudo?")) {
                char *temp_filename = get_cache_filename("a2_sudo_save.XXXXXX");
                if (!temp_filename) return;
@@ -528,11 +532,11 @@ void save_file(EditorState *state) {
                if (fd == -1) { free(temp_filename); return; }
                FILE *temp_file = fdopen(fd, "w");
                if (!temp_file) { close(fd); remove(temp_filename); free(temp_filename); return; }
-               for (int i = 0; i < state->num_lines; i++) { if (state->lines[i]) fprintf(temp_file, "%s\n", state->lines[i]); }
+               for (int i = 0; i < state->buffer.num_lines; i++) { if (state->buffer.lines[i]) fprintf(temp_file, "%s\n", state->buffer.lines[i]); }
                fclose(temp_file);
                
                char command[PATH_MAX * 2 + 50];
-               snprintf(command, sizeof(command), "cat \"%s\" | sudo tee \"%s\" > /dev/null", temp_filename, state->filename);
+               snprintf(command, sizeof(command), "cat \"%s\" | sudo tee \"%s\" > /dev/null", temp_filename, state->buffer.filename);
                
                def_prog_mode(); endwin();
                int ret = system(command);
@@ -541,18 +545,18 @@ void save_file(EditorState *state) {
                remove(temp_filename); free(temp_filename);
                
                if (WIFEXITED(ret) && WEXITSTATUS(ret) == 0) {
-                   state->buffer_modified = false;
-                   state->last_file_mod_time = get_file_mod_time(state->filename);
+                   state->buffer.modified = false;
+                   state->buffer.last_mod_time = get_file_mod_time(state->buffer.filename);
                    
                    // Sync Shadow Copy
-                   if (state->shadow_copy) free(state->shadow_copy);
-                   state->shadow_copy = editor_buffer_to_string(state);
+                   if (state->buffer.shadow_copy) free(state->buffer.shadow_copy);
+                   state->buffer.shadow_copy = editor_buffer_to_string(state);
                    editor_update_git_gutter(state);
 
-                   if (state->lsp_enabled) lsp_did_save(state);
-                   editor_set_status_msg(state, "'%s' saved with sudo.", basename(state->filename));
+                   if (state->lsp.enabled) lsp_did_save(state);
+                   editor_set_status_msg(state, "'%s' saved with sudo.", basename(state->buffer.filename));
                    char auto_save_filename[PATH_MAX];
-                   snprintf(auto_save_filename, sizeof(auto_save_filename), "%s%s", state->filename, AUTO_SAVE_EXTENSION);
+                   snprintf(auto_save_filename, sizeof(auto_save_filename), "%s%s", state->buffer.filename, AUTO_SAVE_EXTENSION);
                    remove(auto_save_filename);
                } else {
                    editor_set_status_msg(state, "sudo save failed.");
@@ -567,20 +571,22 @@ void save_file(EditorState *state) {
 }
 }
 void auto_save(EditorState *state) {
-    if (strcmp(state->filename, "[No Name]") == 0) return;
-    if (!state->buffer_modified) return;
+    if (strcmp(state->buffer.filename, "[No Name]") == 0) return;
+    if (!state->buffer.modified) return;
 
-    char auto_save_filename[256];
-    snprintf(auto_save_filename, sizeof(auto_save_filename), "%s%s", state->filename, AUTO_SAVE_EXTENSION);
+    char auto_save_filename[PATH_MAX + 10];
+    snprintf(auto_save_filename, sizeof(auto_save_filename), "%s%s", state->buffer.filename, AUTO_SAVE_EXTENSION);
 
     FILE *file = fopen(auto_save_filename, "w");
     if (file) {
-        for (int i = 0; i < state->num_lines; i++) {
-            if (state->lines[i]) {
-                fprintf(file, "%s\n", state->lines[i]);
+        for (int i = 0; i < state->buffer.num_lines; i++) {
+            if (state->buffer.lines[i]) {
+                fprintf(file, "%s\n", state->buffer.lines[i]);
             }
         }
         fclose(file);
+    } else {
+        A2_LOG(LOG_ERROR, TAG_FS, "Auto-save failed to open %s: %s", auto_save_filename, strerror(errno));
     }
 }
 
@@ -593,15 +599,15 @@ time_t get_file_mod_time(const char *filename) {
 }
 
 void check_external_modification(EditorState *state) {
-    if (strcmp(state->filename, "[No Name]") == 0 || state->last_file_mod_time == 0) {
+    if (strcmp(state->buffer.filename, "[No Name]") == 0 || state->buffer.last_mod_time == 0) {
         return;
     }
 
-    time_t on_disk_mod_time = get_file_mod_time(state->filename);
+    time_t on_disk_mod_time = get_file_mod_time(state->buffer.filename);
 
-    if (on_disk_mod_time != 0 && on_disk_mod_time != state->last_file_mod_time) {
+    if (on_disk_mod_time != 0 && on_disk_mod_time != state->buffer.last_mod_time) {
         bool decision = false;
-        if (state->buffer_modified) {
+        if (state->buffer.modified) {
             decision = ui_confirm("File on disk changed! Discard your changes and reload?");
         } else {
             decision = ui_confirm("File on disk changed. Reload?");
@@ -609,28 +615,28 @@ void check_external_modification(EditorState *state) {
 
         if (decision) {
             // Force reloading the file from disk
-            load_file_core(state, state->filename);
-            const char* syntax_file = get_syntax_file_from_extension(state->filename);
+            load_file_core(state, state->buffer.filename);
+            const char* syntax_file = get_syntax_file_from_extension(state->buffer.filename);
             load_syntax_file(state, syntax_file);
             editor_set_status_msg(state, "File reloaded from disk.");
         } else {
             // If the user chooses "no", we just update the modification time
             // to avoid asking again, keeping the in-memory version.
-            state->last_file_mod_time = on_disk_mod_time;
+            state->buffer.last_mod_time = on_disk_mod_time;
             editor_set_status_msg(state, "Reload cancelled. In-memory version kept.");
         }
     }
 }
 
 void editor_reload_file(EditorState *state) {
-    if (strcmp(state->filename, "[No Name]") == 0) {
+    if (strcmp(state->buffer.filename, "[No Name]") == 0) {
         editor_set_status_msg(state, "No file name to reload.");
         return;
     }
     
-    time_t on_disk_mod_time = get_file_mod_time(state->filename);
+    time_t on_disk_mod_time = get_file_mod_time(state->buffer.filename);
     
-    if (state->buffer_modified && on_disk_mod_time != 0 && on_disk_mod_time != state->last_file_mod_time) {
+    if (state->buffer.modified && on_disk_mod_time != 0 && on_disk_mod_time != state->buffer.last_mod_time) {
         // Use status message instead of interactive dialog
         editor_set_status_msg(state, 
                  "Warning: File changed on disk! Use :rc! to force reload.");
@@ -638,19 +644,19 @@ void editor_reload_file(EditorState *state) {
     }
     
     // Reload the file normally
-    load_file(state, state->filename);
+    load_file(state, state->buffer.filename);
     editor_set_status_msg(state, "File reloaded.");
 }
 
 void load_syntax_file(EditorState *state, const char *filename) {
     // Clear existing syntax rules before loading new ones
-    if (state->syntax_rules) {
-        for (int i = 0; i < state->num_syntax_rules; i++) {
-            free(state->syntax_rules[i].word);
+    if (state->buffer.syntax_rules) {
+        for (int i = 0; i < state->buffer.num_syntax_rules; i++) {
+            free(state->buffer.syntax_rules[i].word);
         }
-        free(state->syntax_rules);
-        state->syntax_rules = NULL;
-        state->num_syntax_rules = 0;
+        free(state->buffer.syntax_rules);
+        state->buffer.syntax_rules = NULL;
+        state->buffer.num_syntax_rules = 0;
     }
 
     if (!filename) {
@@ -702,10 +708,10 @@ void load_syntax_file(EditorState *state, const char *filename) {
 
         if (strlen(type_str) == 0 || strlen(word_str) == 0) continue;
 
-        state->num_syntax_rules++;
-        state->syntax_rules = realloc(state->syntax_rules, sizeof(SyntaxRule) * state->num_syntax_rules);
+        state->buffer.num_syntax_rules++;
+        state->buffer.syntax_rules = realloc(state->buffer.syntax_rules, sizeof(SyntaxRule) * state->buffer.num_syntax_rules);
         
-        SyntaxRule *new_rule = &state->syntax_rules[state->num_syntax_rules - 1];
+        SyntaxRule *new_rule = &state->buffer.syntax_rules[state->buffer.num_syntax_rules - 1];
         new_rule->word = strdup(word_str);
 
         if (strcmp(type_str, "KEYWORD") == 0) {
@@ -716,7 +722,7 @@ void load_syntax_file(EditorState *state, const char *filename) {
             new_rule->type = SYNTAX_STD_FUNCTION;
         } else {
             free(new_rule->word);
-            state->num_syntax_rules--;
+            state->buffer.num_syntax_rules--;
         }
     }
     fclose(file);
@@ -850,8 +856,8 @@ void handle_file_recovery(EditorState *state, const char *original_filename, con
             }
             case RECOVER_FROM_SV:
                 load_file_core(state, sv_filename);
-                strncpy(state->filename, original_filename, sizeof(state->filename) - 1);
-                state->buffer_modified = true;
+                strncpy(state->buffer.filename, original_filename, sizeof(state->buffer.filename) - 1);
+                state->buffer.modified = true;
                 remove(sv_filename);
                 editor_set_status_msg(state, "Recovered from %s. Save to confirm.", sv_filename);
                 return;
@@ -869,9 +875,9 @@ void handle_file_recovery(EditorState *state, const char *original_filename, con
 
             case RECOVER_ABORT:
                 editor_set_status_msg(state, "");
-                state->num_lines = 1;
-                state->lines[0] = calloc(1, 1);
-                strcpy(state->filename, "[No Name]");
+                state->buffer.num_lines = 1;
+                state->buffer.lines[0] = calloc(1, 1);
+                strcpy(state->buffer.filename, "[No Name]");
                 return;
         }
     }
@@ -895,9 +901,9 @@ void save_macros(EditorState *state) {
     }
 
     for (int i = 0; i < 26; i++) {
-        if (state->macro_registers[i]) {
+        if (state->input.macro_registers[i]) {
             char reg = 'a' + i;
-            char *content = state->macro_registers[i];
+            char *content = state->input.macro_registers[i];
             fprintf(f, "%c:", reg);
             // Escape and write content
             for (size_t j = 0; j < strlen(content); j++) {
@@ -945,9 +951,9 @@ void load_macros(EditorState *state) {
 
     // Clear existing macros before loading
     for (int i = 0; i < 26; i++) {
-        if (state->macro_registers[i]) {
-            free(state->macro_registers[i]);
-            state->macro_registers[i] = NULL;
+        if (state->input.macro_registers[i]) {
+            free(state->input.macro_registers[i]);
+            state->input.macro_registers[i] = NULL;
         }
     }
 
@@ -997,7 +1003,7 @@ void load_macros(EditorState *state) {
         }
         unescaped[unescaped_len] = '\0';
         
-        state->macro_registers[reg_idx] = strdup(unescaped);
+        state->input.macro_registers[reg_idx] = strdup(unescaped);
         free(unescaped);
     }
 

@@ -1,111 +1,11 @@
 #ifndef OTHERS_H
 #define OTHERS_H
 
-#include "defs.h" // For EditorState, etc.
-
-// Function prototypes for others.c
-void editor_set_status_msg(EditorState *state, const char *format, ...);
-void editor_update_git_gutter(EditorState *state);
-
-// Bracket Matching
-void editor_find_unmatched_brackets(EditorState *state);
-bool is_unmatched_bracket(EditorState *state, int line, int col);
-
-// Text Editing & Manipulation
-void editor_yank_selection(EditorState *state);
-void editor_global_yank(EditorState *state);
-void editor_paste(EditorState *state);
-void editor_global_paste(EditorState *state);
-void editor_handle_enter(EditorState *state);
-void editor_handle_backspace(EditorState *state);
-void editor_insert_char(EditorState *state, wint_t ch);
-void editor_delete_line(EditorState *state);
-void editor_delete_specific_line(EditorState *state, int line_num);
-void editor_delete_selection(EditorState *state);
-void editor_yank_line(EditorState *state);
-void editor_yank_to_move_register(EditorState *state);
-void editor_paste_from_move_register(EditorState *state);
-char* trim_whitespace(char *str);
-void editor_ident_line(EditorState *state, int line_num);
-void editor_unindent_line(EditorState *state, int line_num);
-void editor_delete_selection(EditorState *state);
-void editor_yank_paragraph(EditorState *state);
-void editor_join_line(EditorState *state);
-void editor_expand_snippet(EditorState *state);
-
-void editor_ensure_dirty_lines_capacity(EditorState *state, int required_capacity);
-void mark_line_as_dirty(EditorState *state, int line_num);
-void mark_all_lines_dirty(EditorState *state);
-
-bool is_line_blank(const char *line);
-void editor_jump_to_matching_bracket(EditorState *state);
-
-// Cursor Movement & Navigation
-void ensure_cursor_in_bounds(EditorState *state);
-void editor_move_to_next_word(EditorState *state);
-void editor_move_to_previous_word(EditorState *state);
-
-// Search
-void editor_find(EditorState *state);
-void editor_find_next(EditorState *state);
-void editor_find_previous(EditorState *state);
-
-// Undo/Redo
-EditorSnapshot* create_snapshot(EditorState *state);
-void free_snapshot(EditorSnapshot *snapshot);
-void restore_from_snapshot(EditorState *state, EditorSnapshot *snapshot);
-void push_undo(EditorState *state);
-void clear_redo_stack(EditorState *state);
-void do_undo(EditorState *state);
-void do_redo(EditorState *state);
-
-// Autocompletion
-void add_suggestion(EditorState *state, const char *label, const char *detail, const char *insert_text);
-void editor_start_completion(EditorState *state);
-void editor_start_command_completion(EditorState *state);
-void editor_start_theme_completion(EditorState *state);
-void editor_start_file_completion(EditorState *state);
-void editor_end_completion(EditorState *state);
-void editor_apply_completion(EditorState *state);
-void editor_draw_completion_win(WINDOW *win, EditorState *state);
-
-// Input Handling
-void handle_insert_mode_key(EditorState *state, wint_t ch);
-void handle_command_mode_key(EditorState *state, wint_t ch, bool *should_exit);
-
-void editor_toggle_comment(EditorState *state);
-void editor_change_inside_quotes(EditorState *state, char quote_char, bool enter_insert);
-void editor_do_replace(EditorState *state, const char *find, const char *replace, const char *flags);
-void editor_do_regex_replace(EditorState *state, const char *find, const char *replace, const char *flags);
-
-char *analyze_include_and_generate_flags(EditorState *state);
-
-
-extern const char *editor_commands[];
-extern const int num_editor_commands;
-
-
-void editor_do_replace(EditorState *state, const char *find, const char *replace, const char *flags);
-
-void add_to_search_history(EditorState *state, const char *term);
-
-void* background_grep_worker(void* arg);
-
-void make_make_file(EditorState *state, const char *args);
-void display_grep_results();
-
-// Assembly
-void build_assembly_mappings(EditorState *state, int int_source_line);
-void build_llvm_mappings(EditorState *state, int num_source_lines);
-
-void editor_start_spell_completion(EditorState *state);
-
-EditorAction get_action_from_key(int ch, bool alt, bool ctrl, int leader);
-
-bool is_leader_key(int ch);
-
-void execute_action(EditorAction action, EditorState *state, bool *should_exit);
-
-void display_dynamic_ksc();
+#include "editor_utils.h"
+#include "text_editing.h"
+#include "undo_redo.h"
+#include "search_local.h"
+#include "autocomplete_logic.h"
+#include "editor_actions.h"
 
 #endif // OTHERS_H

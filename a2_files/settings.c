@@ -17,6 +17,7 @@
 #include "spell.h"
 #include "others.h"
 #include "lsp_client.h"
+#include "logger.h"
 
 A2Config global_config = {
     .word_wrap = true,
@@ -35,7 +36,9 @@ A2Config global_config = {
     .show_error_count = true,
     .abbreviate_filename = true,
     .smart_save_enabled = true,
-    .git_gutter_enabled = true
+    .git_gutter_enabled = true,
+    .debug_enabled = true,
+    .log_level_filter = LOG_DEBUG
 };
 
 typedef struct {
@@ -77,7 +80,8 @@ const char *main_menu_items[] = {
     "Theme",
     "Spell Checker",
     "LSP (Language Server)",
-    "Keybindings"
+    "Keybindings",
+    "Debug"
 };
 const int num_main_menu_items = sizeof(main_menu_items) / sizeof(char*);
 
@@ -252,12 +256,6 @@ void save_ds_keybindings() {
     editor_set_status_msg(get_any_editor_state(), "Default shortcuts saved to %s", path);
 }
 
-static void draw_settings_header(WINDOW *win, const char *title, int width) {
-    wattron(win, COLOR_PAIR(PAIR_STATUS_BAR) | A_BOLD);
-    for (int i = 0; i < width; i++) mvwaddch(win, 0, i, ' ');
-    mvwprintw(win, 0, 2, " %s ", title);
-    wattroff(win, COLOR_PAIR(PAIR_STATUS_BAR) | A_BOLD);
-}
 
 bool is_key_duplicate(int idx) {
     KeyBinding *current = &global_bindings[idx];
@@ -349,6 +347,8 @@ void save_global_config() {
         fprintf(f, "abbreviate_filename=%d\n", global_config.abbreviate_filename);
         fprintf(f, "smart_save_enabled=%d\n", global_config.smart_save_enabled);
         fprintf(f, "git_gutter_enabled=%d\n", global_config.git_gutter_enabled);
+        fprintf(f, "debug_enabled=%d\n", global_config.debug_enabled);
+        fprintf(f, "log_level_filter=%d\n", global_config.log_level_filter);
         fclose(f);
     }
 }
@@ -383,6 +383,8 @@ void load_global_config() {
         else if (sscanf(line, "abbreviate_filename=%d", &val) == 1) global_config.abbreviate_filename = val;
         else if (sscanf(line, "smart_save_enabled=%d", &val) == 1) global_config.smart_save_enabled = val;
         else if (sscanf(line, "git_gutter_enabled=%d", &val) == 1) global_config.git_gutter_enabled = val;
+        else if (sscanf(line, "debug_enabled=%d", &val) == 1) global_config.debug_enabled = val;
+        else if (sscanf(line, "log_level_filter=%d", &val) == 1) global_config.log_level_filter = val;
         else if (sscanf(line, "default_spell_lang=%127s", str_val) == 1) {
             strncpy(global_config.default_spell_lang, str_val, sizeof(global_config.default_spell_lang) - 1);
             global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
@@ -401,34 +403,34 @@ void apply_settings_globally() {
             if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
                 EditorState *state = jw->state;
                 
-                state->word_wrap_enabled = global_config.word_wrap;
-                state->auto_indent_on_newline = global_config.auto_indent;
-                state->paste_mode = global_config.paste_mode;
-                state->status_bar_mode = global_config.status_bar_mode;
-                state->show_line_numbers = global_config.show_line_numbers;
-                state->show_scrollbar = global_config.show_scrollbar;
+                state->view.word_wrap = global_config.word_wrap;
+                state->input.auto_indent = global_config.auto_indent;
+                state->input.paste_mode = global_config.paste_mode;
+                state->view.status_bar_mode = global_config.status_bar_mode;
+                state->view.show_line_numbers = global_config.show_line_numbers;
+                state->view.show_scrollbar = global_config.show_scrollbar;
                 
                 // Refresh Git Gutter state
                 editor_update_git_gutter(state);
 
                 // LSP Global Toggle
                 if (!global_config.lsp_enabled) {
-                    if (state->lsp_client) {
+                    if (state->lsp.client) {
                         lsp_shutdown(state);
                     }
-                } else if (global_config.lsp_enabled && !state->lsp_client) {
+                } else if (global_config.lsp_enabled && !state->lsp.client) {
                     // Re-initialize might start LSP if supported
                     lsp_initialize(state);
                 }
                 
                 // Spell Checker Global Toggle
                 if (!global_config.spell_checker_enabled) {
-                    if (state->spell_checker.enabled) {
-                        spell_checker_unload_dict(&state->spell_checker);
+                    if (state->spell.checker.enabled) {
+                        spell_checker_unload_dict(&state->spell.checker);
                     }
-                } else if (global_config.spell_checker_enabled && !state->spell_checker.enabled) {
+                } else if (global_config.spell_checker_enabled && !state->spell.checker.enabled) {
                     // Logic similar to lsp_initialize spell check policy
-                    const char *ext = strrchr(state->filename, '.');
+                    const char *ext = strrchr(state->buffer.filename, '.');
                     bool lsp_will_be_enabled = false;
                     if (ext) {
                         if (strcmp(ext, ".c") == 0 || strcmp(ext, ".h") == 0 ||
@@ -439,11 +441,11 @@ void apply_settings_globally() {
                     }
                     bool enable_spell_check = (ext && strcmp(ext, ".txt") == 0) || !lsp_will_be_enabled;
                     if (enable_spell_check && global_config.default_spell_lang[0] != '\0') {
-                        spell_checker_load_dict(&state->spell_checker, global_config.default_spell_lang);
+                        spell_checker_load_dict(&state->spell.checker, global_config.default_spell_lang);
                     }
                 }
                 
-                state->is_dirty = true;
+                state->buffer.is_dirty = true;
                 mark_all_lines_dirty(state);
             }
         }
@@ -474,7 +476,14 @@ void draw_main_menu(EditorWindow *jw) {
     
     draw_settings_header(jw->win, "A2 SETTINGS", cols);
 
-    const char *icons[] = { "  (E) Editor Configuration", "  (T) Themes & Appearance", "  (S) Spell Checker", "  (L) LSP (Language Server)", "  (K) Keybindings" };
+    const char *icons[] = { 
+        "  (E) Editor Configuration", 
+        "  (T) Themes & Appearance", 
+        "  (S) Spell Checker", 
+        "  (L) LSP (Language Server)", 
+        "  (K) Keybindings",
+        "  (D) Debug"
+    };
 
     for (int i = 0; i < num_main_menu_items; i++) {
         if (i == state->current_selection) {
@@ -704,6 +713,47 @@ void draw_lsp_settings(EditorWindow *jw) {
     }
 }
 
+void draw_debug_settings(EditorWindow *jw) {
+    SettingsPanelState *state = jw->settings_state;
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
+    (void)rows;
+    
+    draw_settings_header(jw->win, "SETTINGS > DEBUG", cols);
+
+    const char *debug_opts[] = {
+        "Logging Enabled",
+        "Logging Level",
+        "OPEN LOG FILE",
+        "CLEAR LOG FILE"
+    };
+
+    extern const char *level_strings[];
+
+    for (int i = 0; i < 4; i++) {
+        if (i == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
+        
+        if (i == 0) {
+            mvwprintw(jw->win, 4 + i, 4, "  %-20s : ", debug_opts[i]);
+            if (global_config.debug_enabled) {
+                wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
+                wprintw(jw->win, " ENABLED ");
+                wattroff(jw->win, PAIR_DIFF_ADD | A_BOLD);
+            } else {
+                wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+                wprintw(jw->win, " DISABLED ");
+                wattroff(jw->win, PAIR_ERROR | A_BOLD);
+            }
+        } else if (i == 1) {
+            mvwprintw(jw->win, 4 + i, 4, "  %-20s : [%s]", debug_opts[i], level_strings[global_config.log_level_filter]);
+        } else {
+            mvwprintw(jw->win, 4 + i, 4, "  !!! %s !!! ", debug_opts[i]);
+        }
+         
+        if (i == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
+    }
+}
+
 void settings_panel_redraw(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     werase(jw->win);
@@ -727,6 +777,9 @@ void settings_panel_redraw(EditorWindow *jw) {
             break;
         case SETTINGS_VIEW_KEYBINDINGS:
             draw_keybinding_settings(jw);
+            break;
+        case SETTINGS_VIEW_DEBUG:
+            draw_debug_settings(jw);
             break;
     }
     
@@ -1099,6 +1152,46 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                     }
                     save_global_config();
                     apply_settings_globally();
+                    break;
+            }
+            break;
+        case SETTINGS_VIEW_DEBUG:
+            switch(ch) {
+                case 'q': case 27: 
+                    state->current_view = SETTINGS_VIEW_MAIN; 
+                    state->current_selection = 5; 
+                    break;
+                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
+                case 'j': case KEY_DOWN:
+                    if (state->current_selection < 3) state->current_selection++;
+                    break;
+                case 'k': case KEY_UP:
+                    if (state->current_selection > 0) state->current_selection--;
+                    break;
+                case KEY_ENTER: case '\n':
+                    if (state->current_selection == 0) {
+                        global_config.debug_enabled = !global_config.debug_enabled;
+                    } else if (state->current_selection == 1) {
+                        global_config.log_level_filter = (global_config.log_level_filter + 1) % 5;
+                    } else if (state->current_selection == 2) {
+                        char *log_path = get_cache_filename("a2.log");
+                        if (log_path) {
+                            if (access(log_path, F_OK) == 0) {
+                                display_output_screen("--- A2 Logs ---", log_path);
+                            }
+                            free(log_path);
+                        }
+                    } else if (state->current_selection == 3) {
+                        if (ui_confirm("Clear log file?")) {
+                            char *log_path = get_cache_filename("a2.log");
+                            if (log_path) {
+                                FILE *f = fopen(log_path, "w");
+                                if (f) fclose(f);
+                                free(log_path);
+                            }
+                        }
+                    }
+                    save_global_config();
                     break;
             }
             break;

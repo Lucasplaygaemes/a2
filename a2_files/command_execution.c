@@ -11,6 +11,7 @@
 #include "themes.h"
 #include "diff.h"
 #include "settings.h"
+#include "logger.h"
 
 #include <sys/stat.h>
 #include <ctype.h> // For isspace
@@ -23,15 +24,16 @@
 // ===================================================================
 
 void process_command(EditorState *state, bool *should_exit) {
-    if (state->command_buffer[0] == '!') {
+    A2_LOG(LOG_INFO, TAG_CORE, "Command: %s", state->input.command_buffer);
+    if (state->input.command_buffer[0] == '!') {
         execute_shell_command(state);
-        add_to_command_history(state, state->command_buffer);
-        state->mode = NORMAL;
+        add_to_command_history(state, state->input.command_buffer);
+        state->input.mode = NORMAL;
         return;
     }
-    add_to_command_history(state, state->command_buffer);
+    add_to_command_history(state, state->input.command_buffer);
     char command[100], args[1024] = "";
-    char *buffer_ptr = state->command_buffer;
+    char *buffer_ptr = state->input.command_buffer;
     int i = 0;
     while(i < 99 && *buffer_ptr && !isspace(*buffer_ptr)) command[i++] = *buffer_ptr++;
     command[i] = '\0';
@@ -44,25 +46,32 @@ void process_command(EditorState *state, bool *should_exit) {
         close_active_window(should_exit);
         return; 
     } else if (strcmp(command, "q!") == 0) {
-        state->buffer_modified = false;
+        state->buffer.modified = false;
         close_active_window(should_exit);
         return;
     } else if (strcmp(command, "wq") == 0) {
         save_file(state);
-        if (!state->buffer_modified) { // Only close if save was successful
+        if (!state->buffer.modified) { // Only close if save was successful
             close_active_window(should_exit);
         }
         return;
     } else if (strcmp(command, "w") == 0) {
         if (strlen(args) > 0) {
-            strncpy(state->filename, args, sizeof(state->filename) - 1);
-            const char * syntax_file =  get_syntax_file_from_extension(args);
+            char abs_path[PATH_MAX];
+            if (realpath(args, abs_path) == NULL) {
+                // File might not exist yet, so realpath fails. 
+                // We use the args as is, but we should ideally resolve the directory.
+                strncpy(state->buffer.filename, args, sizeof(state->buffer.filename) - 1);
+            } else {
+                strncpy(state->buffer.filename, abs_path, sizeof(state->buffer.filename) - 1);
+            }
+            const char * syntax_file =  get_syntax_file_from_extension(state->buffer.filename);
             load_syntax_file(state, syntax_file);
-            }
+        }
         save_file(state);
-        if (state->lsp_enabled) {
+        if (state->lsp.enabled) {
             lsp_did_save(state);
-            }
+        }
     } else if (strcmp(command, "help") == 0) {
         display_help_viewer("a2_help.txt");
     } else if (strcmp(command, "about") == 0) {
@@ -114,7 +123,7 @@ void process_command(EditorState *state, bool *should_exit) {
             editor_set_status_msg(state, "Usage: :theme <themename>");
         }
     } else if (strcmp(command, "gcc") == 0) {
-        if (strcmp(state->filename, "[No Name]") == 0) {
+        if (strcmp(state->buffer.filename, "[No Name]") == 0) {
             editor_set_status_msg(state, "Save the file before compile.");
         } else {
             make_make_file(state, args);
@@ -122,10 +131,10 @@ void process_command(EditorState *state, bool *should_exit) {
     } else if (strcmp(command, "rc") == 0) {
         editor_reload_file(state);
     } else if (strcmp(command, "rc!") == 0) {
-        if (strcmp(state->filename, "[No Name]") == 0) {
+        if (strcmp(state->buffer.filename, "[No Name]") == 0) {
             editor_set_status_msg(state, "No file name to reload.");
         } else {
-            load_file(state, state->filename);
+            load_file(state, state->buffer.filename);
             editor_set_status_msg(state, "File reloaded (force).");
         }
     } else if (strcmp(command, "open") == 0) {
@@ -136,10 +145,12 @@ void process_command(EditorState *state, bool *should_exit) {
             editor_set_status_msg(state, "Usage: :open <filename>");
         }
     } else if (strcmp(command, "new") == 0) {
-        for (int i = 0; i < state->num_lines; i++) { if(state->lines[i]) {
-        free(state->lines[i]); state->lines[i] = NULL; } }
-        state->num_lines = 1; state->lines[0] = calloc(1, 1); strcpy(state->filename, "[No Name]");
-        state->current_line = 0; state->current_col = 0; state->ideal_col = 0; state->top_line = 0; state->left_col = 0;
+        for (int i = 0; i < state->buffer.num_lines; i++) { if(state->buffer.lines[i]) {
+        free(state->buffer.lines[i]); state->buffer.lines[i] = NULL; } }
+        state->buffer.num_lines = 1; state->buffer.lines[0] = calloc(1, 1); strcpy(state->buffer.filename, "[No Name]");
+        state->cursor.line = 0; state->cursor.col = 0; state->cursor.ideal_col = 0; state->view.top_line = 0; state->view.left_col = 0;
+        state->buffer.modified = false;
+        if (state->buffer.shadow_copy) { free(state->buffer.shadow_copy); state->buffer.shadow_copy = NULL; }
         editor_set_status_msg(state, "New file opened.");
     } else if (strcmp(command, "timer") == 0) {
         display_work_summary();
@@ -157,18 +168,18 @@ void process_command(EditorState *state, bool *should_exit) {
 
         if (items >= 1) {
             if (strcmp(set_cmd, "paste") == 0) {
-                state->paste_mode = true;
-                state->auto_indent_on_newline = false;
+                state->input.paste_mode = true;
+                state->input.auto_indent = false;
                 editor_set_status_msg(state, "-- PASTE MODE ON --");
             } else if (strcmp(set_cmd, "nopaste") == 0) {
-                state->paste_mode = false;
-                state->auto_indent_on_newline = true;
+                state->input.paste_mode = false;
+                state->input.auto_indent = true;
                 editor_set_status_msg(state, "-- PASTE MODE OFF --");
             } else if (strcmp(set_cmd, "wrap") == 0) {
-                state->word_wrap_enabled = true;
+                state->view.word_wrap = true;
                 editor_set_status_msg(state, "Word wrap enabled");
             } else if (strcmp(set_cmd, "nowrap") == 0) {
-                state->word_wrap_enabled = false;
+                state->view.word_wrap = false;
                 editor_set_status_msg(state, "Word wrap disabled");
             } else if (strcmp(set_cmd, "gutter") == 0) {
                 global_config.git_gutter_enabled = true;
@@ -179,14 +190,14 @@ void process_command(EditorState *state, bool *should_exit) {
                 editor_update_git_gutter(state);
                 editor_set_status_msg(state, "Git gutter disabled");
             } else if (strcmp(set_cmd, "spelllang") == 0 && items == 2) {
-                if (spell_checker_load_dict(&state->spell_checker, set_val)) {
+                if (spell_checker_load_dict(&state->spell.checker, set_val)) {
                     editor_set_status_msg(state, "Spell checker language set to: %s", set_val);
                     mark_all_lines_dirty(state); // Force redraw to apply highlighting
                 } else {
                     editor_set_status_msg(state, "Error: Could not load dictionary for '%s'", set_val);
                 }
             } else if (strcmp(set_cmd, "nospell") == 0) {
-                spell_checker_unload_dict(&state->spell_checker);
+                spell_checker_unload_dict(&state->spell.checker);
                 editor_set_status_msg(state, "Spell checker disabled.");
                 mark_all_lines_dirty(state); // Force redraw to remove highlighting
             } else if (strcmp(set_cmd, "bar") == 0 && items == 2) {
@@ -195,7 +206,7 @@ void process_command(EditorState *state, bool *should_exit) {
                     Workspace *ws = ACTIVE_WS;
                     for (int i = 0; i < ws->num_windows; i++) {
                         if (ws->windows[i]->type == WINDOW_TYPE_EDITOR && ws->windows[i]->state) {
-                            ws->windows[i]->state->status_bar_mode = mode;
+                            ws->windows[i]->state->view.status_bar_mode = mode;
                         }
                     }
                     editor_set_status_msg(state, "Status bar set to style %d", mode);
@@ -263,6 +274,16 @@ void process_command(EditorState *state, bool *should_exit) {
                 }
             } else if (strcmp(command, "list-projects") == 0) {
                 display_project_list();
+            } else if (strcmp(command, "logs") == 0) {
+                char *log_path = get_cache_filename("a2.log");
+                if (log_path) {
+                    if (access(log_path, F_OK) == 0) {
+                        display_output_screen("--- A2 Logs ---", log_path);
+                    } else {
+                        editor_set_status_msg(state, "Log file not found at: %s", log_path);
+                    }
+                    free(log_path);
+                }
             } else if (strcmp(command, "term") == 0) {
                 execute_command_in_new_workspace(args);
             
@@ -296,14 +317,14 @@ void process_command(EditorState *state, bool *should_exit) {
     } else if (strcmp(command, "lsp-symbols") == 0) {
           process_lsp_symbols(state);
     } else if (strcmp(command, "lsp-refresh") == 0) {
-        if (state->lsp_enabled) {
+        if (state->lsp.enabled) {
             lsp_did_change(state);
             editor_set_status_msg(state, "Diagnostics updated");
         } else {
             editor_set_status_msg(state, "LSP not active");
         }
     } else if (strcmp(command, "lsp-check") == 0) {
-        if (state->lsp_enabled) {
+        if (state->lsp.enabled) {
             // Force a change to trigger diagnostics
             lsp_did_change(state);
             editor_set_status_msg(state, "LSP check forced");
@@ -311,7 +332,7 @@ void process_command(EditorState *state, bool *should_exit) {
             editor_set_status_msg(state, "LSP not active");
         }
     } else if (strcmp(command, "lsp-debug") == 0) {
-        if (state->lsp_enabled) {
+        if (state->lsp.enabled) {
               // Force sending didChange to trigger diagnostics
               lsp_did_change(state);
               editor_set_status_msg(state, "LSP Debug: didChange sent");
@@ -329,8 +350,8 @@ void process_command(EditorState *state, bool *should_exit) {
     } else if (strcmp(command, "shortcuts-generate-default") == 0) {
         save_ds_keybindings();
     } else if (strcmp(command, "toggle_auto_indent") == 0) {
-        state->auto_indent_on_newline = !state->auto_indent_on_newline;
-        editor_set_status_msg(state, "Auto-indent on newline: %s", state->auto_indent_on_newline ? "ON" : "OFF");
+        state->input.auto_indent = !state->input.auto_indent;
+        editor_set_status_msg(state, "Auto-indent on newline: %s", state->input.auto_indent ? "ON" : "OFF");
     } else if (strcmp(command, "mtw") == 0) {
         if (strlen(args) > 0) {
             int target_ws = atoi(args);
@@ -339,19 +360,19 @@ void process_command(EditorState *state, bool *should_exit) {
             editor_set_status_msg(state, "Usage: :mtw <workspace_number>");
         }
     } else if (strcmp(command, "..") == 0) {
-        if (strlen(state->previous_filename) > 0 && strcmp(state->previous_filename, "[No Name]") != 0) {
+        if (strlen(state->buffer.previous_filename) > 0 && strcmp(state->buffer.previous_filename, "[No Name]") != 0) {
             char current_file_before_jump[256];
-            strcpy(current_file_before_jump, state->filename);
+            strcpy(current_file_before_jump, state->buffer.filename);
 
-            load_file(state, state->previous_filename);
+            load_file(state, state->buffer.previous_filename);
 
             // Update previous_filename to allow toggling back
-            strcpy(state->previous_filename, current_file_before_jump);
+            strcpy(state->buffer.previous_filename, current_file_before_jump);
         } else {
             editor_set_status_msg(state, "No previous file to switch to.");
         }
     } else if (command[0] == 's' && command[1] == '/') {
-        char *find = strtok(state->command_buffer + 2, "/");
+        char *find = strtok(state->input.command_buffer + 2, "/");
         char *replace = strtok(NULL, "/");
         char *flags = strtok(NULL, "/");
         
@@ -368,11 +389,11 @@ void process_command(EditorState *state, bool *should_exit) {
     } else {
         editor_set_status_msg(state, "Unknown command: %s", command);
     }
-    state->mode = NORMAL;
+    state->input.mode = NORMAL;
 }
 
 void execute_shell_command(EditorState *state) {
-    char *cmd = state->command_buffer + 1;
+    char *cmd = state->input.command_buffer + 1;
     if (strncmp(cmd, "cd ", 3) == 0) {
         char *path = cmd + 3;
         if (chdir(path) != 0) {
@@ -443,15 +464,15 @@ void execute_shell_command(EditorState *state) {
 void compile_file(EditorState *state, char* args) {
     int ret;
     save_file(state);
-    if (strcmp(state->filename, "[No Name]") == 0) {
+    if (strcmp(state->buffer.filename, "[No Name]") == 0) {
         editor_set_status_msg(state, "Save the file with a name before compiling.");
         return;
     }
     char output_filename[300];
-    strncpy(output_filename, state->filename, sizeof(output_filename) - 1);
+    strncpy(output_filename, state->buffer.filename, sizeof(output_filename) - 1);
     char *dot = strrchr(output_filename, '.'); if (dot) *dot = '\0';
     char command[1024];
-    snprintf(command, sizeof(command), "gcc %s -o %s %s", state->filename, output_filename, args);
+    snprintf(command, sizeof(command), "gcc %s -o %s %s", state->buffer.filename, output_filename, args);
 
     char* temp_output_file = get_cache_filename("editor_compile_output.XXXXXX");
     if (!temp_output_file) {
@@ -523,15 +544,15 @@ void diff_command(EditorState *state, const char *args) {
 
 void add_to_command_history(EditorState *state, const char* command) {
     if (strlen(command) == 0) return;
-    if (state->history_count > 0 && strcmp(state->command_history[state->history_count - 1], command) == 0) return;
-    if (state->history_count < MAX_COMMAND_HISTORY) {
-        state->command_history[state->history_count++] = strdup(command);
+    if (state->input.history_count > 0 && strcmp(state->input.command_history[state->input.history_count - 1], command) == 0) return;
+    if (state->input.history_count < MAX_COMMAND_HISTORY) {
+        state->input.command_history[state->input.history_count++] = strdup(command);
     } else {
-        free(state->command_history[0]);
+        free(state->input.command_history[0]);
         for (int i = 0; i < MAX_COMMAND_HISTORY - 1; i++) {
-            state->command_history[i] = state->command_history[i + 1];
+            state->input.command_history[i] = state->input.command_history[i + 1];
         }
-        state->command_history[MAX_COMMAND_HISTORY - 1] = strdup(command);
+        state->input.command_history[MAX_COMMAND_HISTORY - 1] = strdup(command);
     }
 }
 
@@ -549,22 +570,22 @@ void copy_selection_to_clipboard(EditorState *state) {
     }
 
     int start_line, start_col, end_line, end_col;
-    if (state->selection_start_line < state->current_line ||
-        (state->selection_start_line == state->current_line && state->selection_start_col <= state->current_col)) {
-        start_line = state->selection_start_line;
-        start_col = state->selection_start_col;
-        end_line = state->current_line;
-        end_col = state->current_col;
+    if (state->cursor.selection_start_line < state->cursor.line ||
+        (state->cursor.selection_start_line == state->cursor.line && state->cursor.selection_start_col <= state->cursor.col)) {
+        start_line = state->cursor.selection_start_line;
+        start_col = state->cursor.selection_start_col;
+        end_line = state->cursor.line;
+        end_col = state->cursor.col;
     } else {
-        start_line = state->current_line;
-        start_col = state->current_col;
-        end_line = state->selection_start_line;
-        end_col = state->selection_start_col;
+        start_line = state->cursor.line;
+        start_col = state->cursor.col;
+        end_line = state->cursor.selection_start_line;
+        end_col = state->cursor.selection_start_col;
     }
 
     size_t total_len = 0;
     for (int i = start_line; i <= end_line; i++) {
-        total_len += strlen(state->lines[i]) + 1;
+        total_len += strlen(state->buffer.lines[i]) + 1;
     }
 
     char* selected_text = malloc(total_len + 1);
@@ -574,16 +595,16 @@ void copy_selection_to_clipboard(EditorState *state) {
     if (start_line == end_line) {
         int len = end_col - start_col;
         if (len > 0) {
-            strncat(selected_text, state->lines[start_line] + start_col, len);
+            strncat(selected_text, state->buffer.lines[start_line] + start_col, len);
         }
     } else {
-        strcat(selected_text, state->lines[start_line] + start_col);
+        strcat(selected_text, state->buffer.lines[start_line] + start_col);
         strcat(selected_text, "\n");
         for (int i = start_line + 1; i < end_line; i++) {
-            strcat(selected_text, state->lines[i]);
+            strcat(selected_text, state->buffer.lines[i]);
             strcat(selected_text, "\n");
         }
-        strncat(selected_text, state->lines[end_line], end_col);
+        strncat(selected_text, state->buffer.lines[end_line], end_col);
     }
 
     char* temp_filename = get_cache_filename("a2_clip.XXXXXX");
@@ -667,10 +688,10 @@ void paste_from_clipboard(EditorState *state) {
     remove(temp_filename);
     free(temp_filename);
 
-    if (state->yank_register) {
-        free(state->yank_register);
+    if (state->cursor.yank_register) {
+        free(state->cursor.yank_register);
     }
-    state->yank_register = pasted_text;
+    state->cursor.yank_register = pasted_text;
 
     editor_paste(state);
 
@@ -678,7 +699,7 @@ void paste_from_clipboard(EditorState *state) {
 }
 
 void compile_and_view_assembly(EditorState *state) {
-    if (strcmp(state->filename, "[No Name]") == 0) {
+    if (strcmp(state->buffer.filename, "[No Name]") == 0) {
         editor_set_status_msg(state, "Save the file firts");
         return;        
     }
@@ -687,15 +708,15 @@ void compile_and_view_assembly(EditorState *state) {
     char asm_file[PATH_MAX];
     bool started_from_asm = false;
     
-    char *dot = strrchr(state->filename, '.');
+    char *dot = strrchr(state->buffer.filename, '.');
     if (dot && strcmp(dot, ".s") == 0) {
         // case 1, started with assembly
         started_from_asm = true;
-        strncpy(asm_file, state->filename, PATH_MAX - 1);
+        strncpy(asm_file, state->buffer.filename, PATH_MAX - 1);
         asm_file[PATH_MAX - 1] = '\0';
         
         // discover the name of the file, try .c
-        strncpy(source_file, state->filename, PATH_MAX - 1);
+        strncpy(source_file, state->buffer.filename, PATH_MAX - 1);
         
         source_file[PATH_MAX - 1] = '\0';
         char *src_dot = strrchr(source_file, '.');
@@ -709,18 +730,18 @@ void compile_and_view_assembly(EditorState *state) {
         }
         
         // try to finding if the source is open in another window to save it
-        EditorState *source_state = find_source_state_for_assembly(state->filename);
+        EditorState *source_state = find_source_state_for_assembly(state->buffer.filename);
         if (source_state) {
             save_file(source_state);
         }
     } else {
         // case 2, started with .c, .cpp etc
         save_file(state);
-        strncpy(source_file, state->filename, PATH_MAX - 1);
+        strncpy(source_file, state->buffer.filename, PATH_MAX - 1);
         
         source_file[PATH_MAX - 1] = '\0';
         
-        strncpy(asm_file, state->filename, PATH_MAX -1);
+        strncpy(asm_file, state->buffer.filename, PATH_MAX -1);
         asm_file[PATH_MAX - 1] = '\0';
         char *asm_dot = strrchr(asm_file, '.');
         if (asm_dot) *asm_dot = '\0';
@@ -773,7 +794,7 @@ void compile_and_view_assembly(EditorState *state) {
         } else {
             // search for an assembly if is already open
             for (int i = 0; i < ws->num_windows; i++) {
-                if (ws->windows[i]->type == WINDOW_TYPE_EDITOR && strcmp(ws->windows[i]->state->filename, asm_file) == 0) {
+                if (ws->windows[i]->type == WINDOW_TYPE_EDITOR && strcmp(ws->windows[i]->state->buffer.filename, asm_file) == 0) {
                     target_idx = i;
                     break;
                 }
@@ -787,7 +808,7 @@ void compile_and_view_assembly(EditorState *state) {
         EditorWindow *jw_asm = ws->windows[target_idx];
         if (jw_asm->type == WINDOW_TYPE_EDITOR) {
             load_file(jw_asm->state, asm_file);
-            build_assembly_mappings(jw_asm->state, state->num_lines);
+            build_assembly_mappings(jw_asm->state, state->buffer.num_lines);
             editor_set_status_msg(state, "Assembly generated.");
         }
         
@@ -798,7 +819,7 @@ void compile_and_view_assembly(EditorState *state) {
 }
 
 void compile_and_view_llvm(EditorState *state) {
-    if (strcmp(state->filename, "[No Name]") == 0) {
+    if (strcmp(state->buffer.filename, "[No Name]") == 0) {
         editor_set_status_msg(state, "Save the file first");
         return;        
     }
@@ -808,10 +829,10 @@ void compile_and_view_llvm(EditorState *state) {
     
     // Save the current file
     save_file(state);
-    strncpy(source_file, state->filename, PATH_MAX - 1);
+    strncpy(source_file, state->buffer.filename, PATH_MAX - 1);
     
     // Define the .ll file name
-    strncpy(llvm_file, state->filename, PATH_MAX - 1);
+    strncpy(llvm_file, state->buffer.filename, PATH_MAX - 1);
     char *dot = strrchr(llvm_file, '.');
     if (dot) *dot = '\0';
     strcat(llvm_file, ".ll");
@@ -832,7 +853,7 @@ void compile_and_view_llvm(EditorState *state) {
     int target_idx = -1;
     
     for (int i = 0; i < ws->num_windows; i++) {
-        if (ws->windows[i]->type == WINDOW_TYPE_EDITOR && strcmp(ws->windows[i]->state->filename, llvm_file) == 0) {
+        if (ws->windows[i]->type == WINDOW_TYPE_EDITOR && strcmp(ws->windows[i]->state->buffer.filename, llvm_file) == 0) {
             target_idx = i;
             break;
         }
@@ -857,7 +878,7 @@ void compile_and_view_llvm(EditorState *state) {
     // Build mapping for the LLVM state
     EditorWindow *jw_llvm = ws->windows[target_idx];
     if (jw_llvm->type == WINDOW_TYPE_EDITOR) {
-        build_llvm_mappings(jw_llvm->state, state->num_lines);
+        build_llvm_mappings(jw_llvm->state, state->buffer.num_lines);
     }
     
     editor_set_status_msg(state, "LLVM IR Generated and Mapped.");

@@ -12,6 +12,7 @@
 #include "explorer.h"
 #include "themes.h"
 #include "a2_files/settings.h" // Added include
+#include "logger.h"
 
 
 #include <unistd.h>
@@ -112,27 +113,27 @@ void free_editor_state(EditorState* state) {
     if (!state) return;
 
     // Properly shut down the LSP client before freeing the state
-    if (state->lsp_client) {
+    if (state->lsp.client) {
         lsp_shutdown(state);
     }
 
-    if (state->mapping) { // ADDED
-        free(state->mapping->asm_to_source); // ADDED
-        free(state->mapping->source_to_asm); // ADDED
-        free(state->mapping); // ADDED
-    } // ADDED
-
-
-    if (state->filename[0] != '[') {
-        save_last_line(state->filename, state->current_line);
+    if (state->buffer.mapping) {
+        free(state->buffer.mapping->asm_to_source);
+        free(state->buffer.mapping->source_to_asm);
+        free(state->buffer.mapping);
     }
-    if (state->completion_mode != COMPLETION_NONE) editor_end_completion(state);
-    for(int j=0; j < state->history_count; j++) free(state->command_history[j]);
-    for (int j = 0; j < state->undo_count; j++) free_snapshot(state->undo_stack[j]);
-    for (int j = 0; j < state->redo_count; j++) free_snapshot(state->redo_stack[j]);
-    if (state->syntax_rules) {
-        for (int j = 0; j < state->num_syntax_rules; j++) free(state->syntax_rules[j].word);
-        free(state->syntax_rules);
+
+
+    if (state->buffer.filename[0] != '[') {
+        save_last_line(state->buffer.filename, state->cursor.line);
+    }
+    if (state->input.completion_mode != COMPLETION_NONE) editor_end_completion(state);
+    for(int j=0; j < state->input.history_count; j++) free(state->input.command_history[j]);
+    for (int j = 0; j < state->buffer.undo_count; j++) free_snapshot(state->buffer.undo_stack[j]);
+    for (int j = 0; j < state->buffer.redo_count; j++) free_snapshot(state->buffer.redo_stack[j]);
+    if (state->buffer.syntax_rules) {
+        for (int j = 0; j < state->buffer.num_syntax_rules; j++) free(state->buffer.syntax_rules[j].word);
+        free(state->buffer.syntax_rules);
     }
     if (state->recent_dirs) {
         for (int j = 0; j < state->num_recent_dirs; j++) {
@@ -152,25 +153,25 @@ void free_editor_state(EditorState* state) {
         }
         free(state->recent_files);
     }
-    if (state->unmatched_brackets) free(state->unmatched_brackets);
-    if (state->yank_register) free(state->yank_register);
-    if (state->move_register) free(state->move_register);
+    if (state->buffer.unmatched_brackets) free(state->buffer.unmatched_brackets);
+    if (state->cursor.yank_register) free(state->cursor.yank_register);
+    if (state->cursor.move_register) free(state->cursor.move_register);
 
-    if (state->last_search_is_regex) {
-        regfree(&state->compiled_regex);
+    if (state->search.is_regex) {
+        regfree(&state->search.compiled_regex);
     }
 
-    if (state->dirty_lines) {
-        free(state->dirty_lines);
+    if (state->buffer.dirty_lines) {
+        free(state->buffer.dirty_lines);
     }
 
-    spell_checker_destroy(&state->spell_checker);
+    spell_checker_destroy(&state->spell.checker);
 
-    for (int j = 0; j < state->num_lines; j++) {
-        if (state->lines[j]) free(state->lines[j]);
+    for (int j = 0; j < state->buffer.num_lines; j++) {
+        if (state->buffer.lines[j]) free(state->buffer.lines[j]);
     }
     for (int j = 0; j < 26; j++) {
-        if(state->macro_registers[j]) free(state->macro_registers[j]);
+        if(state->input.macro_registers[j]) free(state->input.macro_registers[j]);
     }
     free(state);
 }
@@ -312,39 +313,39 @@ void create_new_window(const char *filename) {
     new_window->state = calloc(1, sizeof(EditorState));
     EditorState *state = new_window->state;
 
-    strcpy(state->filename, "[No Name]");
-    state->mode = NORMAL;
-    state->completion_mode = COMPLETION_NONE;
-    state->buffer_modified = false;
-    state->auto_indent_on_newline = true;
-    state->last_auto_save_time = time(NULL);
-    state->word_wrap_enabled = global_config.word_wrap;
-    state->auto_indent_on_newline = global_config.auto_indent;
-    state->paste_mode = global_config.paste_mode;
-    state->show_line_numbers = global_config.show_line_numbers;
-    state->show_scrollbar = global_config.show_scrollbar;
-    state->lsp_enabled = global_config.lsp_enabled;
-    state->is_dirty = true;
-    state->dirty_lines = NULL;
-    state->dirty_lines_cap = 0;
+    strcpy(state->buffer.filename, "[No Name]");
+    state->input.mode = NORMAL;
+    state->input.completion_mode = COMPLETION_NONE;
+    state->buffer.modified = false;
+    state->input.auto_indent = true;
+    state->buffer.last_auto_save_time = time(NULL);
+    state->view.word_wrap = global_config.word_wrap;
+    state->input.auto_indent = global_config.auto_indent;
+    state->input.paste_mode = global_config.paste_mode;
+    state->view.show_line_numbers = global_config.show_line_numbers;
+    state->view.show_scrollbar = global_config.show_scrollbar;
+    state->lsp.enabled = global_config.lsp_enabled;
+    state->buffer.is_dirty = true;
+    state->buffer.dirty_lines = NULL;
+    state->buffer.dirty_lines_cap = 0;
     load_directory_history(state);
     load_file_history(state);
 
-    state->last_search_is_regex = false;
+    state->search.is_regex = false;
 
-    state->is_recording_macro = false;
-    state->last_played_macro_register = 0;
-    state->single_command_mode = false;
-    state->status_bar_mode = 1;
-    state->pending_sequence_key = 0;
+    state->input.is_recording_macro = false;
+    state->input.last_played_macro_register = 0;
+    state->input.single_command_mode = false;
+    state->view.status_bar_mode = 1;
+    state->input.pending_sequence_key = 0;
     for (int i = 0; i < 26; i++) {
-        state->macro_registers[i] = NULL;
+        state->input.macro_registers[i] = NULL;
     }
     
-    spell_checker_init(&state->spell_checker);
+    spell_checker_init(&state->spell.checker);
     
-    state->search_history_count = 0;
-    state->search_history_pos = 0;
+    state->search.history_count = 0;
+    state->search.history_pos = 0;
     
     ws->windows[ws->num_windows - 1] = new_window;
     ws->active_window_idx = ws->num_windows - 1;
@@ -355,8 +356,8 @@ void create_new_window(const char *filename) {
         load_file(state, filename);
     } else {
         load_syntax_file(state, "c.syntax");
-        state->lines[0] = calloc(1, 1);
-        state->num_lines = 1;
+        state->buffer.lines[0] = calloc(1, 1);
+        state->buffer.num_lines = 1;
     }
     push_undo(state);
 }
@@ -368,7 +369,7 @@ void close_active_window(bool *should_exit) {
     int idx = ws->active_window_idx;
     
     // Check for unsaved changes only if it's an editor window
-    if (ws->windows[idx]->type == WINDOW_TYPE_EDITOR && ws->windows[idx]->state && ws->windows[idx]->state->buffer_modified) {
+    if (ws->windows[idx]->type == WINDOW_TYPE_EDITOR && ws->windows[idx]->state && ws->windows[idx]->state->buffer.modified) {
         editor_set_status_msg(ws->windows[idx]->state, "Warning: Unsaved changes! Use :q! to force quit.");
         return;
     }
@@ -400,6 +401,8 @@ void close_active_window(bool *should_exit) {
         ws->active_window_idx = ws->num_windows - 1;
     }
 
+    A2_LOG(LOG_INFO, TAG_UI, "Window closed. Remaining windows: %d", ws->num_windows);
+
     // Now it is safe to free the memory for the closed window
     free_editor_window(window_to_close);
 
@@ -412,7 +415,7 @@ void close_active_workspace(bool *should_exit) {
 
     if (workspace_manager.num_workspaces == 1) {
         EditorState *last_state = ACTIVE_WS->windows[0]->state;
-        if (last_state && last_state->buffer_modified) {
+        if (last_state && last_state->buffer.modified) {
             editor_set_status_msg(last_state, "Warning: Unsaved changes! Use :q! to force quit.");
             return;
         }
@@ -627,7 +630,7 @@ void recalculate_window_layout() {
         }
         
         if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
-            jw->state->is_dirty = true;
+            jw->state->buffer.is_dirty = true;
             mark_all_lines_dirty(jw->state);
         } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
             jw->explorer_state->is_dirty = true;
@@ -685,7 +688,7 @@ void recalculate_window_layout() {
         scrollok(jw->win, FALSE);
 
         if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
-            jw->state->is_dirty = true;
+            jw->state->buffer.is_dirty = true;
             mark_all_lines_dirty(jw->state);
         } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
             jw->explorer_state->is_dirty = true;
@@ -809,7 +812,7 @@ void redraw_all_windows() {
 
         switch (jw->type) {
             case WINDOW_TYPE_EDITOR:
-                if (jw->state && jw->state->is_dirty) any_dirty = true;
+                if (jw->state && jw->state->buffer.is_dirty) any_dirty = true;
                 break;
             case WINDOW_TYPE_EXPLORER:
                 if (jw->explorer_state && jw->explorer_state->is_dirty) any_dirty = true;
@@ -848,7 +851,7 @@ void redraw_all_windows() {
             // Prepare the window content to be drawn
             if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
                 editor_redraw(jw->win, jw->state);
-                jw->state->is_dirty = false; // Reset the flag after drawing
+                jw->state->buffer.is_dirty = false; // Reset the flag after drawing
                 
             } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
                 explorer_redraw(jw); 
@@ -885,11 +888,11 @@ void redraw_all_windows() {
         if (active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
             EditorState *state = active_jw->state;
             // Draw spell-checker hover popup
-            if (state->spell_hover_message) {
-                draw_diagnostic_popup(active_jw->win, state, state->spell_hover_message);
+            if (state->spell.hover_message) {
+                draw_diagnostic_popup(active_jw->win, state, state->spell.hover_message);
             } 
             // Draw LSP diagnostic popup
-            else if (state->lsp_enabled) {
+            else if (state->lsp.enabled) {
                 LspDiagnostic *diag = get_diagnostic_under_cursor(state);
                 if (diag) {
                     draw_diagnostic_popup(active_jw->win, state, diag->message);
@@ -962,19 +965,19 @@ void position_active_cursor() {
         if (!state) { curs_set(0); return; }
         
         WINDOW* win = active_jw->win;
-        if (state->completion_mode != COMPLETION_NONE) {
+        if (state->input.completion_mode != COMPLETION_NONE) {
             editor_draw_completion_win(win, state); // Hide the main cursor
         } else {
             curs_set(1); // Turn on the cursor
-            if (state->mode == COMMAND) {
+            if (state->input.mode == COMMAND) {
                 int rows, cols;
                 getmaxyx(win, rows, cols);
                 (void)cols;
-                wmove(win, rows - 1, state->command_pos + 2);
+                wmove(win, rows - 1, state->input.command_pos + 2);
             } else {
                 int line_number_width = 0;
-                if (state->show_line_numbers) {
-                    int max_lines = state->num_lines > 0 ? state->num_lines : 1;
+                if (state->view.show_line_numbers) {
+                    int max_lines = state->buffer.num_lines > 0 ? state->buffer.num_lines : 1;
                     line_number_width = snprintf(NULL, 0, "%d", max_lines) + 1;
                     if (line_number_width < 4) line_number_width = 4;
                 }
@@ -982,8 +985,8 @@ void position_active_cursor() {
                 int visual_y, visual_x;
                 get_visual_pos(win, state, &visual_y, &visual_x);
                 int border_offset = ws->num_windows > 1 ? 1 : 0;
-                int screen_y = visual_y - state->top_line + border_offset;
-                int screen_x = visual_x - state->left_col + border_offset + line_number_width;
+                int screen_y = visual_y - state->view.top_line + border_offset;
+                int screen_x = visual_x - state->view.left_col + border_offset + line_number_width;
                 int max_y, max_x;
                 getmaxyx(win, max_y, max_x);
                 if (screen_y >= max_y) screen_y = max_y - 1;
@@ -1010,31 +1013,31 @@ void next_window() {
             EditorState *dst = new_jw->state;
             
             // From C to ASM/LLVM
-            if (dst->mapping) {
-                EditorState *check_src = find_source_state_for_assembly(dst->filename);
+            if (dst->buffer.mapping) {
+                EditorState *check_src = find_source_state_for_assembly(dst->buffer.filename);
                 if (check_src == src) {
-                    int line = src->current_line;
-                    if (line < dst->mapping->source_line_count) {
-                        AsmRange r = dst->mapping->source_to_asm[line];
+                    int line = src->cursor.line;
+                    if (line < dst->buffer.mapping->source_line_count) {
+                        AsmRange r = dst->buffer.mapping->source_to_asm[line];
                         if (r.active) {
-                            dst->current_line = r.start_line;
-                            dst->ideal_col = 0;
-                            dst->current_col = 0;
+                            dst->cursor.line = r.start_line;
+                            dst->cursor.ideal_col = 0;
+                            dst->cursor.col = 0;
                         }
                     }
                 }
             }
             // From ASM/LLVM to C
-            else if (src->mapping) {
-                EditorState *check_dst = find_source_state_for_assembly(src->filename);
+            else if (src->buffer.mapping) {
+                EditorState *check_dst = find_source_state_for_assembly(src->buffer.filename);
                 if (check_dst == dst) {
-                    int line = src->current_line;
-                    if (line < src->mapping->asm_line_count) {
-                        int target_line = src->mapping->asm_to_source[line];
+                    int line = src->cursor.line;
+                    if (line < src->buffer.mapping->asm_line_count) {
+                        int target_line = src->buffer.mapping->asm_to_source[line];
                         if (target_line != -1) {
-                            dst->current_line = target_line;
-                            dst->ideal_col = 0;
-                            dst->current_col = 0;
+                            dst->cursor.line = target_line;
+                            dst->cursor.ideal_col = 0;
+                            dst->cursor.col = 0;
                         }
                     }
                 }
@@ -1046,7 +1049,7 @@ void next_window() {
         EditorWindow *jw = ws->windows[i];
         if (jw) {
             if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
-                jw->state->is_dirty = true;
+                jw->state->buffer.is_dirty = true;
                 mark_all_lines_dirty(jw->state);
             } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
                 jw->explorer_state->is_dirty = true;
@@ -1072,28 +1075,28 @@ void previous_window() {
             EditorState *src = old_jw->state;
             EditorState *dst = new_jw->state;
             
-            if (dst->mapping) {
-                EditorState *check_src = find_source_state_for_assembly(dst->filename);
+            if (dst->buffer.mapping) {
+                EditorState *check_src = find_source_state_for_assembly(dst->buffer.filename);
                 if (check_src == src) {
-                    int line = src->current_line;
-                    if (line < dst->mapping->source_line_count) {
-                        AsmRange r = dst->mapping->source_to_asm[line];
+                    int line = src->cursor.line;
+                    if (line < dst->buffer.mapping->source_line_count) {
+                        AsmRange r = dst->buffer.mapping->source_to_asm[line];
                         if (r.active) {
-                            dst->current_line = r.start_line;
-                            dst->ideal_col = 0; dst->current_col = 0;
+                            dst->cursor.line = r.start_line;
+                            dst->cursor.ideal_col = 0; dst->cursor.col = 0;
                         }
                     }
                 }
             }
-            else if (src->mapping) {
-                EditorState *check_dst = find_source_state_for_assembly(src->filename);
+            else if (src->buffer.mapping) {
+                EditorState *check_dst = find_source_state_for_assembly(src->buffer.filename);
                 if (check_dst == dst) {
-                    int line = src->current_line;
-                    if (line < src->mapping->asm_line_count) {
-                        int target_line = src->mapping->asm_to_source[line];
+                    int line = src->cursor.line;
+                    if (line < src->buffer.mapping->asm_line_count) {
+                        int target_line = src->buffer.mapping->asm_to_source[line];
                         if (target_line != -1) {
-                            dst->current_line = target_line;
-                            dst->ideal_col = 0; dst->current_col = 0;
+                            dst->cursor.line = target_line;
+                            dst->cursor.ideal_col = 0; dst->cursor.col = 0;
                         }
                     }
                 }
@@ -1105,7 +1108,7 @@ void previous_window() {
         EditorWindow *jw = ws->windows[i];
         if (jw) {
             if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
-                jw->state->is_dirty = true;
+                jw->state->buffer.is_dirty = true;
                 mark_all_lines_dirty(jw->state);
             } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
                 jw->explorer_state->is_dirty = true;
@@ -1168,7 +1171,7 @@ void rotate_windows() {
         EditorWindow *jw = ws->windows[i];
         if (jw) {
             if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
-                jw->state->is_dirty = true;
+                jw->state->buffer.is_dirty = true;
                 mark_all_lines_dirty(jw->state);
             } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
                 jw->explorer_state->is_dirty = true;
@@ -1198,7 +1201,7 @@ void move_window_to_position(int target_idx) {
         EditorWindow *jw = ws->windows[i];
         if (jw) {
             if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
-                jw->state->is_dirty = true;
+                jw->state->buffer.is_dirty = true;
                 mark_all_lines_dirty(jw->state);
             } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
                 jw->explorer_state->is_dirty = true;
@@ -1396,7 +1399,7 @@ void display_recent_files() {
                     }
 
                     if (selected_file) {
-                        if (active_state->buffer_modified) {
+                        if (active_state->buffer.modified) {
                             delwin(switcher_win);
                             touchwin(stdscr);
                             redraw_all_windows();
@@ -1451,7 +1454,7 @@ end_switcher:
     delwin(switcher_win);
     touchwin(stdscr);
     redraw_all_windows();
-    active_state->is_dirty = true;
+    active_state->buffer.is_dirty = true;
 }
 
 void create_new_empty_workspace() {
@@ -1777,7 +1780,7 @@ void display_command_palette(EditorState *state) {
             mode = MODE_FILES;
         }
 
-        if (mode == MODE_SYMBOLS && state->symbols == NULL) {
+        if (mode == MODE_SYMBOLS && state->lsp.symbols == NULL) {
             lsp_request_document_symbols(state);
             mvwprintw(palette_win, 1, 2, "Fetching symbols from LSP...");
             wrefresh(palette_win);
@@ -1799,11 +1802,11 @@ void display_command_palette(EditorState *state) {
             }
         } else if (mode == MODE_SYMBOLS) {
             const char* symbol_filter = search_term + 1;
-            filtered_items = malloc(sizeof(FileResult) * state->num_symbols);
-            if (state->symbols) {
-                for (int i = 0; i < state->num_symbols; i++) {
-                    if (fuzzy_match(state->symbols[i].name, symbol_filter)) {
-                        filtered_items[num_filtered++].path = state->symbols[i].name;
+            filtered_items = malloc(sizeof(FileResult) * state->lsp.num_symbols);
+            if (state->lsp.symbols) {
+                for (int i = 0; i < state->lsp.num_symbols; i++) {
+                    if (fuzzy_match(state->lsp.symbols[i].name, symbol_filter)) {
+                        filtered_items[num_filtered++].path = state->lsp.symbols[i].name;
                     }
                 }
             }
@@ -1877,17 +1880,17 @@ void display_command_palette(EditorState *state) {
                         lsp_initialize(state);
                     } else if (mode == MODE_COMMANDS) {
                         const char* selected_cmd = filtered_items[current_selection].path;
-                        strncpy(state->command_buffer, selected_cmd, sizeof(state->command_buffer) - 1);
-                        strcat(state->command_buffer, " ");
-                        state->command_pos = strlen(state->command_buffer);
-                        state->mode = COMMAND;
+                        strncpy(state->input.command_buffer, selected_cmd, sizeof(state->input.command_buffer) - 1);
+                        strcat(state->input.command_buffer, " ");
+                        state->input.command_pos = strlen(state->input.command_buffer);
+                        state->input.mode = COMMAND;
                     } else if (mode == MODE_SYMBOLS) {
                         const char* selected_symbol_name = filtered_items[current_selection].path;
-                        for (int i = 0; i < state->num_symbols; i++) {
-                            if (strcmp(state->symbols[i].name, selected_symbol_name) == 0) {
-                                state->current_line = state->symbols[i].line;
-                                state->current_col = 0;
-                                state->ideal_col = 0;
+                        for (int i = 0; i < state->lsp.num_symbols; i++) {
+                            if (strcmp(state->lsp.symbols[i].name, selected_symbol_name) == 0) {
+                                state->cursor.line = state->lsp.symbols[i].line;
+                                state->cursor.col = 0;
+                                state->cursor.ideal_col = 0;
                                 break;
                             }
                         }
@@ -1914,19 +1917,19 @@ void display_command_palette(EditorState *state) {
 
 end_palette:
     nodelay(palette_win, FALSE); // Restaura o modo bloqueante
-    if (state->symbols) {
-        for (int i = 0; i < state->num_symbols; i++) free(state->symbols[i].name);
-        free(state->symbols);
-        state->symbols = NULL;
-        state->num_symbols = 0;
-        state->is_dirty = true;
+    if (state->lsp.symbols) {
+        for (int i = 0; i < state->lsp.num_symbols; i++) free(state->lsp.symbols[i].name);
+        free(state->lsp.symbols);
+        state->lsp.symbols = NULL;
+        state->lsp.num_symbols = 0;
+        state->buffer.is_dirty = true;
     }
     for (int i = 0; i < num_all_files; i++) free(all_files[i].path);
     free(all_files);
     free(filtered_items);
     delwin(palette_win);
     touchwin(stdscr);
-    state->is_dirty = true;
+    state->buffer.is_dirty = true;
     redraw_all_windows();
     curs_set(1);
 }
@@ -2022,7 +2025,7 @@ void *display_fuzzy_finder(EditorState *state) {
             case KEY_ENTER: case '\n':
                 if (num_filtered > 0) {
                     char* selected_file = filtered_results[current_selection].path;
-                    if (state->buffer_modified) {
+                    if (state->buffer.modified) {
                         delwin(finder_win);
                         touchwin(stdscr);
                         redraw_all_windows();
@@ -2062,7 +2065,7 @@ end_finder:
     free(filtered_results);
     delwin(finder_win);
     touchwin(stdscr);
-    state->is_dirty = true;
+    state->buffer.is_dirty = true;
     redraw_all_windows();
     curs_set(1);
     return NULL;
@@ -2162,7 +2165,7 @@ EditorState *find_source_state_for_assembly(const char *asm_filename) {
         for (int i = 0; i < workspace_manager.workspaces[workspace_manager.active_workspace_idx]->num_windows; i++) {
             EditorWindow *jw = workspace_manager.workspaces[workspace_manager.active_workspace_idx]->windows[i];
             if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
-                if (strcmp(jw->state->filename, source_guess) == 0) {
+                if (strcmp(jw->state->buffer.filename, source_guess) == 0) {
                     return jw->state;
                 }
             }
@@ -2189,7 +2192,7 @@ EditorState *find_assembly_state_for_source(const char *source_filename) {
         for (int i = 0; i < ws->num_windows; i++) {
             EditorWindow *jw = ws->windows[i];
             if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
-                if (strcmp(jw->state->filename, asm_guess) == 0 || strcmp(jw->state->filename, llvm_guess) == 0){
+                if (strcmp(jw->state->buffer.filename, asm_guess) == 0 || strcmp(jw->state->buffer.filename, llvm_guess) == 0){
                     return jw->state;
                 }
             }
@@ -2208,9 +2211,9 @@ void sync_scroll(EditorWindow *active_jw) {
     int target_line = -1;
     
     // cenary 1 assembly -> C
-    if (active_state->mapping) {
+    if (active_state->buffer.mapping) {
         // Tentar achar C
-        target_state = find_source_state_for_assembly(active_state->filename);
+        target_state = find_source_state_for_assembly(active_state->buffer.filename);
         if (target_state) {
             Workspace *ws = ACTIVE_WS;
             for(int i = 0; i<ws->num_windows; i++) {
@@ -2221,18 +2224,18 @@ void sync_scroll(EditorWindow *active_jw) {
                 if (target_jw) {
                     // calculate the C line based in assembly
                     
-                    int asm_cursor = active_state->current_line;
-                    if (asm_cursor < active_state->mapping->asm_line_count) {
-                        target_line = active_state->mapping->asm_to_source[asm_cursor];
+                    int asm_cursor = active_state->cursor.line;
+                    if (asm_cursor < active_state->buffer.mapping->asm_line_count) {
+                        target_line = active_state->buffer.mapping->asm_to_source[asm_cursor];
                     }
                 }
             }
         }
         
         else {
-            target_state = find_assembly_state_for_source(active_state->filename);
+            target_state = find_assembly_state_for_source(active_state->buffer.filename);
             
-            if (target_state && target_state->mapping) {
+            if (target_state && target_state->buffer.mapping) {
                 Workspace *ws = ACTIVE_WS;
                 for (int i = 0; i < ws->num_windows; i++) {
                     if (ws->windows[i]->state == target_state) {
@@ -2243,9 +2246,9 @@ void sync_scroll(EditorWindow *active_jw) {
                 }
                 
                 if (target_jw) {
-                    int c_cursor = active_state->current_line;
-                    if (c_cursor < target_state->mapping->source_line_count) {
-                        AsmRange range = target_state->mapping->source_to_asm[c_cursor];
+                    int c_cursor = active_state->cursor.line;
+                    if (c_cursor < target_state->buffer.mapping->source_line_count) {
+                        AsmRange range = target_state->buffer.mapping->source_to_asm[c_cursor];
                         if (range.active) {
                             target_line = range.start_line;
                         }
@@ -2262,12 +2265,12 @@ void sync_scroll(EditorWindow *active_jw) {
             
             // If the target line is out of the vision
             
-            if (target_line < target_state->top_line || target_line >= target_state->top_line + content_height) {
-                target_state->top_line = target_line - (content_height / 2);
-                if (target_state->top_line < 0) {
-                    target_state->top_line = 0;
+            if (target_line < target_state->view.top_line || target_line >= target_state->view.top_line + content_height) {
+                target_state->view.top_line = target_line - (content_height / 2);
+                if (target_state->view.top_line < 0) {
+                    target_state->view.top_line = 0;
                 }
-                target_state->is_dirty = true;
+                target_state->buffer.is_dirty = true;
             }
             
         }
