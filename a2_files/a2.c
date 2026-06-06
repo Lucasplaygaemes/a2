@@ -13,6 +13,8 @@
 #include "spell.h"
 #include "lsp_client.h"
 #include "a2_files/settings.h" // Corrected path
+#include "logger.h"
+#include "lsp_watchdog.h"
 
 
 #include <locale.h>
@@ -272,220 +274,11 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
 
     switch (state->input.mode) {
         case VISUAL:
-        case NORMAL: {
-            char *line = state->buffer.lines[state->cursor.line];
-            bool is_conflict_line = (line && (strncmp(line, "<<<<<<<", 7) == 0 || strncmp(line, "=======", 7) == 0 || strncmp(line, ">>>>>>>", 7) == 0));
-            
-            if (state->input.mode == NORMAL) {
-                if (is_conflict_line) {
-                    if (tolower(ch) == 'm') { editor_resolve_conflict_interactive(state, 'm'); return; }
-                    if (tolower(ch) == 't') { editor_resolve_conflict_interactive(state, 't'); return; }
-                }
-                if (ch == '[') { editor_jump_to_conflict(state, false); return; }
-                if (ch == ']') { editor_jump_to_conflict(state, true); return; }
-            }
-
-            switch (ch) {
-                case 22: // Ctrl+V for local paste
-                    if (state->input.mode == VISUAL) editor_delete_selection(state);
-                    editor_paste(state);
-                    break;
-                case KEY_BTAB: {
-                    push_undo(state);
-                    int start_line, end_line;
-                    if (state->input.mode == VISUAL) {
-                        if (state->cursor.selection_start_line < state->cursor.line) { start_line = state->cursor.selection_start_line; end_line = state->cursor.line; }
-                        else { start_line = state->cursor.line; end_line = state->cursor.selection_start_line; }
-                    } else { start_line = end_line = state->cursor.line; }
-                    for (int i = start_line; i <= end_line; i++) {
-                        editor_unindent_line(state, i);
-                    }
-                    break;
-                }
-                case '>': {
-                    push_undo(state);
-                    int start_line, end_line;
-                    if (state->input.mode == VISUAL) {
-                        if (state->cursor.selection_start_line < state->cursor.line) { start_line = state->cursor.selection_start_line; end_line = state->cursor.line; }
-                        else { start_line = state->cursor.line; end_line = state->cursor.selection_start_line; }
-                    } else { start_line = end_line = state->cursor.line; }
-                    for (int i = start_line; i <= end_line; i++) editor_ident_line(state, i);
-                    break;
-                }
-                case '<': {
-                    push_undo(state);
-                    int start_line, end_line;
-                    if (state->input.mode == VISUAL) {
-                        if (state->cursor.selection_start_line < state->cursor.line) { start_line = state->cursor.selection_start_line; end_line = state->cursor.line; }
-                        else { start_line = state->cursor.line; end_line = state->cursor.selection_start_line; }
-                    } else { start_line = end_line = state->cursor.line; }
-                    for (int i = start_line; i <= end_line; i++) editor_unindent_line(state, i);
-                    break;
-                }
-                case 'd':
-                    if (state->input.mode == VISUAL) editor_delete_selection(state);
-                    else { state->input.mode = OPERATOR_PENDING; state->input.pending_operator = 'd'; }
-                    break;
-                case KEY_ENTER:
-                case '\n':
-                    push_undo(state);
-                    editor_handle_enter(state);
-                    break;
-                case 25: // Ctrl+Y
-                    if (state->cursor.visual_selection_mode == VISUAL_MODE_NONE) {
-                        state->cursor.selection_start_line = state->cursor.line;
-                        state->cursor.selection_start_col = state->cursor.col;
-                        state->cursor.visual_selection_mode = VISUAL_MODE_YANK;
-                        editor_set_status_msg(state, "Global visual selection started");
-                    } else {
-                        editor_global_yank(state);
-                        state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
-                    }
-                    break;
-                case 'p': editor_paste(state); break;
-                case 's':
-                    if (state->input.mode == VISUAL) {
-                        if (state->cursor.visual_selection_mode == VISUAL_MODE_NONE) {
-                            state->cursor.selection_start_line = state->cursor.line;
-                            state->cursor.selection_start_col = state->cursor.col;
-                            state->cursor.visual_selection_mode = VISUAL_MODE_SELECT;
-                            editor_set_status_msg(state, "Visual selection started");
-                        } else {
-                            state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
-                        }
-                    }
-                    break;
-                case 'y':
-                    if (state->input.mode == VISUAL) {
-                        if (state->cursor.visual_selection_mode == VISUAL_MODE_NONE) {
-                            state->cursor.selection_start_line = state->cursor.line;
-                            state->cursor.selection_start_col = state->cursor.col;
-                            state->cursor.visual_selection_mode = VISUAL_MODE_YANK;
-                            editor_set_status_msg(state, "Visual selection for yank started");
-                        } else {
-                            editor_yank_selection(state);
-                            state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
-                        }
-                    } else {
-                        state->input.mode = OPERATOR_PENDING;
-                        state->input.pending_operator = 'y';
-                    }
-                    state->buffer.is_dirty = true;
-                    break;
-                case 'm':
-                    if (state->input.mode == VISUAL && state->cursor.visual_selection_mode != VISUAL_MODE_NONE) {
-                        editor_yank_to_move_register(state);
-                        editor_delete_selection(state);
-                        state->cursor.is_moving = true;
-                        editor_set_status_msg(state, "Text cut. Press 'm' again to paste.");
-                    } else if (state->cursor.is_moving) {
-                        editor_paste_from_move_register(state);
-                        state->cursor.is_moving = false;
-                        free(state->cursor.move_register);
-                        state->cursor.move_register = NULL;
-                        editor_set_status_msg(state, "Text moved.");
-                    }
-                    state->buffer.is_dirty = true;
-                    break;
-                case 'u':
-                    if (state->input.mode == NORMAL) {
-                        do_undo(state);
-                    } else {
-                        state->buffer.is_dirty = true;
-                        state->cursor.col = 0;
-                        state->cursor.ideal_col = 0;
-                        editor_handle_enter(state);
-                        state->cursor.line--;
-                        state->input.mode = INSERT;
-                    }
-                    break;
-                case 'U':
-                    state->buffer.is_dirty = true;
-                    state->cursor.col = strlen(state->buffer.lines[state->cursor.line]);
-                    editor_handle_enter(state);
-                    state->input.mode = INSERT;
-                    break;
-                case 'G':
-                    state->buffer.is_dirty = true;
-                    state->cursor.line = state->buffer.num_lines - 1;
-                    state->cursor.col = 0;
-                    state->cursor.ideal_col = 0;
-                    break;
-                case 'g':
-                    state->buffer.is_dirty = true;
-                    state->cursor.line = 0;
-                    state->cursor.col = 0;
-                    state->cursor.ideal_col = 0;
-                    break;
-                case 'v': state->input.mode = (state->input.mode == VISUAL) ? NORMAL : VISUAL; state->buffer.is_dirty = true; break;
-                case 'i': state->input.mode = INSERT; state->buffer.is_dirty = true; break;
-                case ':': state->input.mode = COMMAND; state->input.history_pos = state->input.history_count; state->input.command_buffer[0] = '\0'; state->input.command_pos = 0; state->buffer.is_dirty = true; break;
-                case KEY_CTRL_RIGHT_BRACKET: next_window(); state->buffer.is_dirty = true; break;
-                case KEY_CTRL_LEFT_BRACKET: previous_window(); state->buffer.is_dirty = true; break;
-                case '/':
-                case KEY_CTRL_F: editor_find(state); break;
-                case KEY_CTRL_DEL: editor_delete_line(state); break;
-                case KEY_CTRL_K: editor_delete_line(state); state->buffer.is_dirty = true; break;
-                case KEY_CTRL_D: editor_find_next(state); break;
-                case KEY_CTRL_A: editor_find_previous(state); break;
-                case KEY_CTRL_G: display_directory_navigator(state); break;
-                case 'o':
-                case KEY_UP: {
-                    int repeat = (state->input.prefix_count > 0) ? state->input.prefix_count : 1;
-                    for (int i = 0; i < repeat; i++) {
-                        if (state->cursor.line > 0) state->cursor.line--;
-                    }
-                    state->input.prefix_count = 0; 
-                    state->cursor.col = state->cursor.ideal_col;
-                    state->buffer.is_dirty = true;
-                    break;
-                }
-                case 'l':
-                case KEY_DOWN: {
-                    int repeat = (state->input.prefix_count > 0) ? state->input.prefix_count : 1;
-                    for (int i = 0; i < repeat; i++) {
-                        if (state->cursor.line < state->buffer.num_lines - 1) state->cursor.line++;
-                    }
-                    state->input.prefix_count = 0;
-                    state->cursor.col = state->cursor.ideal_col;
-                    state->buffer.is_dirty = true;
-                    break;
-                }
-                case 'k':
-                case KEY_LEFT:
-                    if (state->cursor.col > 0) {
-                        state->cursor.col--;
-                        while (state->cursor.col > 0 && (state->buffer.lines[state->cursor.line][state->cursor.col] & 0xC0) == 0x80) {
-                            state->cursor.col--;
-                        }
-                    }
-                    state->cursor.ideal_col = state->cursor.col;
-                    state->buffer.is_dirty = true;
-                    break;
-                case 231: // ç
-                case KEY_RIGHT: {
-                    char* line = state->buffer.lines[state->cursor.line];
-                    if (line && state->cursor.col < (int)strlen(line)) {
-                        state->cursor.col++;
-                        while (line[state->cursor.col] != '\0' && (line[state->cursor.col] & 0xC0) == 0x80) {
-                            state->cursor.col++;
-                        }
-                    }
-                    state->cursor.ideal_col = state->cursor.col;
-                    state->buffer.is_dirty = true;
-                    } break;
-                case 'O':
-                case KEY_PPAGE: case KEY_SR: for (int i = 0; i < PAGE_JUMP; i++) if (state->cursor.line > 0) state->cursor.line--; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true; break;
-                case 'L':
-                case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->cursor.line < state->buffer.num_lines - 1) state->cursor.line++; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true; break;
-                case 'K':
-                case KEY_HOME: state->cursor.col = 0; state->cursor.ideal_col = 0; state->buffer.is_dirty = true; break;
-                case 199: // Ç
-                case KEY_END: { char* line = state->buffer.lines[state->cursor.line]; if(line) state->cursor.col = strlen(line); state->cursor.ideal_col = state->cursor.col; state->buffer.is_dirty = true; } break;
-                case KEY_SDC: editor_delete_line(state); break;
-            }
+            handle_visual_mode_key(state, ch);
             break;
-        }
+        case NORMAL:
+            handle_normal_mode_key(state, ch);
+            break;
         case OPERATOR_PENDING: {
                 char op = state->input.pending_operator;
                 state->input.pending_operator = 0;
@@ -567,6 +360,8 @@ int main(int argc, char *argv[]) {
 
     start_work_timer();
     setlocale(LC_ALL, "");
+    a2_log_init();
+    A2_LOG(LOG_INFO, TAG_CORE, "--- A2 Editor Started ---");
     inicializar_ncurses();
     load_global_config();
     reset_bindings_to_default();
@@ -904,6 +699,7 @@ int main(int argc, char *argv[]) {
                  if (active_jw && active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
                     check_external_modification(active_jw->state);
                     editor_update_git_gutter(active_jw->state);
+                    lsp_watchdog_check(active_jw->state);
                  }
              }
         }
@@ -1020,9 +816,3 @@ int main(int argc, char *argv[]) {
     endwin(); 
     return 0;
 }
-
-
-
-
-
-

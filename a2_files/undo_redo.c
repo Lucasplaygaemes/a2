@@ -1,6 +1,7 @@
 #include "undo_redo.h"
 #include "editor_utils.h"
 #include "lsp_client.h"
+#include "logger.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -41,6 +42,7 @@ void restore_from_snapshot(EditorState *state, EditorSnapshot *snapshot) {
 
 void push_undo(EditorState *state) {
     if (state->buffer.undo_count >= MAX_UNDO_LEVELS) {
+        A2_LOG(LOG_DEBUG, TAG_CORE, "Undo stack limit reached. Dropping oldest snapshot.");
         free_snapshot(state->buffer.undo_stack[0]);
         for (int i = 1; i < MAX_UNDO_LEVELS; i++) state->buffer.undo_stack[i - 1] = state->buffer.undo_stack[i];
         state->buffer.undo_count--;

@@ -12,6 +12,7 @@
 #include "explorer.h"
 #include "themes.h"
 #include "a2_files/settings.h" // Added include
+#include "logger.h"
 
 
 #include <unistd.h>
@@ -399,6 +400,8 @@ void close_active_window(bool *should_exit) {
     if (ws->active_window_idx >= ws->num_windows) {
         ws->active_window_idx = ws->num_windows - 1;
     }
+
+    A2_LOG(LOG_INFO, TAG_UI, "Window closed. Remaining windows: %d", ws->num_windows);
 
     // Now it is safe to free the memory for the closed window
     free_editor_window(window_to_close);

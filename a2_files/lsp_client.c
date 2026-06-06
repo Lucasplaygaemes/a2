@@ -4,6 +4,8 @@
 #include "cache.h"
 #include "fileio.h" // Para load_file()
 #include "project.h"
+#include "logger.h"
+#include "lsp_watchdog.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1155,14 +1157,7 @@ void lsp_send_initialize(EditorState *state) {
     msg->params = params;
     char *json_str = lsp_serialize_message(msg);
     
-    char* log_filename = get_cache_filename("lsp_log.txt");
-    FILE *log = fopen(log_filename, "a");
-    free(log_filename);
-
-    if (log) {
-        fprintf(log, "Sending initialization message:\n%s\n", json_str);
-        fclose(log);
-    }
+    A2_LOG(LOG_DEBUG, TAG_LSP, "Sending initialization message:\n%s", json_str);
     
     // Add Content-Length header as per LSP protocol
     char header[100];
@@ -1173,15 +1168,8 @@ void lsp_send_initialize(EditorState *state) {
     write(state->lsp.client->stdin_fd, header, strlen(header));
     ssize_t bytes_written = write(state->lsp.client->stdin_fd, json_str, content_length);
     
-    char* log_filename2 = get_cache_filename("lsp_log.txt");
-    log = fopen(log_filename2, "a");
-    free(log_filename2);
-
-    if (log) {
-        fprintf(log, "Bytes written: %zd (header: %zu, content: %zu)\n", 
-                bytes_written, strlen(header), content_length);
-        fclose(log);
-    }
+    A2_LOG(LOG_DEBUG, TAG_LSP, "Bytes written: %zd (header: %zu, content: %zu)", 
+            bytes_written, strlen(header), content_length);
 
     if (project_root) {
         free(project_root);

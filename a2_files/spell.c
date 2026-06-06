@@ -1,17 +1,12 @@
 #include "spell.h"
+#include "logger.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h> // for the free function
 #include <unistd.h>
 
-#define SPELL_LOG_FILE "/tmp/spell_debug.log"
-
 void spell_log(const char *message) {
-    FILE *log_file = fopen(SPELL_LOG_FILE, "a");
-    if (log_file) {
-        fprintf(log_file, "%s\n", message);
-        fclose(log_file);
-    }
+    A2_LOG(LOG_DEBUG, TAG_SPELL, "%s", message);
 }
 
 const char *dict_paths[] = {
