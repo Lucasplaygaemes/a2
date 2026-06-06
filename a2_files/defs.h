@@ -94,7 +94,8 @@ typedef enum {
     SETTINGS_VIEW_THEME,
     SETTINGS_VIEW_SPELL,
     SETTINGS_VIEW_LSP,
-    SETTINGS_VIEW_KEYBINDINGS
+    SETTINGS_VIEW_KEYBINDINGS,
+    SETTINGS_VIEW_DEBUG
 } SettingsPanelView;
 
 typedef struct {
@@ -319,6 +320,8 @@ typedef struct {
     
     bool smart_save_enabled;
     bool git_gutter_enabled;
+    bool debug_enabled;
+    int log_level_filter;
 } A2Config;
 
 extern A2Config global_config;
@@ -437,6 +440,9 @@ typedef struct {
     int num_symbols;
     bool completion_pending;
     struct timespec last_keystroke;
+    int watchdog_restart_attempts;
+    time_t watchdog_last_restart;
+    bool watchdog_disabled;
 } EditorLsp;
 
 typedef struct {
