@@ -4,6 +4,7 @@
 #include "undo_redo.h"
 #include "lsp_client.h"
 #include "logger.h"
+#include "command_execution.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -406,8 +407,41 @@ void editor_yank_line(EditorState *state) {
     if (state->cursor.yank_register) {
         strcpy(state->cursor.yank_register, state->buffer.lines[state->cursor.line]);
         strcat(state->cursor.yank_register, "\n");
-        editor_set_status_msg(state, "1 line yanked");
+        editor_set_status_msg(state, "Line yanked (local)");
     }
+}
+
+void editor_yank_line_global(EditorState *state) {
+    if (state->cursor.line >= state->buffer.num_lines) return;
+    if (global_yank_register) free(global_yank_register);
+    global_yank_register = malloc(strlen(state->buffer.lines[state->cursor.line]) + 2);
+    if (global_yank_register) {
+        strcpy(global_yank_register, state->buffer.lines[state->cursor.line]);
+        strcat(global_yank_register, "\n");
+        editor_set_status_msg(state, "Line yanked (global)");
+    }
+}
+
+void editor_yank_line_clipboard(EditorState *state) {
+    if (state->cursor.line >= state->buffer.num_lines) return;
+    // Set selection to current line temporarily to use existing clipboard function
+    int old_sl = state->cursor.selection_start_line;
+    int old_sc = state->cursor.selection_start_col;
+    int old_l = state->cursor.line;
+    int old_c = state->cursor.col;
+    
+    state->cursor.selection_start_line = state->cursor.line;
+    state->cursor.selection_start_col = 0;
+    state->cursor.col = strlen(state->buffer.lines[state->cursor.line]);
+    
+    copy_selection_to_clipboard(state);
+    
+    // Restore
+    state->cursor.selection_start_line = old_sl;
+    state->cursor.selection_start_col = old_sc;
+    state->cursor.line = old_l;
+    state->cursor.col = old_c;
+    editor_set_status_msg(state, "Line yanked (system clipboard)");
 }
 
 void editor_yank_to_move_register(EditorState *state) {

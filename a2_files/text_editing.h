@@ -22,6 +22,8 @@ void editor_change_inside_quotes(EditorState *state, char quote_char, bool enter
 void editor_yank_selection(EditorState *state);
 void editor_global_yank(EditorState *state);
 void editor_yank_line(EditorState *state);
+void editor_yank_line_global(EditorState *state);
+void editor_yank_line_clipboard(EditorState *state);
 void editor_paste(EditorState *state);
 void editor_global_paste(EditorState *state);
 void editor_yank_to_move_register(EditorState *state);
