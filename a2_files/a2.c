@@ -78,6 +78,7 @@ void inicializar_ncurses() {
 }
 
 void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
+    A2_LOG(LOG_DEBUG, TAG_CORE, "Input: ch=%d, mode=%d, single=%d", ch, (int)state->input.mode, state->input.single_command_mode);
     // Reset spell hover on any action
     state->spell.hover_pending = true;
     clock_gettime(CLOCK_MONOTONIC, &state->spell.hover_last_move);
@@ -209,7 +210,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 state->input.pending_sequence_key = 0;
                 if (act != ACT_NONE) {
                     execute_action(act, state, should_exit);
-                    return;
+                    goto check_single_command;
                 }
             }
 
@@ -230,13 +231,14 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
 
             if (action != ACT_NONE) {
                 execute_action(action, state, should_exit);
-                return;
+                goto check_single_command;
             }
 
             // 4. If no action found, check if it's a prefix for sequences
             if (is_leader_key(next_ch)) {
                 state->input.pending_sequence_key = next_ch;
                 editor_set_status_msg(state, "(Alt+%lc)...", next_ch);
+                return;
             } else if (next_ch == '\t') { 
                 if (state->input.mode == VISUAL) {
                     int start_line, end_line;
@@ -245,6 +247,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     for (int i = start_line; i <= end_line; i++) editor_ident_line(state, i);
                 } else { editor_ident_line(state, state->cursor.line); }
                 flushinp();
+                goto check_single_command;
             }
         }
         return;
@@ -268,7 +271,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
 
         if (should_execute) {
             execute_action(global_act, state, should_exit);
-            return;
+            goto check_single_command;
         }
     }
 
@@ -282,10 +285,14 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         case OPERATOR_PENDING: {
                 char op = state->input.pending_operator;
                 state->input.pending_operator = 0;
-                state->input.mode = NORMAL; // FIX: Return to NORMAL mode by default
+                state->input.mode = INSERT; // FIX: Return to NORMAL mode by default
 
-                if (op == 'y' && ch == 'y') {
-                    editor_yank_line(state);
+                if (op == 'y') {
+                    if (ch == 'y') editor_yank_line(state);
+                    else if (ch == 'Y') editor_yank_line_global(state);
+                    else if (ch == 'c') editor_yank_line_clipboard(state);
+                } else if (op == 'd') {
+                    if (ch == 'd') editor_delete_line(state);
                 }
                 
                 break;
@@ -298,6 +305,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 break;
         }
         
+check_single_command:
     // After processing input, validate if the state is still valid.
     // 1. Check if the window/workspace counts changed (closed window).
     // 2. Check if the state pointer is still the active one (reloaded project).

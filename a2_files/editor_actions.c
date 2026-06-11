@@ -267,7 +267,7 @@ void handle_normal_mode_key(EditorState *state, wint_t ch) {
     if (ch == ']') { editor_jump_to_conflict(state, true); return; }
 
     switch (ch) {
-        case 22: editor_paste(state); break;
+        case 22: paste_from_clipboard(state); break;
         case KEY_BTAB: push_undo(state); editor_unindent_line(state, state->cursor.line); break;
         case '>': push_undo(state); editor_ident_line(state, state->cursor.line); break;
         case '<': push_undo(state); editor_unindent_line(state, state->cursor.line); break;
@@ -292,7 +292,9 @@ void handle_normal_mode_key(EditorState *state, wint_t ch) {
             } else { editor_global_yank(state); state->cursor.visual_selection_mode = VISUAL_MODE_NONE; }
             break;
         case 'p': editor_paste(state); break;
+        case 'P': editor_global_paste(state); break;
         case 'y': state->input.mode = OPERATOR_PENDING; state->input.pending_operator = 'y'; break;
+        case 'Y': editor_yank_line(state); break;
         case 'm':
             if (state->cursor.is_moving) { editor_paste_from_move_register(state); state->cursor.is_moving = false; free(state->cursor.move_register); state->cursor.move_register = NULL; editor_set_status_msg(state, "Text moved."); }
             state->buffer.is_dirty = true; break;
