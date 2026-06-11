@@ -524,15 +524,31 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                                 // Directive highlight should ideally not skip the whole segment to allow wrap awareness
                             }
                             else {
-                                for (int j = 0; j < state->buffer.num_syntax_rules; j++) {
-                                    if (strlen(state->buffer.syntax_rules[j].word) == (size_t)token_len && strncmp(token_ptr, state->buffer.syntax_rules[j].word, token_len) == 0) {
-                                        switch(state->buffer.syntax_rules[j].type) { case SYNTAX_KEYWORD: color_pair = PAIR_KEYWORD; break; case SYNTAX_TYPE: color_pair = PAIR_TYPE; break; case SYNTAX_STD_FUNCTION: color_pair = PAIR_STD_FUNCTION; break; }
-                                        break;
+                                bool is_misspelled = false;
+                                if (state->spell.checker.enabled && !isdigit(token_ptr[0]) && !strchr(delimiters, *token_ptr)) {
+                                    char *word_to_check = strndup(token_ptr, token_len);
+                                    if (word_to_check) {
+                                        if (!spell_checker_check_word(&state->spell.checker, word_to_check)) {
+                                            is_misspelled = true;
+                                        }
+                                        free(word_to_check);
+                                    }
+                                }
+                                if (is_misspelled) {
+                                    color_pair = PAIR_SPELL_ERROR;
+                                } else {
+                                    for (int j = 0; j < state->buffer.num_syntax_rules; j++) {
+                                        if (strlen(state->buffer.syntax_rules[j].word) == (size_t)token_len && strncmp(token_ptr, state->buffer.syntax_rules[j].word, token_len) == 0) {
+                                            switch(state->buffer.syntax_rules[j].type) { case SYNTAX_KEYWORD: color_pair = PAIR_KEYWORD; break; case SYNTAX_TYPE: color_pair = PAIR_TYPE; break; case SYNTAX_STD_FUNCTION: color_pair = PAIR_STD_FUNCTION; break; }
+                                            break;
+                                        }
                                     }
                                 }
                             }
                             if (color_pair) wattron(win, COLOR_PAIR(color_pair));
+                            if (color_pair == PAIR_SPELL_ERROR) wattron(win, A_UNDERLINE);
                             wprintw(win, "%.*s", token_len, token_ptr);
+                            if (color_pair == PAIR_SPELL_ERROR) wattroff(win, A_UNDERLINE);
                             if (color_pair) wattroff(win, COLOR_PAIR(color_pair));
                         }
                     }
@@ -684,15 +700,31 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         color_pair = PAIR_COMMENT; 
                     }
                     else {
-                        for (int j = 0; j < state->buffer.num_syntax_rules; j++) {
-                            if (strlen(state->buffer.syntax_rules[j].word) == (size_t)token_len && strncmp(&line[token_start], state->buffer.syntax_rules[j].word, token_len) == 0) {
-                                switch(state->buffer.syntax_rules[j].type) { case SYNTAX_KEYWORD: color_pair = PAIR_KEYWORD; break; case SYNTAX_TYPE: color_pair = PAIR_TYPE; break; case SYNTAX_STD_FUNCTION: color_pair = PAIR_STD_FUNCTION; break; }
-                                break;
+                        bool is_misspelled = false;
+                        if (state->spell.checker.enabled && !isdigit(current_char) && !strchr(delimiters, current_char)) {
+                            char *word_to_check = strndup(&line[token_start], token_len);
+                            if (word_to_check) {
+                                if (!spell_checker_check_word(&state->spell.checker, word_to_check)) {
+                                    is_misspelled = true;
+                                }
+                                free(word_to_check);
+                            }
+                        }
+                        if (is_misspelled) {
+                            color_pair = PAIR_SPELL_ERROR;
+                        } else {
+                            for (int j = 0; j < state->buffer.num_syntax_rules; j++) {
+                                if (strlen(state->buffer.syntax_rules[j].word) == (size_t)token_len && strncmp(&line[token_start], state->buffer.syntax_rules[j].word, token_len) == 0) {
+                                    switch(state->buffer.syntax_rules[j].type) { case SYNTAX_KEYWORD: color_pair = PAIR_KEYWORD; break; case SYNTAX_TYPE: color_pair = PAIR_TYPE; break; case SYNTAX_STD_FUNCTION: color_pair = PAIR_STD_FUNCTION; break; }
+                                    break;
+                                }
                             }
                         }
                     }
                     if (color_pair) wattron(win, COLOR_PAIR(color_pair));
+                    if (color_pair == PAIR_SPELL_ERROR) wattron(win, A_UNDERLINE);
                     wprintw(win, "%.*s", token_len, &line[token_start]);
+                    if (color_pair == PAIR_SPELL_ERROR) wattroff(win, A_UNDERLINE);
                     if (color_pair) wattroff(win, COLOR_PAIR(color_pair));
                     current_col_val += token_len;
                 }
