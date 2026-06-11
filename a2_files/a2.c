@@ -257,7 +257,8 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     bool is_ctrl = (ch > 0 && ch < 32 && ch != 10 && ch != 13 && ch != 9); // Exclude Enter/Tab
     EditorAction global_act = get_action_from_key(ch, false, is_ctrl, 0);
     
-    if (global_act != ACT_NONE) {
+    // FIX: Do not intercept global shortcuts if we are waiting for an operator (like the second 'y' in 'yy')
+    if (global_act != ACT_NONE && state->input.mode != OPERATOR_PENDING) {
         bool should_execute = true;
         
         // In INSERT or COMMAND mode, don't intercept simple printable characters (like 'q', 'i', 'p')
