@@ -272,7 +272,19 @@ void handle_normal_mode_key(EditorState *state, wint_t ch) {
         case '>': push_undo(state); editor_ident_line(state, state->cursor.line); break;
         case '<': push_undo(state); editor_unindent_line(state, state->cursor.line); break;
         case 'd': state->input.mode = OPERATOR_PENDING; state->input.pending_operator = 'd'; break;
-        case KEY_ENTER: case '\n': push_undo(state); editor_handle_enter(state); break;
+        case KEY_ENTER: case '\n': case 13:
+            if (state->cursor.line < state->buffer.num_lines - 1) {
+                state->cursor.line++;
+                state->cursor.col = 0;
+                // Move to first non-blank character (optional but common)
+                while (state->buffer.lines[state->cursor.line][state->cursor.col] && 
+                       isspace(state->buffer.lines[state->cursor.line][state->cursor.col])) {
+                    state->cursor.col++;
+                }
+                state->cursor.ideal_col = state->cursor.col;
+                state->buffer.is_dirty = true;
+            }
+            break;
         case 25: 
             if (state->cursor.visual_selection_mode == VISUAL_MODE_NONE) {
                 state->cursor.selection_start_line = state->cursor.line; state->cursor.selection_start_col = state->cursor.col;

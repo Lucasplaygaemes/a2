@@ -153,7 +153,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     state->input.completion_scroll_top = state->input.selected_suggestion - win_h + 1;
                 }
                 return;
-            case KEY_ENTER: case '\n':
+            case KEY_ENTER: case '\n': case 13:
                 editor_apply_completion(state);
                 return;
             case 27: // ESC or Alt

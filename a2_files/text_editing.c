@@ -3,6 +3,8 @@
 #include "others.h"
 #include "undo_redo.h"
 #include "lsp_client.h"
+#include "logger.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
