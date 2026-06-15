@@ -261,11 +261,11 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     if (global_act != ACT_NONE && state->input.mode != OPERATOR_PENDING) {
         bool should_execute = true;
         
-        // In INSERT or COMMAND mode, don't intercept simple printable characters (like 'q', 'i', 'p')
-        // unless they are special keys (like Arrows) or have modifiers.
+        // No modo COMMAND ou INSERT, não interceptar teclas básicas (incluindo Setas)
+        // a menos que tenham modificadores (Alt/Ctrl) ou sejam sequências de líder.
         if (state->input.mode == INSERT || state->input.mode == COMMAND) {
             KeyBinding *kb = &global_bindings[global_act];
-            if (!kb->alt && !kb->ctrl && kb->leader == 0 && kb->key < 256) {
+            if (!kb->alt && !kb->ctrl && kb->leader == 0) {
                 should_execute = false;
             }
         }

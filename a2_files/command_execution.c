@@ -25,6 +25,14 @@
 
 void process_command(EditorState *state, bool *should_exit) {
     A2_LOG(LOG_INFO, TAG_CORE, "Command: %s", state->input.command_buffer);
+    
+    // Tratamento de Busca (/) integrada na barra de comando
+    if (state->input.command_buffer[0] == '/') {
+        editor_perform_search(state, state->input.command_buffer + 1);
+        state->input.mode = NORMAL;
+        return;
+    }
+
     if (state->input.command_buffer[0] == '!') {
         execute_shell_command(state);
         add_to_command_history(state, state->input.command_buffer);
