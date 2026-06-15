@@ -147,7 +147,14 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_JOIN_LINES: editor_join_line(state); break;
         case ACT_NEXT_WORD: editor_move_to_next_word(state); break;
         case ACT_PREV_WORD: editor_move_to_previous_word(state); break;
-        case ACT_FIND_LOCAL: editor_find(state); break;
+        case ACT_FIND_LOCAL: 
+            state->input.mode = COMMAND; 
+            state->input.command_buffer[0] = '/'; 
+            state->input.command_buffer[1] = '\0'; 
+            state->input.command_pos = 1; 
+            state->search.history_pos = state->search.history_count;
+            state->buffer.is_dirty = true; 
+            break;
         case ACT_FIND_NEXT: editor_find_next(state); break;
         case ACT_FIND_PREV: editor_find_previous(state); break;
         case ACT_GREP_PROJECT: display_content_search(state, NULL); break;
@@ -307,7 +314,22 @@ void handle_normal_mode_key(EditorState *state, wint_t ch) {
         case ':': state->input.mode = COMMAND; state->input.history_pos = state->input.history_count; state->input.command_buffer[0] = '\0'; state->input.command_pos = 0; state->buffer.is_dirty = true; break;
         case KEY_CTRL_RIGHT_BRACKET: next_window(); state->buffer.is_dirty = true; break;
         case KEY_CTRL_LEFT_BRACKET: previous_window(); state->buffer.is_dirty = true; break;
-        case '/': case 6: editor_find(state); break;
+        case '/': 
+            state->input.mode = COMMAND; 
+            state->input.command_buffer[0] = '/'; 
+            state->input.command_buffer[1] = '\0'; 
+            state->input.command_pos = 1; 
+            state->search.history_pos = state->search.history_count;
+            state->buffer.is_dirty = true; 
+            break;
+        case 6: // Ctrl+F
+            state->input.mode = COMMAND; 
+            state->input.command_buffer[0] = '/'; 
+            state->input.command_buffer[1] = '\0'; 
+            state->input.command_pos = 1; 
+            state->search.history_pos = state->search.history_count;
+            state->buffer.is_dirty = true; 
+            break;
         case 520: editor_delete_line(state); break;
         case 11: editor_delete_line(state); state->buffer.is_dirty = true; break;
         case 4: editor_find_next(state); break;
