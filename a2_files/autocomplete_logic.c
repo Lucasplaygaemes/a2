@@ -265,7 +265,14 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
         case KEY_CTRL_DEL: case KEY_CTRL_K: editor_delete_line(state); state->buffer.is_dirty = true; break;
         case KEY_CTRL_D: editor_find_next(state); break;
         case KEY_CTRL_A: editor_find_previous(state); break;
-        case KEY_CTRL_F: editor_find(state); break;
+        case KEY_CTRL_F: 
+            state->input.mode = COMMAND; 
+            state->input.command_buffer[0] = '/'; 
+            state->input.command_buffer[1] = '\0'; 
+            state->input.command_pos = 1; 
+            state->search.history_pos = state->search.history_count;
+            state->buffer.is_dirty = true; 
+            break;
         case KEY_UNDO: do_undo(state); break;
         case KEY_CTRL_RIGHT_BRACKET: next_window(); break;
         case KEY_CTRL_LEFT_BRACKET: previous_window(); break;
@@ -329,8 +336,41 @@ void handle_command_mode_key(EditorState *state, wint_t ch, bool *should_exit) {
             state->buffer.is_dirty = true; break;
         case KEY_LEFT: if (state->input.command_pos > 0) state->input.command_pos--; state->buffer.is_dirty = true; break;
         case KEY_RIGHT: if (state->input.command_pos < (int)strlen(state->input.command_buffer)) state->input.command_pos++; state->buffer.is_dirty = true; break;
-        case KEY_UP: if (state->input.history_pos > 0) { state->input.history_pos--; strncpy(state->input.command_buffer, state->input.command_history[state->input.history_pos], 99); state->input.command_pos = strlen(state->input.command_buffer); state->buffer.is_dirty = true; } break;
-        case KEY_DOWN: if (state->input.history_pos < state->input.history_count) { state->input.history_pos++; if (state->input.history_pos == state->input.history_count) state->input.command_buffer[0] = '\0'; else strncpy(state->input.command_buffer, state->input.command_history[state->input.history_pos], 99); state->input.command_pos = strlen(state->input.command_buffer); state->buffer.is_dirty = true; } break;
+        case KEY_UP: 
+            if (state->input.command_buffer[0] == '/') {
+                if (state->search.history_pos > 0) {
+                    state->search.history_pos--;
+                    snprintf(state->input.command_buffer, sizeof(state->input.command_buffer), "/%s", state->search.history[state->search.history_pos]);
+                    state->input.command_pos = strlen(state->input.command_buffer);
+                    state->buffer.is_dirty = true;
+                }
+            } else if (state->input.history_pos > 0) { 
+                state->input.history_pos--; 
+                strncpy(state->input.command_buffer, state->input.command_history[state->input.history_pos], 99); 
+                state->input.command_pos = strlen(state->input.command_buffer); 
+                state->buffer.is_dirty = true; 
+            } 
+            break;
+        case KEY_DOWN: 
+            if (state->input.command_buffer[0] == '/') {
+                if (state->search.history_pos < state->search.history_count) {
+                    state->search.history_pos++;
+                    if (state->search.history_pos == state->search.history_count) {
+                        strcpy(state->input.command_buffer, "/");
+                    } else {
+                        snprintf(state->input.command_buffer, sizeof(state->input.command_buffer), "/%s", state->search.history[state->search.history_pos]);
+                    }
+                    state->input.command_pos = strlen(state->input.command_buffer);
+                    state->buffer.is_dirty = true;
+                }
+            } else if (state->input.history_pos < state->input.history_count) { 
+                state->input.history_pos++; 
+                if (state->input.history_pos == state->input.history_count) state->input.command_buffer[0] = '\0'; 
+                else strncpy(state->input.command_buffer, state->input.command_history[state->input.history_pos], 99); 
+                state->input.command_pos = strlen(state->input.command_buffer); 
+                state->buffer.is_dirty = true; 
+            } 
+            break;
         case KEY_ENTER: case '\n': process_command(state, should_exit); break;
         case KEY_BACKSPACE: case 127: case 8: if (state->input.command_pos > 0) { memmove(&state->input.command_buffer[state->input.command_pos - 1], &state->input.command_buffer[state->input.command_pos], strlen(state->input.command_buffer) - state->input.command_pos + 1); state->input.command_pos--; state->buffer.is_dirty = true; } break;
         default: if (iswprint(ch) && strlen(state->input.command_buffer) < 99) { memmove(&state->input.command_buffer[state->input.command_pos + 1], &state->input.command_buffer[state->input.command_pos], strlen(state->input.command_buffer) - state->input.command_pos + 1); state->input.command_buffer[state->input.command_pos] = (char)ch; state->input.command_pos++; state->buffer.is_dirty = true; } break;
