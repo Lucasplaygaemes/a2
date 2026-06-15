@@ -24,220 +24,24 @@ void add_to_search_history(EditorState *state, const char *term) {
     }
 }
 
-void editor_find(EditorState *state) {
-    EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
-    WINDOW *win = active_jw->win;
-    int rows, cols;
-    getmaxyx(win, rows, cols);
+void editor_perform_search(EditorState *state, const char *term) {
+    if (!term || strlen(term) == 0) return;
     
-    char search_term[100];
-    state->search.history_pos = state->search.history_count;
+    add_to_search_history(state, term);
     
-    int orig_line = state->cursor.line;
-    int orig_col = state->cursor.col;
-    int orig_top = state->view.top_line;
-    int orig_left = state->view.left_col;
-    
-    if (state->search.last_term[0] != '\0') {
-        snprintf(state->input.command_buffer, sizeof(state->input.command_buffer), "/%s", state->search.last_term);
-        state->input.command_pos = strlen(state->input.command_buffer);
-    } else {
-        snprintf(state->input.command_buffer, sizeof(state->input.command_buffer), "/");
-        state->input.command_pos = 1;
+    if (state->search.is_regex) {
+        regfree(&state->search.compiled_regex);
+        state->search.is_regex = false;
     }
     
-    while (1) {
-        if (state->input.completion_mode != COMPLETION_NONE && state->input.num_suggestions > 0) {
-            snprintf(state->input.command_buffer, sizeof(state->input.command_buffer), "/%s", 
-                     state->input.completion_items[state->input.selected_suggestion].label);
-            state->input.command_pos = strlen(state->input.command_buffer);
-        }
-
-        wattron(win, COLOR_PAIR(8));
-        for (int i = 1; i < cols - 1; i++) mvwaddch(win, rows - 1, i, ' ');
-        mvwprintw(win, rows - 1, 1, "%s", state->input.command_buffer);
-        wattroff(win, COLOR_PAIR(8));
-        wmove(win, rows - 1, state->input.command_pos + 1);
-        wrefresh(win);
-
-        if (state->input.completion_mode != COMPLETION_NONE) {
-            editor_draw_completion_win(win, state);
-            wrefresh(win);
-        }
-        
-        wint_t ch;
-        wget_wch(win, &ch);
-        bool term_changed = false;
-        
-        switch(ch) {
-            case KEY_ENTER:
-            case '\n':
-                strncpy(search_term, state->input.command_buffer + 1, sizeof(search_term) - 1);
-                search_term[sizeof(search_term) - 1] = '\0';
-                goto end_find_loop;
-                
-            case 27: 
-                if (state->input.completion_mode != COMPLETION_NONE) {
-                    editor_end_completion(state);
-                    snprintf(state->input.command_buffer, sizeof(state->input.command_buffer), "/");
-                    state->input.command_pos = 1;
-                    term_changed = true;
-                    break;
-                }
-                state->cursor.line = orig_line;
-                state->cursor.col = orig_col;
-                state->view.top_line = orig_top;
-                state->view.left_col = orig_left;
-                search_term[0] = '\0';
-                state->search.last_term[0] = '\0';
-                if (state->search.is_regex) {
-                    regfree(&state->search.compiled_regex);
-                    state->search.is_regex = false;
-                }
-                goto end_find_loop;
-                
-            case '\t': {
-                if (state->input.completion_mode != COMPLETION_NONE) {
-                    state->input.selected_suggestion = (state->input.selected_suggestion + 1) % state->input.num_suggestions;
-                } else {
-                    char current_query[100];
-                    strncpy(current_query, state->input.command_buffer + 1, sizeof(current_query) - 1);
-                    current_query[sizeof(current_query) - 1] = '\0';
-                    if (strlen(current_query) == 0) break;
-
-                    state->input.num_suggestions = 0;
-                    state->input.completion_items = NULL;
-                    const char *delims = " \t\n\r`~!@#$%^&*()-=+[]{}|\\;:'\",.<>/?";
-                    for (int i = 0; i < state->buffer.num_lines; i++) {
-                        if (!state->buffer.lines[i]) continue;
-                        char *line_copy = strdup(state->buffer.lines[i]);
-                        char *saveptr, *tok = strtok_r(line_copy, delims, &saveptr);
-                        while (tok) {
-                            if (strncmp(tok, current_query, strlen(current_query)) == 0) {
-                                add_suggestion(state, tok, NULL, NULL);
-                            }
-                            tok = strtok_r(NULL, delims, &saveptr);
-                        }
-                        free(line_copy);
-                    }
-                    if (state->input.num_suggestions > 0) {
-                        state->input.completion_mode = COMPLETION_TEXT;
-                        state->input.selected_suggestion = 0;
-                    }
-                }
-                term_changed = true;
-                break;
-            }
-
-            case KEY_UP:
-                if (state->input.completion_mode != COMPLETION_NONE) {
-                    state->input.selected_suggestion = (state->input.selected_suggestion - 1 + state->input.num_suggestions) % state->input.num_suggestions;
-                } else if (state->search.history_pos > 0) {
-                    state->search.history_pos--;
-                    snprintf(state->input.command_buffer, sizeof(state->input.command_buffer), "/%s", state->search.history[state->search.history_pos]);
-                    state->input.command_pos = strlen(state->input.command_buffer);
-                }
-                term_changed = true;
-                break;
-
-            case KEY_DOWN:
-                if (state->input.completion_mode != COMPLETION_NONE) {
-                    state->input.selected_suggestion = (state->input.selected_suggestion + 1) % state->input.num_suggestions;
-                } else if (state->search.history_pos < state->search.history_count - 1) {
-                    state->search.history_pos++;
-                    snprintf(state->input.command_buffer, sizeof(state->input.command_buffer), "/%s", state->search.history[state->search.history_pos]);
-                    state->input.command_pos = strlen(state->input.command_buffer);
-                } else {
-                    state->search.history_pos = state->search.history_count;
-                    strcpy(state->input.command_buffer, "/");
-                    state->input.command_pos = 1;
-                }
-                term_changed = true;
-                break;
-                
-            case KEY_BACKSPACE:
-            case 127:
-            case 8:
-                if (state->input.completion_mode != COMPLETION_NONE) editor_end_completion(state);
-                if (state->input.command_pos > 1) {
-                    state->input.command_buffer[--state->input.command_pos] = '\0';
-                    term_changed = true;
-                }
-                break;
-                
-            default:
-                if (iswprint(ch) && state->input.command_pos < (int)sizeof(state->input.command_buffer) - 1) {
-                    if (state->input.completion_mode != COMPLETION_NONE) editor_end_completion(state);
-                    char mb_char[MB_CUR_MAX + 1];
-                    int len = wctomb(mb_char, ch);
-                    if (len > 0 && (state->input.command_pos + len) < (int)sizeof(state->input.command_buffer) - 1) {
-                        mb_char[len] = '\0';
-                        strcat(state->input.command_buffer, mb_char);
-                        state->input.command_pos += len;
-                        term_changed = true;
-                    }
-                }
-                break;
-        }
-
-        if (term_changed) {
-            strncpy(search_term, state->input.command_buffer + 1, sizeof(search_term) - 1);
-            search_term[sizeof(search_term) - 1] = '\0';
-            
-            if (strlen(search_term) > 0) {
-                bool found = false;
-                regex_t regex;
-                bool is_regex = (regcomp(&regex, search_term, REG_EXTENDED | REG_NEWLINE) == 0);
-
-                for (int i = 0; i < state->buffer.num_lines; i++) {
-                    int line_num = (orig_line + i) % state->buffer.num_lines;
-                    char *line = state->buffer.lines[line_num];
-                    if (!line) continue;
-                    int col_offset = (i == 0) ? orig_col : 0;
-                    if (is_regex) {
-                        regmatch_t pmatch[1];
-                        if (regexec(&regex, line + col_offset, 1, pmatch, 0) == 0) {
-                            state->cursor.line = line_num;
-                            state->cursor.col = col_offset + pmatch[0].rm_so;
-                            state->cursor.ideal_col = state->cursor.col;
-                            found = true; break;
-                        }
-                    } else {
-                        char *match = strstr(line + col_offset, search_term);
-                        if (match) {
-                            state->cursor.line = line_num;
-                            state->cursor.col = match - line;
-                            state->cursor.ideal_col = state->cursor.col;
-                            found = true; break;
-                        }
-                    }
-                }
-                if (is_regex) regfree(&regex);
-                if (!found) { state->cursor.line = orig_line; state->cursor.col = orig_col; }
-            } else {
-                state->cursor.line = orig_line; state->cursor.col = orig_col;
-                state->view.top_line = orig_top; state->view.left_col = orig_left;
-            }
-            adjust_viewport(active_jw->win, state);
-            redraw_all_windows();
-        }
-    }
-end_find_loop:
-    if (state->input.completion_mode != COMPLETION_NONE) editor_end_completion(state);
-    editor_set_status_msg(state, "");
-    state->input.command_buffer[0] = '\0';
-    redraw_all_windows();
-    if (strlen(search_term) == 0) return;
-    add_to_search_history(state, search_term);
-    if (state->search.is_regex) { regfree(&state->search.compiled_regex); state->search.is_regex = false; }
-    strncpy(state->search.last_term, search_term, sizeof(state->search.last_term) - 1);
-    if (regcomp(&state->search.compiled_regex, search_term, REG_EXTENDED | REG_NEWLINE) == 0) {
+    strncpy(state->search.last_term, term, sizeof(state->search.last_term) - 1);
+    
+    if (regcomp(&state->search.compiled_regex, term, REG_EXTENDED | REG_NEWLINE) == 0) {
         state->search.is_regex = true;
-        editor_set_status_msg(state, "Regex search: %s", search_term);
     } else {
         state->search.is_regex = false;
-        editor_set_status_msg(state, "Plain text search: %s", search_term);
-    }    
+    }
+    
     editor_find_next(state);
 }
 
