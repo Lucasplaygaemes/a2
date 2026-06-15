@@ -19,16 +19,59 @@
 void run_and_display_command(const char* command, const char* title);
 
 
-// Retorna um ícone com base na extensão do arquivo
-const char* get_icon_for_filename(const char *filename) {
-    const char *ext = strrchr(filename, '.');
-    if (!ext || ext == filename) {
-        // Check for special filenames like Makefile
-        if (strcmp(filename, "Makefile") == 0) return "🛠️";
-        return "📄"; // Default for no extension or hidden files
+// Returns an icon based on filename and type (dir/file), respecting the configured mode
+const char* get_explorer_icon(const char *filename, bool is_dir) {
+    int mode = global_config.icon_mode;
+
+    // Mode 0: ASCII (Minimalist)
+    if (mode == 0) {
+        return is_dir ? "/" : " ";
     }
 
-    // Source Code
+    // Handle Directories
+    if (is_dir) {
+        if (mode == 2) return ""; // Nerd Font Folder
+        return "📁";               // Emoji Folder
+    }
+
+    // Handle Files
+    const char *ext = strrchr(filename, '.');
+    
+    // Nerd Font Mode (Mode 2)
+    if (mode == 2) {
+        if (!ext || ext == filename) {
+            if (strcmp(filename, "Makefile") == 0) return "";
+            return "󰈚";
+        }
+        if (strcmp(ext, ".c") == 0) return "";
+        if (strcmp(ext, ".h") == 0) return "";
+        if (strcmp(ext, ".cpp") == 0 || strcmp(ext, ".hpp") == 0) return "";
+        if (strcmp(ext, ".py") == 0) return "";
+        if (strcmp(ext, ".js") == 0 || strcmp(ext, ".jsx") == 0) return "";
+        if (strcmp(ext, ".ts") == 0 || strcmp(ext, ".tsx") == 0) return "";
+        if (strcmp(ext, ".go") == 0) return "";
+        if (strcmp(ext, ".rs") == 0) return "";
+        if (strcmp(ext, ".java") == 0) return "";
+        if (strcmp(ext, ".sh") == 0) return "";
+        if (strcmp(ext, ".html") == 0) return "";
+        if (strcmp(ext, ".css") == 0 || strcmp(ext, ".scss") == 0) return "";
+        if (strcmp(ext, ".json") == 0) return "";
+        if (strcmp(ext, ".md") == 0) return "";
+        if (strcmp(ext, ".git") == 0 || strcmp(ext, ".gitignore") == 0) return "";
+        if (strcmp(ext, ".png") == 0 || strcmp(ext, ".jpg") == 0 || strcmp(ext, ".jpeg") == 0 || 
+            strcmp(ext, ".gif") == 0 || strcmp(ext, ".svg") == 0 || strcmp(ext, ".ico") == 0) return "";
+        if (strcmp(ext, ".zip") == 0 || strcmp(ext, ".rar") == 0 || strcmp(ext, ".tar") == 0 || 
+            strcmp(ext, ".gz") == 0 || strcmp(ext, ".7z") == 0) return "";
+        if (strcmp(ext, ".pdf") == 0) return "";
+        return "󰈚";
+    }
+
+    // Emoji Mode (Mode 1 - Fallback/Default)
+    if (!ext || ext == filename) {
+        if (strcmp(filename, "Makefile") == 0) return "🛠️";
+        return "📄";
+    }
+
     if (strcmp(ext, ".s") == 0) return "🇦";
     if (strcmp(ext, ".c") == 0) return "🇨";
     if (strcmp(ext, ".h") == 0) return "🇭";
@@ -39,35 +82,23 @@ const char* get_icon_for_filename(const char *filename) {
     if (strcmp(ext, ".rs") == 0) return "🦀";
     if (strcmp(ext, ".java") == 0) return "☕";
     if (strcmp(ext, ".sh") == 0) return "❯_";
-
-    // Web
     if (strcmp(ext, ".html") == 0) return "🌐";
     if (strcmp(ext, ".css") == 0 || strcmp(ext, ".scss") == 0) return "🎨";
-
-    // Config / Data
     if (strcmp(ext, ".json") == 0) return "{}";
     if (strcmp(ext, ".xml") == 0) return "<>";
     if (strcmp(ext, ".yml") == 0 || strcmp(ext, ".yaml") == 0) return "📋";
     if (strcmp(ext, ".toml") == 0) return "📋";
     if (strcmp(ext, ".env") == 0) return "🔒";
-
-    // Documents
     if (strcmp(ext, ".md") == 0) return "📝";
     if (strcmp(ext, ".txt") == 0) return "📄";
     if (strcmp(ext, ".pdf") == 0) return "📚";
-
-    // Images
-    if (strcmp(ext, ".png") == 0 || strcmp(ext, ".jpg") == 0 || strcmp(ext, ".jpeg") == 0 || strcmp(ext, ".gif") == 0) return "🖼️";
-    if (strcmp(ext, ".svg") == 0) return "🎨";
-    if (strcmp(ext, ".ico") == 0) return "📍";
-
-    // Archives
-    if (strcmp(ext, ".zip") == 0 || strcmp(ext, ".rar") == 0 || strcmp(ext, ".tar") == 0 || strcmp(ext, ".gz") == 0) return "📦";
-
-    // Source Control
+    if (strcmp(ext, ".png") == 0 || strcmp(ext, ".jpg") == 0 || strcmp(ext, ".jpeg") == 0 || 
+        strcmp(ext, ".gif") == 0 || strcmp(ext, ".svg") == 0 || strcmp(ext, ".ico") == 0) return "🖼️";
+    if (strcmp(ext, ".zip") == 0 || strcmp(ext, ".rar") == 0 || strcmp(ext, ".tar") == 0 || 
+        strcmp(ext, ".gz") == 0) return "📦";
     if (strcmp(ext, ".git") == 0 || strcmp(ext, ".gitignore") == 0) return "🌿";
 
-    return "📄"; // Default icon
+    return "📄";
 }
 
 void update_git_statuses(ExplorerState *state) {
@@ -382,7 +413,7 @@ void explorer_redraw(EditorWindow *jw) {
 
         if (entry_idx == state->selection) wattron(jw->win, A_REVERSE);
         
-        const char* icon = state->is_dir[entry_idx] ? "📁" : get_icon_for_filename(state->entries[entry_idx]);
+        const char* icon = get_explorer_icon(state->entries[entry_idx], state->is_dir[entry_idx]);
         
         char git_char = ' '; // Inicializa com espaço
         if (state->git_status) { // Proteção contra NULL
