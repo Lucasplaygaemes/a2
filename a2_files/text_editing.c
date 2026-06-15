@@ -519,22 +519,66 @@ void editor_global_paste(EditorState *state) {
     editor_set_status_msg(state, "Pasted from global register.");
 }
 
-void editor_change_inside_quotes(EditorState *state, char quote_char, bool enter_insert) {
+void editor_change_inside_quotes(EditorState *state, char open_char, bool enter_insert) {
     char *line = state->buffer.lines[state->cursor.line]; if (!line) return;
-    int start_quote = -1, end_quote = -1;
-    for (int i = 0; line[i] != '\0'; i++) {
-        if (line[i] == quote_char) {
-            if (start_quote == -1) start_quote = i;
-            else { end_quote = i; if (state->cursor.col >= start_quote && state->cursor.col <= end_quote) break; else { start_quote = i; end_quote = -1; } }
+    char close_char = open_char;
+    
+    // Map opening brackets to closing ones
+    if (open_char == '(') close_char = ')';
+    else if (open_char == '[') close_char = ']';
+    else if (open_char == '{') close_char = '}';
+    else if (open_char == '<') close_char = '>';
+    // Also handle if user types the closing one
+    else if (open_char == ')') { open_char = '('; close_char = ')'; }
+    else if (open_char == ']') { open_char = '['; close_char = ']'; }
+    else if (open_char == '}') { open_char = '{'; close_char = '}'; }
+    else if (open_char == '>') { open_char = '<'; close_char = '>'; }
+
+    int start_pos = -1, end_pos = -1;
+
+    if (open_char == close_char) {
+        // Simple logic for quotes
+        int last_open = -1;
+        for (int i = 0; line[i] != '\0'; i++) {
+            if (line[i] == open_char) {
+                if (last_open == -1) last_open = i;
+                else {
+                    if (state->cursor.col > last_open && state->cursor.col <= i) {
+                        start_pos = last_open;
+                        end_pos = i;
+                        break;
+                    }
+                    last_open = i;
+                }
+            }
+        }
+    } else {
+        // Logic for brackets (find the innermost pair enclosing the cursor)
+        for (int i = state->cursor.col; i >= 0; i--) {
+            if (line[i] == open_char) {
+                start_pos = i;
+                break;
+            }
+        }
+        if (start_pos != -1) {
+            for (int i = state->cursor.col; line[i] != '\0'; i++) {
+                if (line[i] == close_char) {
+                    end_pos = i;
+                    break;
+                }
+            }
         }
     }
-    if (start_quote != -1 && end_quote != -1) {
+
+    if (start_pos != -1 && end_pos != -1) {
         push_undo(state);
-        int content_start = start_quote + 1;
-        int content_end = end_quote;
+        int content_start = start_pos + 1;
+        int content_end = end_pos;
         memmove(&line[content_start], &line[content_end], strlen(&line[content_end]) + 1);
-        state->cursor.col = content_start; state->cursor.ideal_col = content_start;
-        state->buffer.modified = true; mark_line_as_dirty(state, state->cursor.line);
+        state->cursor.col = content_start;
+        state->cursor.ideal_col = content_start;
+        state->buffer.modified = true;
+        mark_line_as_dirty(state, state->cursor.line);
         if (enter_insert) state->input.mode = INSERT;
         if (state->lsp.enabled) lsp_did_change(state);
     }

@@ -38,7 +38,8 @@ A2Config global_config = {
     .smart_save_enabled = true,
     .git_gutter_enabled = true,
     .debug_enabled = true,
-    .log_level_filter = LOG_DEBUG
+    .log_level_filter = LOG_DEBUG,
+    .icon_mode = 1
 };
 
 typedef struct {
@@ -69,7 +70,8 @@ typedef struct {
 
 IntSetting editor_int_settings[] = {
     {"Tab Size", &global_config.tab_size},
-    {"Status Bar Style", &global_config.status_bar_mode}
+    {"Status Bar Style", &global_config.status_bar_mode},
+    {"Icon Mode (0-2)", &global_config.icon_mode}
 };
 
 const int num_int_settings = sizeof(editor_int_settings) / sizeof(IntSetting);
@@ -349,6 +351,7 @@ void save_global_config() {
         fprintf(f, "git_gutter_enabled=%d\n", global_config.git_gutter_enabled);
         fprintf(f, "debug_enabled=%d\n", global_config.debug_enabled);
         fprintf(f, "log_level_filter=%d\n", global_config.log_level_filter);
+        fprintf(f, "icon_mode=%d\n", global_config.icon_mode);
         fclose(f);
     }
 }
@@ -385,6 +388,7 @@ void load_global_config() {
         else if (sscanf(line, "git_gutter_enabled=%d", &val) == 1) global_config.git_gutter_enabled = val;
         else if (sscanf(line, "debug_enabled=%d", &val) == 1) global_config.debug_enabled = val;
         else if (sscanf(line, "log_level_filter=%d", &val) == 1) global_config.log_level_filter = val;
+        else if (sscanf(line, "icon_mode=%d", &val) == 1) global_config.icon_mode = val;
         else if (sscanf(line, "default_spell_lang=%127s", str_val) == 1) {
             strncpy(global_config.default_spell_lang, str_val, sizeof(global_config.default_spell_lang) - 1);
             global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
@@ -447,6 +451,8 @@ void apply_settings_globally() {
                 
                 state->buffer.is_dirty = true;
                 mark_all_lines_dirty(state);
+            } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
+                jw->explorer_state->is_dirty = true;
             }
         }
     }
@@ -1002,6 +1008,9 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                             global_config.tab_size = (global_config.tab_size == 8) ? 2 : global_config.tab_size + 2;
                         } else if (strcmp(editor_int_settings[int_idx].name, "Status Bar Style") == 0) {
                             global_config.status_bar_mode = (global_config.status_bar_mode == 1) ? 0 : 1;
+                        } else if (strcmp(editor_int_settings[int_idx].name, "Icon Mode (0-2)") == 0) {
+                            global_config.icon_mode = (global_config.icon_mode == 1) ? 2 : (global_config.icon_mode == 2) ? 0 : 1;
+
                         }
                     }
                     save_global_config(); // Salva no disco
