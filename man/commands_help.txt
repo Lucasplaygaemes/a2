@@ -14,6 +14,7 @@ This page details the commands available in Command Mode (activated with *:*).
 - *:..*: Switches to the alternate (previously opened) file.
 
 ## Navigation & Search
+- */<term>*: Searches for `term` in the current file. Uses the unified command bar, allowing you to move the cursor with *Arrows* and navigate history with *Up/Down*.
 - *:ff*: Opens the *Fuzzy Finder* to search for any file in the project.
 - *:explorer*: Opens the file explorer in a new split.
 - *:s/find/repl/*: Replaces the next occurrence of `find` with `repl`.

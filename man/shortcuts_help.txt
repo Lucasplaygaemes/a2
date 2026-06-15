@@ -42,7 +42,7 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *m* : Paste from the "move" register (used after cutting in Visual Mode).
 - *q[a-z]* : Start or stop recording a macro.
 - *@[a-z]* : Play back a macro. *@@* repeats the last one.
-- *Ctrl+f* : Interactive search (/term). Supports regex automatically. Tab autocompletes. (For replace, use :s/find/repl/).
+- *Ctrl+f* / */* : Unified interactive search. Opens the command bar with */*. Use *Arrows* to move the cursor and *Up*/*Down* to navigate search history.
 - *Ctrl+d* / *Ctrl+a* : Find next / previous occurrence of the last search.
 - *Ctrl+Del* / *Ctrl+k* : Delete the current line.
 - *Alt+c* : Toggle comment on the current line or visual selection.
