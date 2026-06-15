@@ -322,6 +322,7 @@ typedef struct {
     bool git_gutter_enabled;
     bool debug_enabled;
     int log_level_filter;
+    int icon_mode;
 } A2Config;
 
 extern A2Config global_config;
