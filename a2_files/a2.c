@@ -338,7 +338,7 @@ check_single_command:
 
 bool handle_global_shortcut(int ch, bool alt, bool ctrl, bool *should_exit) {
     EditorAction action = get_action_from_key(ch, alt, ctrl, 0);
-    if (action != ACT_NONE) {
+    if (action != ACT_NONE && is_global_action(action)) {
         EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
         execute_action(action, active_jw->state, should_exit);
         return true;
