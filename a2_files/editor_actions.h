@@ -5,6 +5,7 @@
 
 EditorAction get_action_from_key(int ch, bool alt, bool ctrl, int leader);
 bool is_leader_key(int ch);
+bool is_global_action(EditorAction action);
 void execute_action(EditorAction action, EditorState *state, bool *should_exit);
 void display_dynamic_ksc();
 

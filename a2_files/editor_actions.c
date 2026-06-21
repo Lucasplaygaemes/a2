@@ -40,11 +40,15 @@ bool is_leader_key(int ch) {
     return false;
 }
 
+bool is_global_action(EditorAction action) {
+    return (action >= ACT_NEW_WINDOW && action <= ACT_ROTATE_WINDOWS) || 
+           (action >= ACT_SWITCH_TO_WS_1 && action <= ACT_MOVE_WIN_TO_POS_9) ||
+           (action == ACT_SETTINGS || action == ACT_HELP || action == ACT_KSC || action == ACT_TIMER_REPORT || action == ACT_TOGGLE_FLOATING_TERMINAL);
+}
+
 void execute_action(EditorAction action, EditorState *state, bool *should_exit) {
     if (action == ACT_NONE) return;
-    bool is_global = (action >= ACT_NEW_WINDOW && action <= ACT_ROTATE_WINDOWS) || 
-                      (action >= ACT_SWITCH_TO_WS_1 && action <= ACT_MOVE_WIN_TO_POS_9) ||
-                      (action == ACT_SETTINGS || action == ACT_HELP || action == ACT_KSC || action == ACT_TIMER_REPORT || action == ACT_TOGGLE_FLOATING_TERMINAL);
+    bool is_global = is_global_action(action);
     if (!state && !is_global) return;
     switch (action) {
         case ACT_TOGGLE_FLOATING_TERMINAL: toggle_floating_terminal(); break;
