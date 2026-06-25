@@ -14,6 +14,8 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     [ACT_NORMAL_MODE] = {ACT_NORMAL_MODE, 0, 27, false, false, "NORMAL_MODE", "Normal Mode", "Changes to Normal Mode."},
     [ACT_INSERT_MODE] = {ACT_INSERT_MODE, 0, 'i', false, false, "INSERT_MODE", "Insert Mode", "Changes to Insert mode."},
     [ACT_VISUAL_MODE] = {ACT_VISUAL_MODE, 0, 'v', false, false, "VISUAL_MODE", "Visual Mode", "Changes into Visual Mode."},
+    [ACT_VISUAL_LINE_MODE] = {ACT_VISUAL_LINE_MODE, 0, 'V', false, false, "VISUAL_LINE", "Visual Line", "Changes into Visual Line Mode."},
+    [ACT_VISUAL_BLOCK_MODE] = {ACT_VISUAL_BLOCK_MODE, 0, 22, false, true, "VISUAL_BLOCK", "Visual Block", "Changes into Visual Block Mode (Ctrl+V)."},
     [ACT_COMMAND_MODE] = {ACT_COMMAND_MODE, 0, ':', false, false, "COMMAND_MODE", "Command Mode", "Opens the command bar."},
     
     [ACT_MOVE_UP] = {ACT_MOVE_UP, 0, KEY_UP, false, false, "MOVE_UP", "Move Up", "Move cursor up"},

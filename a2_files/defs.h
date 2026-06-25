@@ -164,7 +164,9 @@ typedef struct {
 typedef enum {
     VISUAL_MODE_NONE,
     VISUAL_MODE_YANK,
-    VISUAL_MODE_SELECT
+    VISUAL_MODE_SELECT,
+    VISUAL_MODE_LINE,
+    VISUAL_MODE_BLOCK
 } VisualSelectionMode;
 #endif
 
@@ -393,6 +395,7 @@ typedef struct {
     EditorMode mode;
     bool single_command_mode;
     char pending_operator;
+    char pending_text_object_mode; // keeps i for inner and a for around
     wint_t pending_sequence_key;
     int prefix_count;
     bool auto_indent;
@@ -485,6 +488,8 @@ typedef enum {
     ACT_NORMAL_MODE,       // esc    
     ACT_INSERT_MODE,       // i
     ACT_VISUAL_MODE,       // v
+    ACT_VISUAL_LINE_MODE,  // V
+    ACT_VISUAL_BLOCK_MODE, // Ctrl+V
     ACT_COMMAND_MODE,      // :
     
     // Basic Navigation
