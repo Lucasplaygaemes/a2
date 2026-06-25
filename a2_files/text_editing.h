@@ -30,4 +30,7 @@ void editor_yank_to_move_register(EditorState *state);
 void editor_paste_from_move_register(EditorState *state);
 void editor_yank_paragraph(EditorState *state);
 
+// Text Object Bounds (used for operators like diw)
+bool find_text_object_bounds(EditorState *state, char object_type, bool inner, int *start_line, int *start_col, int *end_line, int *end_col);
+
 #endif // TEXT_EDITING_H

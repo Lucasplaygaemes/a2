@@ -213,30 +213,57 @@ void editor_delete_selection(EditorState *state) {
         end_col = state->cursor.selection_start_col;
     }
     
-    if (start_line == end_line) {
-        char *line = state->buffer.lines[start_line];
-        int len = end_col - start_col;
-        if (len > 0) {
-            memmove(&line[start_col], &line[end_col], strlen(line) - end_col + 1);
-            char *resized_line = realloc(line, strlen(line) + 1);
-            if (resized_line) state->buffer.lines[start_line] = resized_line;
-        }
-    } else {
-        char *first_line = state->buffer.lines[start_line];
-        char *last_line = state->buffer.lines[end_line];
-        char *last_line_suffix = strdup(&last_line[end_col]);
-        char *new_line = realloc(first_line, start_col + strlen(last_line_suffix) + 1);
-        if (!new_line) { free(last_line_suffix); return; }
-        new_line[start_col] = '\0';
-        strcat(new_line, last_line_suffix);
-        state->buffer.lines[start_line] = new_line;
-        free(last_line_suffix);
-        for (int i = start_line + 1; i <= end_line; i++) free(state->buffer.lines[i]);
-        int num_deleted = end_line - start_line;
+    if (state->cursor.visual_selection_mode == VISUAL_MODE_LINE) {
+        for (int i = start_line; i <= end_line; i++) free(state->buffer.lines[i]);
+        int num_deleted = end_line - start_line + 1;
         if (state->buffer.num_lines > end_line + 1) {
-            memmove(&state->buffer.lines[start_line + 1], &state->buffer.lines[end_line + 1], (state->buffer.num_lines - end_line - 1) * sizeof(char*));
+            memmove(&state->buffer.lines[start_line], &state->buffer.lines[end_line + 1], (state->buffer.num_lines - end_line - 1) * sizeof(char*));
         }
         state->buffer.num_lines -= num_deleted;
+        if (state->buffer.num_lines <= 0) {
+            state->buffer.lines[0] = calloc(1, 1);
+            state->buffer.num_lines = 1;
+        }
+    } 
+    else if (state->cursor.visual_selection_mode == VISUAL_MODE_BLOCK) {
+        int min_col = start_col < end_col ? start_col : end_col;
+        int max_col = start_col > end_col ? start_col : end_col;
+        for (int i = start_line; i <= end_line; i++) {
+            char *line = state->buffer.lines[i];
+            if (!line) continue;
+            int len = strlen(line);
+            if (min_col < len) {
+                int ec = max_col < len ? max_col : len - 1;
+                memmove(&line[min_col], &line[ec + 1], len - ec);
+            }
+        }
+    }
+    else {
+        if (start_line == end_line) {
+            char *line = state->buffer.lines[start_line];
+            int len = end_col - start_col;
+            if (len > 0) {
+                memmove(&line[start_col], &line[end_col], strlen(line) - end_col + 1);
+                char *resized_line = realloc(line, strlen(line) + 1);
+                if (resized_line) state->buffer.lines[start_line] = resized_line;
+            }
+        } else {
+            char *first_line = state->buffer.lines[start_line];
+            char *last_line = state->buffer.lines[end_line];
+            char *last_line_suffix = strdup(&last_line[end_col]);
+            char *new_line = realloc(first_line, start_col + strlen(last_line_suffix) + 1);
+            if (!new_line) { free(last_line_suffix); return; }
+            new_line[start_col] = '\0';
+            strcat(new_line, last_line_suffix);
+            state->buffer.lines[start_line] = new_line;
+            free(last_line_suffix);
+            for (int i = start_line + 1; i <= end_line; i++) free(state->buffer.lines[i]);
+            int num_deleted = end_line - start_line;
+            if (state->buffer.num_lines > end_line + 1) {
+                memmove(&state->buffer.lines[start_line + 1], &state->buffer.lines[end_line + 1], (state->buffer.num_lines - end_line - 1) * sizeof(char*));
+            }
+            state->buffer.num_lines -= num_deleted;
+        }
     }
     for (int i = 0; i < state->buffer.num_lines; i++) mark_line_as_dirty(state, i);
     state->cursor.line = start_line;
@@ -358,18 +385,50 @@ void editor_yank_selection(EditorState *state) {
         start_line = state->cursor.line; start_col = state->cursor.col;
         end_line = state->cursor.selection_start_line; end_col = state->cursor.selection_start_col;
     }
-    size_t total_len = 0;
-    for (int i = start_line; i <= end_line; i++) total_len += strlen(state->buffer.lines[i]) + 1;
-    state->cursor.yank_register = malloc(total_len + 1);
-    if (!state->cursor.yank_register) return;
-    state->cursor.yank_register[0] = '\0';
-    if (start_line == end_line) {
-        int len = end_col - start_col;
-        if (len > 0) strncat(state->cursor.yank_register, state->buffer.lines[start_line] + start_col, len);
-    } else {
-        strcat(state->cursor.yank_register, state->buffer.lines[start_line] + start_col); strcat(state->cursor.yank_register, "\n");
-        for (int i = start_line + 1; i < end_line; i++) { strcat(state->cursor.yank_register, state->buffer.lines[i]); strcat(state->cursor.yank_register, "\n"); }
-        strncat(state->cursor.yank_register, state->buffer.lines[end_line], end_col);
+    if (state->cursor.visual_selection_mode == VISUAL_MODE_LINE) {
+        size_t total_len = 0;
+        for (int i = start_line; i <= end_line; i++) total_len += strlen(state->buffer.lines[i]) + 2;
+        state->cursor.yank_register = malloc(total_len + 1);
+        if (!state->cursor.yank_register) return;
+        state->cursor.yank_register[0] = '\0';
+        for (int i = start_line; i <= end_line; i++) {
+            strcat(state->cursor.yank_register, state->buffer.lines[i]);
+            strcat(state->cursor.yank_register, "\n");
+        }
+    }
+    else if (state->cursor.visual_selection_mode == VISUAL_MODE_BLOCK) {
+        int min_col = start_col < end_col ? start_col : end_col;
+        int max_col = start_col > end_col ? start_col : end_col;
+        size_t total_len = 0;
+        for (int i = start_line; i <= end_line; i++) total_len += (max_col - min_col + 2);
+        state->cursor.yank_register = malloc(total_len + 1);
+        if (!state->cursor.yank_register) return;
+        state->cursor.yank_register[0] = '\0';
+        for (int i = start_line; i <= end_line; i++) {
+            char *line = state->buffer.lines[i];
+            if (!line) continue;
+            int len = strlen(line);
+            if (min_col < len) {
+                int ec = max_col < len ? max_col : len - 1;
+                strncat(state->cursor.yank_register, line + min_col, ec - min_col + 1);
+            }
+            strcat(state->cursor.yank_register, "\n");
+        }
+    }
+    else {
+        size_t total_len = 0;
+        for (int i = start_line; i <= end_line; i++) total_len += strlen(state->buffer.lines[i]) + 1;
+        state->cursor.yank_register = malloc(total_len + 1);
+        if (!state->cursor.yank_register) return;
+        state->cursor.yank_register[0] = '\0';
+        if (start_line == end_line) {
+            int len = end_col - start_col;
+            if (len > 0) strncat(state->cursor.yank_register, state->buffer.lines[start_line] + start_col, len);
+        } else {
+            strcat(state->cursor.yank_register, state->buffer.lines[start_line] + start_col); strcat(state->cursor.yank_register, "\n");
+            for (int i = start_line + 1; i < end_line; i++) { strcat(state->cursor.yank_register, state->buffer.lines[i]); strcat(state->cursor.yank_register, "\n"); }
+            strncat(state->cursor.yank_register, state->buffer.lines[end_line], end_col);
+        }
     }
     editor_set_status_msg(state, "%d lines yanked", end_line - start_line + 1);
 }
@@ -384,18 +443,50 @@ void editor_global_yank(EditorState *state) {
         start_line = state->cursor.line; start_col = state->cursor.col;
         end_line = state->cursor.selection_start_line; end_col = state->cursor.selection_start_col;
     }
-    size_t total_len = 0;
-    for (int i = start_line; i <= end_line; i++) total_len += strlen(state->buffer.lines[i]) + 1;
-    global_yank_register = malloc(total_len + 1);
-    if (!global_yank_register) return;
-    global_yank_register[0] = '\0';
-    if (start_line == end_line) {
-        int len = end_col - start_col;
-        if (len > 0) strncat(global_yank_register, state->buffer.lines[start_line] + start_col, len);
-    } else {
-        strcat(global_yank_register, state->buffer.lines[start_line] + start_col); strcat(global_yank_register, "\n");
-        for (int i = start_line + 1; i < end_line; i++) { strcat(global_yank_register, state->buffer.lines[i]); strcat(global_yank_register, "\n"); }
-        strncat(global_yank_register, state->buffer.lines[end_line], end_col);
+    if (state->cursor.visual_selection_mode == VISUAL_MODE_LINE) {
+        size_t total_len = 0;
+        for (int i = start_line; i <= end_line; i++) total_len += strlen(state->buffer.lines[i]) + 2;
+        global_yank_register = malloc(total_len + 1);
+        if (!global_yank_register) return;
+        global_yank_register[0] = '\0';
+        for (int i = start_line; i <= end_line; i++) {
+            strcat(global_yank_register, state->buffer.lines[i]);
+            strcat(global_yank_register, "\n");
+        }
+    }
+    else if (state->cursor.visual_selection_mode == VISUAL_MODE_BLOCK) {
+        int min_col = start_col < end_col ? start_col : end_col;
+        int max_col = start_col > end_col ? start_col : end_col;
+        size_t total_len = 0;
+        for (int i = start_line; i <= end_line; i++) total_len += (max_col - min_col + 2);
+        global_yank_register = malloc(total_len + 1);
+        if (!global_yank_register) return;
+        global_yank_register[0] = '\0';
+        for (int i = start_line; i <= end_line; i++) {
+            char *line = state->buffer.lines[i];
+            if (!line) continue;
+            int len = strlen(line);
+            if (min_col < len) {
+                int ec = max_col < len ? max_col : len - 1;
+                strncat(global_yank_register, line + min_col, ec - min_col + 1);
+            }
+            strcat(global_yank_register, "\n");
+        }
+    }
+    else {
+        size_t total_len = 0;
+        for (int i = start_line; i <= end_line; i++) total_len += strlen(state->buffer.lines[i]) + 1;
+        global_yank_register = malloc(total_len + 1);
+        if (!global_yank_register) return;
+        global_yank_register[0] = '\0';
+        if (start_line == end_line) {
+            int len = end_col - start_col;
+            if (len > 0) strncat(global_yank_register, state->buffer.lines[start_line] + start_col, len);
+        } else {
+            strcat(global_yank_register, state->buffer.lines[start_line] + start_col); strcat(global_yank_register, "\n");
+            for (int i = start_line + 1; i < end_line; i++) { strcat(global_yank_register, state->buffer.lines[i]); strcat(global_yank_register, "\n"); }
+            strncat(global_yank_register, state->buffer.lines[end_line], end_col);
+        }
     }
     editor_set_status_msg(state, "%d lines yanked to global register", end_line - start_line + 1);
 }
@@ -454,18 +545,50 @@ void editor_yank_to_move_register(EditorState *state) {
         start_line = state->cursor.line; start_col = state->cursor.col;
         end_line = state->cursor.selection_start_line; end_col = state->cursor.selection_start_col;
     }
-    size_t total_len = 0;
-    for (int i = start_line; i <= end_line; i++) total_len += strlen(state->buffer.lines[i]) + 1;
-    state->cursor.move_register = malloc(total_len + 1);
-    if (!state->cursor.move_register) return;
-    state->cursor.move_register[0] = '\0';
-    if (start_line == end_line) {
-        int len = end_col - start_col;
-        if (len > 0) strncat(state->cursor.move_register, state->buffer.lines[start_line] + start_col, len);
-    } else {
-        strcat(state->cursor.move_register, state->buffer.lines[start_line] + start_col); strcat(state->cursor.move_register, "\n");
-        for (int i = start_line + 1; i < end_line; i++) { strcat(state->cursor.move_register, state->buffer.lines[i]); strcat(state->cursor.move_register, "\n"); }
-        strncat(state->cursor.move_register, state->buffer.lines[end_line], end_col);
+    if (state->cursor.visual_selection_mode == VISUAL_MODE_LINE) {
+        size_t total_len = 0;
+        for (int i = start_line; i <= end_line; i++) total_len += strlen(state->buffer.lines[i]) + 2;
+        state->cursor.move_register = malloc(total_len + 1);
+        if (!state->cursor.move_register) return;
+        state->cursor.move_register[0] = '\0';
+        for (int i = start_line; i <= end_line; i++) {
+            strcat(state->cursor.move_register, state->buffer.lines[i]);
+            strcat(state->cursor.move_register, "\n");
+        }
+    }
+    else if (state->cursor.visual_selection_mode == VISUAL_MODE_BLOCK) {
+        int min_col = start_col < end_col ? start_col : end_col;
+        int max_col = start_col > end_col ? start_col : end_col;
+        size_t total_len = 0;
+        for (int i = start_line; i <= end_line; i++) total_len += (max_col - min_col + 2);
+        state->cursor.move_register = malloc(total_len + 1);
+        if (!state->cursor.move_register) return;
+        state->cursor.move_register[0] = '\0';
+        for (int i = start_line; i <= end_line; i++) {
+            char *line = state->buffer.lines[i];
+            if (!line) continue;
+            int len = strlen(line);
+            if (min_col < len) {
+                int ec = max_col < len ? max_col : len - 1;
+                strncat(state->cursor.move_register, line + min_col, ec - min_col + 1);
+            }
+            strcat(state->cursor.move_register, "\n");
+        }
+    }
+    else {
+        size_t total_len = 0;
+        for (int i = start_line; i <= end_line; i++) total_len += strlen(state->buffer.lines[i]) + 1;
+        state->cursor.move_register = malloc(total_len + 1);
+        if (!state->cursor.move_register) return;
+        state->cursor.move_register[0] = '\0';
+        if (start_line == end_line) {
+            int len = end_col - start_col;
+            if (len > 0) strncat(state->cursor.move_register, state->buffer.lines[start_line] + start_col, len);
+        } else {
+            strcat(state->cursor.move_register, state->buffer.lines[start_line] + start_col); strcat(state->cursor.move_register, "\n");
+            for (int i = start_line + 1; i < end_line; i++) { strcat(state->cursor.move_register, state->buffer.lines[i]); strcat(state->cursor.move_register, "\n"); }
+            strncat(state->cursor.move_register, state->buffer.lines[end_line], end_col);
+        }
     }
 }
 
@@ -602,4 +725,104 @@ void editor_yank_paragraph(EditorState *state) {
         strcat(state->cursor.yank_register, "\n");
     }
     editor_set_status_msg(state, "%d lines of a paragraph yanked", end_line - start_line + 1);
+}
+
+
+
+bool find_text_object_bounds(EditorState *state, char object_type, bool inner, int *start_line, int *start_col, int *end_line, int *end_col) {
+    int cur_line = state->cursor.line;
+    int cur_col = state->cursor.col;
+    char *line = state->buffer.lines[cur_line];
+    if (!line) return false;
+    int len = strlen(line);
+
+    if (object_type == 'w') { // word
+        if (len == 0) return false;
+        #define is_word_char(c) (isalnum((unsigned char)(c)) || ((c) == '_'))
+        int sc = cur_col;
+        if (sc >= len) sc = len - 1;
+        if (sc < 0) sc = 0;
+        bool is_word = is_word_char(line[sc]);
+        while (sc > 0 && is_word_char(line[sc - 1]) == is_word) sc--;
+        int ec = cur_col;
+        if (ec >= len) ec = len - 1;
+        if (ec < 0) ec = 0;
+        while (ec < len - 1 && is_word_char(line[ec + 1]) == is_word) ec++;
+        if (!inner) {
+            if (ec < len - 1 && isspace((unsigned char)line[ec + 1])) {
+                while (ec < len - 1 && isspace((unsigned char)line[ec + 1])) ec++;
+            } else if (sc > 0 && isspace((unsigned char)line[sc - 1])) {
+                while (sc > 0 && isspace((unsigned char)line[sc - 1])) sc--;
+            }
+        }
+        *start_line = cur_line;
+        *start_col = sc;
+        *end_line = cur_line;
+        *end_col = ec + 1; // exclusive end
+        return true;
+    }
+
+    if (object_type == '"' || object_type == '\'' || object_type == '`') {
+        int sc = -1, ec = -1;
+        for (int i = cur_col; i >= 0; i--) {
+            if (line[i] == object_type) { sc = i; break; }
+        }
+        for (int i = cur_col + 1; i < len; i++) {
+            if (line[i] == object_type) { ec = i; break; }
+        }
+        if (sc == -1 || ec == -1) {
+            int first = -1;
+            for (int i = 0; i < len; i++) {
+                if (line[i] == object_type) { first = i; break; }
+            }
+            if (first != -1) {
+                for (int i = first + 1; i < len; i++) {
+                    if (line[i] == object_type) { sc = first; ec = i; break; }
+                }
+            }
+        }
+        if (sc != -1 && ec != -1) {
+            *start_line = cur_line;
+            *end_line = cur_line;
+            *start_col = inner ? sc + 1 : sc;
+            *end_col = inner ? ec : ec + 1;
+            return true;
+        }
+        return false;
+    }
+
+    if (object_type == '(' || object_type == ')' || object_type == '[' || object_type == ']' || object_type == '{' || object_type == '}') {
+        char open_char = '(';
+        char close_char = ')';
+        if (object_type == '[' || object_type == ']') { open_char = '['; close_char = ']'; }
+        else if (object_type == '{' || object_type == '}') { open_char = '{'; close_char = '}'; }
+        int sc = -1, ec = -1, depth = 0;
+        // search left for matching open
+        for (int i = cur_col; i >= 0; i--) {
+            if (line[i] == close_char) depth++;
+            else if (line[i] == open_char) {
+                if (depth == 0) { sc = i; break; }
+                depth--;
+            }
+        }
+        depth = 0;
+        // search right for matching close
+        for (int i = cur_col; i < len; i++) {
+            if (line[i] == open_char) depth++;
+            else if (line[i] == close_char) {
+                if (depth == 0) { ec = i; break; }
+                depth--;
+            }
+        }
+        if (sc != -1 && ec != -1) {
+            *start_line = cur_line;
+            *end_line = cur_line;
+            *start_col = inner ? sc + 1 : sc;
+            *end_col = inner ? ec : ec + 1;
+            return true;
+        }
+        return false;
+    }
+
+    return false;
 }
