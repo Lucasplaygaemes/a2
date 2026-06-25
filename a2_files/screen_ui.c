@@ -517,7 +517,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         if (token_len > 0) {
                             char *token_ptr = &line[token_start_in_line];
                             int color_pair = 0;
-                            if (is_selected(state, file_line_idx, token_start_in_line) && state->cursor.visual_selection_mode == VISUAL_MODE_SELECT) color_pair = PAIR_SELECTION;
+                            if (is_selected(state, file_line_idx, token_start_in_line)) color_pair = PAIR_SELECTION;
                             else if (token_len == 1 && is_unmatched_bracket(state, file_line_idx, token_start_in_line)) color_pair = 11;
                             else if (line[token_start_in_line] == '#') { 
                                 color_pair = PAIR_COMMENT; 
@@ -694,7 +694,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     }
                     
                     int color_pair = 0;
-                    if (is_selected(state, line_idx, token_start) && state->cursor.visual_selection_mode == VISUAL_MODE_SELECT) color_pair = PAIR_SELECTION;
+                    if (is_selected(state, line_idx, token_start)) color_pair = PAIR_SELECTION;
                     else if (token_len == 1 && is_unmatched_bracket(state, line_idx, token_start)) color_pair = 11;
                     else if (current_char == '#') { 
                         color_pair = PAIR_COMMENT; 
@@ -1104,6 +1104,17 @@ bool is_selected(EditorState *state, int line_idx, int col_idx) {
     if (line_idx < start_line || line_idx > end_line) {
         return false;
     }
+    // VISUAL_MODE_LINE selects whole lines within range
+    if (state->cursor.visual_selection_mode == VISUAL_MODE_LINE) {
+        return true;
+    }
+    // VISUAL_MODE_BLOCK selects if column within block range
+    if (state->cursor.visual_selection_mode == VISUAL_MODE_BLOCK) {
+        int min_col = start_col < end_col ? start_col : end_col;
+        int max_col = start_col > end_col ? start_col : end_col;
+        return (col_idx >= min_col && col_idx <= max_col);
+    }
+    // Standard visual mode
     if (line_idx == start_line && col_idx < start_col) {
         return false;
     }

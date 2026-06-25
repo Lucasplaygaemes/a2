@@ -189,6 +189,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 editor_set_status_msg(state, "");
             } else if (state->input.mode == INSERT || state->input.mode == VISUAL) {
                 state->input.mode = NORMAL;
+                state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
             } else if (state->input.mode == NORMAL) {
                 // Clear search highlight on ESC in normal mode
                 if (state->search.last_term[0] != '\0') {
@@ -284,27 +285,110 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
             handle_normal_mode_key(state, ch);
             break;
         case OPERATOR_PENDING: {
-                char op = state->input.pending_operator;
-                state->input.pending_operator = 0;
-                state->input.mode = INSERT; // FIX: Return to NORMAL mode by default
+    char op = state->input.pending_operator;
 
-                if (op == 'y') {
-                    if (ch == 'y') editor_yank_line(state);
-                    else if (ch == 'Y') editor_yank_line_global(state);
-                    else if (ch == 'c') editor_yank_line_clipboard(state);
-                } else if (op == 'd') {
-                    if (ch == 'd') editor_delete_line(state);
-                }
-                
-                break;
+    // Se já estivermos no modo objeto de texto esperando a tecla alvo (ex: 'w' em 'diw')
+    if (state->input.pending_text_object_mode != 0) {
+        char inner_mode = state->input.pending_text_object_mode;
+        state->input.pending_text_object_mode = 0;
+        state->input.pending_operator = 0;
+        state->input.mode = NORMAL;
+
+        int sl, sc, el, ec;
+        bool inner = (inner_mode == 'i');
+        if (find_text_object_bounds(state, ch, inner, &sl, &sc, &el, &ec)) {
+            state->cursor.selection_start_line = sl;
+            state->cursor.selection_start_col = sc;
+            state->cursor.line = el;
+            state->cursor.col = ec;
+
+            if (op == 'd') {
+                editor_delete_selection(state);
+            } else if (op == 'y') {
+                editor_yank_selection(state);
+                state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
+            } else if (op == 'c') {
+                editor_delete_selection(state);
+                state->input.mode = INSERT;
             }
-            case INSERT:
-                handle_insert_mode_key(state, ch);
-                break;
-            case COMMAND:
-                handle_command_mode_key(state, ch, should_exit);
-                break;
+        } else {
+            editor_set_status_msg(state, "Objeto de texto nao encontrado.");
         }
+    }
+    // Se o usuário digitou 'i' ou 'a' para selecionar um objeto de texto
+    else if (ch == 'i' || ch == 'a') {
+        state->input.pending_text_object_mode = ch;
+        editor_set_status_msg(state, "-- (%c) %c --", op, (char)ch);
+    }
+    // Execução padrão: duplicação de operador (dd, yy, cc) ou operador + movimento
+    else {
+        state->input.pending_operator = 0;
+        state->input.mode = NORMAL;
+
+        if (ch == op) { // dd, yy ou cc
+            if (op == 'd') {
+                editor_delete_line(state);
+            } else if (op == 'y') {
+                editor_yank_line(state);
+            } else if (op == 'c') { // cc: limpa a linha e entra em INSERT
+                push_undo(state);
+                clear_redo_stack(state);
+                char *l = state->buffer.lines[state->cursor.line];
+                if (l) {
+                    l[0] = '\0';
+                    state->cursor.col = 0;
+                    state->cursor.ideal_col = 0;
+                    state->input.mode = INSERT;
+                    state->buffer.is_dirty = true;
+                }
+            }
+        } else { // Operador + Movimento (ex: d$, d Alt+W)
+            int start_line = state->cursor.line;
+            int start_col = state->cursor.col;
+
+            // Executa o movimento usando o sistema de ações mapeadas ou teclas normais
+            EditorAction action = get_action_from_key(ch, false, false, 0);
+            if (action != ACT_NONE) {
+                execute_action(action, state, should_exit);
+            } else {
+                handle_normal_mode_key(state, ch);
+            }
+
+            // Organiza os limites da seleção
+            int sl, sc, el, ec;
+            if (start_line < state->cursor.line || (start_line == state->cursor.line && start_col <= state->cursor.col)) {
+                sl = start_line; sc = start_col;
+                el = state->cursor.line; ec = state->cursor.col;
+            } else {
+                sl = state->cursor.line; sc = state->cursor.col;
+                el = start_line; ec = start_col;
+            }
+
+            state->cursor.selection_start_line = sl;
+            state->cursor.selection_start_col = sc;
+            state->cursor.line = el;
+            state->cursor.col = ec;
+
+            if (op == 'd') {
+                editor_delete_selection(state);
+            } else if (op == 'y') {
+                editor_yank_selection(state);
+                state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
+            } else if (op == 'c') {
+                editor_delete_selection(state);
+                state->input.mode = INSERT;
+            }
+        }
+    }
+    break;
+}
+        case INSERT:
+            handle_insert_mode_key(state, ch);
+            break;
+        case COMMAND:
+            handle_command_mode_key(state, ch, should_exit);
+            break;
+    }
         
 check_single_command:
     // After processing input, validate if the state is still valid.
