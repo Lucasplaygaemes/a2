@@ -375,15 +375,6 @@ void handle_normal_mode_key(EditorState *state, wint_t ch) {
                 state->cursor.visual_selection_mode = VISUAL_MODE_YANK; editor_set_status_msg(state, "Global visual selection started");
             } else { editor_global_yank(state); state->cursor.visual_selection_mode = VISUAL_MODE_NONE; }
             break;
-        // case 'p': editor_paste(state); break;
-        // case 'P': editor_global_paste(state); break;
-        // case 'y': state->input.mode = OPERATOR_PENDING; state->input.pending_operator = 'y'; break;
-        // case 'Y': editor_yank_line(state); break;
-        // case 'm':
-            // if (state->cursor.is_moving) { editor_paste_from_move_register(state); state->cursor.is_moving = false; free(state->cursor.move_register); state->cursor.move_register = NULL; editor_set_status_msg(state, "Text moved."); }
-            // state->buffer.is_dirty = true; break;
-        // case 'u': do_undo(state); break;
-        // case 'U': state->buffer.is_dirty = true; state->cursor.col = strlen(state->buffer.lines[state->cursor.line]); editor_handle_enter(state); state->input.mode = INSERT; break;
         case 'G': state->buffer.is_dirty = true; state->cursor.line = state->buffer.num_lines - 1; state->cursor.col = 0; state->cursor.ideal_col = 0; break;
         case 'g': state->buffer.is_dirty = true; state->cursor.line = 0; state->cursor.col = 0; state->cursor.ideal_col = 0; break;
         case 'v': state->input.mode = VISUAL; state->buffer.is_dirty = true; break;
