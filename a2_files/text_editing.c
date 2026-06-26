@@ -826,3 +826,19 @@ bool find_text_object_bounds(EditorState *state, char object_type, bool inner, i
 
     return false;
 }
+
+void editor_global_yank_to_move_register(EditorState *state) {
+    char* prev_yank = global_yank_register;
+    global_yank_register = NULL;
+    editor_global_yank(state);
+    if (global_move_register) free(global_move_register);
+    global_move_register = global_yank_register;
+    global_yank_register = prev_yank;
+}
+
+void editor_paste_from_global_move_register(EditorState *state) {
+    char* prev_yank = global_yank_register;
+    global_yank_register = global_move_register;
+    editor_global_paste(state);
+    global_yank_register = prev_yank;
+}
