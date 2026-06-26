@@ -4,6 +4,8 @@
 WorkspaceManager workspace_manager;
 char executable_dir[PATH_MAX] = {0};
 char* global_yank_register = NULL;
+char* global_move_register = NULL;
+bool is_global_moving = false;
 GrepState global_grep_state;
 
 KeyBinding global_bindings[ACT_COUNT];
@@ -105,6 +107,10 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     [ACT_YANK_GLOBAL] = {ACT_YANK_GLOBAL, 0, 25, false, true, "YANK_GLOBAL", "Yank Global", "Copy selection to global buffer (Ctrl+Y)"},
     [ACT_YANK_CLIPBOARD] = {ACT_YANK_CLIPBOARD, 'y', 'c', false, false, "YANK_CLIPBOARD", "Yank Clipboard", "Copy selection to system clipboard"},
     [ACT_YANK_PARAGRAPH] = {ACT_YANK_PARAGRAPH, 'y', 'p', false, false, "YANK_PARAGRAPH", "Yank Paragraph", "Copy current paragraph"},
+    [ACT_PASTE_LOCAL] = {ACT_PASTE_LOCAL, 0, 'p', false, false, "PASTE_LOCAL", "Paste Local", "Paste local buffer"},
+    [ACT_PASTE_GLOBAL] = {ACT_PASTE_GLOBAL, 0, 'P', false, false, "PASTE_GLOBAL", "Paste Global", "Paste global buffer"},
+    [ACT_MOVE_LOCAL] = {ACT_MOVE_LOCAL, 0, 'm', false, false, "MOVE_LOCAL", "Move Local", "Cut selection or paste moved text"},
+    [ACT_MOVE_GLOBAL] = {ACT_MOVE_GLOBAL, 0, 'M', false, false, "MOVE_GLOBAL", "Move Global", "Cut selection to global or paste it"},
     [ACT_NEXT_PARAGRAPH] = {ACT_NEXT_PARAGRAPH, 0, '}', false, false, "NEXT_PARAGRAPH", "Next Paragraph", "Jump to next blank line"},
     [ACT_PREV_PARAGRAPH] = {ACT_PREV_PARAGRAPH, 0, '{', false, false, "PREV_PARAGRAPH", "Prev Paragraph", "Jump to previous blank line"},
 

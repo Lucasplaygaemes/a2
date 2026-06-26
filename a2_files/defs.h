@@ -574,6 +574,10 @@ typedef enum {
     ACT_YANK_GLOBAL,       // Ctrl+y
     ACT_YANK_CLIPBOARD,    // Alt+y, c
     ACT_YANK_PARAGRAPH,    // Alt+y, p
+    ACT_PASTE_LOCAL,       // p
+    ACT_PASTE_GLOBAL,      // P
+    ACT_MOVE_LOCAL,        // m
+    ACT_MOVE_GLOBAL,       // M
     ACT_NEXT_PARAGRAPH,    // }
     ACT_PREV_PARAGRAPH,    // {
     
@@ -755,6 +759,8 @@ extern WorkspaceManager workspace_manager;
 
 extern char executable_dir[PATH_MAX];
 extern char* global_yank_register;
+extern char* global_move_register;
+extern bool is_global_moving;
 
 #ifndef GREPSTATE_DEFINED
 #define GREPSTATE_DEFINED
