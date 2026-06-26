@@ -227,6 +227,53 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         } break;
         case ACT_YANK_CLIPBOARD: copy_selection_to_clipboard(state); break;
         case ACT_YANK_PARAGRAPH: editor_yank_paragraph(state); break;
+        case ACT_PASTE_LOCAL:
+            editor_paste(state);
+            state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
+            state->input.mode = NORMAL;
+            break;
+        case ACT_PASTE_GLOBAL:
+            editor_global_paste(state);
+            state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
+            state->input.mode = NORMAL;
+            break;
+        case ACT_MOVE_LOCAL:
+            if (state->input.mode == VISUAL) {
+                if (state->cursor.visual_selection_mode != VISUAL_MODE_NONE) { 
+                    editor_yank_to_move_register(state); 
+                    editor_delete_selection(state); 
+                    state->cursor.is_moving = true; 
+                    editor_set_status_msg(state, "Text cut. Press 'm' again to paste."); 
+                }
+            } else {
+                if (state->cursor.is_moving) { 
+                    editor_paste_from_move_register(state); 
+                    state->cursor.is_moving = false; 
+                    free(state->cursor.move_register); 
+                    state->cursor.move_register = NULL; 
+                    editor_set_status_msg(state, "Text moved."); 
+                }
+            }
+            state->buffer.is_dirty = true;
+            break;
+        case ACT_MOVE_GLOBAL:
+            if (state->input.mode == VISUAL) {
+                if (state->cursor.visual_selection_mode != VISUAL_MODE_NONE) { 
+                    editor_global_yank_to_move_register(state); 
+                    editor_delete_selection(state); 
+                    is_global_moving = true; 
+                    editor_set_status_msg(state, "Global text cut. Press 'M' again to paste."); 
+                }
+            } else {
+                if (is_global_moving) { 
+                    editor_paste_from_global_move_register(state); 
+                    is_global_moving = false; 
+                    if (global_move_register) { free(global_move_register); global_move_register = NULL; } 
+                    editor_set_status_msg(state, "Global text moved."); 
+                }
+            }
+            state->buffer.is_dirty = true;
+            break;
         case ACT_NEXT_PARAGRAPH: {
             state->buffer.is_dirty = true; bool fb = false; int i = state->cursor.line + 1;
             while (i < state->buffer.num_lines) { if (is_line_blank(state->buffer.lines[i])) { fb = true; break; } i++; }
@@ -328,15 +375,15 @@ void handle_normal_mode_key(EditorState *state, wint_t ch) {
                 state->cursor.visual_selection_mode = VISUAL_MODE_YANK; editor_set_status_msg(state, "Global visual selection started");
             } else { editor_global_yank(state); state->cursor.visual_selection_mode = VISUAL_MODE_NONE; }
             break;
-        case 'p': editor_paste(state); break;
-        case 'P': editor_global_paste(state); break;
-        case 'y': state->input.mode = OPERATOR_PENDING; state->input.pending_operator = 'y'; break;
-        case 'Y': editor_yank_line(state); break;
-        case 'm':
-            if (state->cursor.is_moving) { editor_paste_from_move_register(state); state->cursor.is_moving = false; free(state->cursor.move_register); state->cursor.move_register = NULL; editor_set_status_msg(state, "Text moved."); }
-            state->buffer.is_dirty = true; break;
-        case 'u': do_undo(state); break;
-        case 'U': state->buffer.is_dirty = true; state->cursor.col = strlen(state->buffer.lines[state->cursor.line]); editor_handle_enter(state); state->input.mode = INSERT; break;
+        // case 'p': editor_paste(state); break;
+        // case 'P': editor_global_paste(state); break;
+        // case 'y': state->input.mode = OPERATOR_PENDING; state->input.pending_operator = 'y'; break;
+        // case 'Y': editor_yank_line(state); break;
+        // case 'm':
+            // if (state->cursor.is_moving) { editor_paste_from_move_register(state); state->cursor.is_moving = false; free(state->cursor.move_register); state->cursor.move_register = NULL; editor_set_status_msg(state, "Text moved."); }
+            // state->buffer.is_dirty = true; break;
+        // case 'u': do_undo(state); break;
+        // case 'U': state->buffer.is_dirty = true; state->cursor.col = strlen(state->buffer.lines[state->cursor.line]); editor_handle_enter(state); state->input.mode = INSERT; break;
         case 'G': state->buffer.is_dirty = true; state->cursor.line = state->buffer.num_lines - 1; state->cursor.col = 0; state->cursor.ideal_col = 0; break;
         case 'g': state->buffer.is_dirty = true; state->cursor.line = 0; state->cursor.col = 0; state->cursor.ideal_col = 0; break;
         case 'v': state->input.mode = VISUAL; state->buffer.is_dirty = true; break;
@@ -425,14 +472,7 @@ void handle_visual_mode_key(EditorState *state, wint_t ch) {
             } else state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
             break;
         case 'y':
-            if (state->cursor.visual_selection_mode == VISUAL_MODE_NONE) {
-                state->cursor.selection_start_line = state->cursor.line; state->cursor.selection_start_col = state->cursor.col;
-                state->cursor.visual_selection_mode = VISUAL_MODE_YANK; editor_set_status_msg(state, "Visual selection for yank started");
-            } else { editor_yank_selection(state); state->cursor.visual_selection_mode = VISUAL_MODE_NONE; state->input.mode = NORMAL; }
-            state->buffer.is_dirty = true; break;
-        case 'm':
-            if (state->cursor.visual_selection_mode != VISUAL_MODE_NONE) { editor_yank_to_move_register(state); editor_delete_selection(state); state->cursor.is_moving = true; editor_set_status_msg(state, "Text cut. Press 'm' again to paste."); }
-            state->buffer.is_dirty = true; break;
+            state->input.mode = NORMAL; state->buffer.is_dirty = true; break;
         case 'v': 
             state->input.mode = NORMAL; 
             state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
