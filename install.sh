@@ -140,6 +140,14 @@ install_binaries() {
         sudo mkdir -p /usr/local/share/a2/syntaxes
         sudo cp -r syntaxes/* /usr/local/share/a2/syntaxes/
     fi
+
+    info "Installing themes to /usr/local/share/a2/themes/..."
+    if [ ! -d "themes" ]; then
+        info "Warning: 'themes' directory not found. Skipping theme installation."
+    else
+        sudo mkdir -p /usr/local/share/a2/themes
+        sudo cp -r themes/* /usr/local/share/a2/themes/
+    fi
     
     info "Installation complete!"
     info "You can now run 'a2' from anywhere in your terminal."
