@@ -29,7 +29,7 @@ install_dependencies() {
 
     if command -v apt-get &> /dev/null; then
         info "Detected APT package manager (Debian/Ubuntu)."
-        REQUIRED_PACKAGES="build-essential libncursesw5-dev libjansson-dev libcurl4-openssl-dev libssl-dev hunspell git cmake"
+        REQUIRED_PACKAGES="build-essential libncursesw5-dev libjansson-dev libcurl4-openssl-dev libssl-dev hunspell git cmake hunspell libhunspell-dev"
         PACKAGES_TO_INSTALL=""
         for pkg in $REQUIRED_PACKAGES; do
             if ! dpkg -s "$pkg" &> /dev/null; then
