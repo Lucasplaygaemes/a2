@@ -39,10 +39,10 @@ void debug_log(const char *format, ...) {
 void get_history_filename(char *buffer, size_t size) {
     const char *home_dir = getenv("HOME");
     if (home_dir) {
-        snprintf(buffer, size, "%s/.jntd_dir_history", home_dir);
+        snprintf(buffer, size, "%s/.a2_dir_history", home_dir);
     }
     else {
-        snprintf(buffer, size, ".jntd_dir_history");
+        snprintf(buffer, size, ".a2_dir_history");
     }
 }
 
@@ -364,9 +364,9 @@ void prompt_for_directory_change(EditorState *state) {
 void get_file_history_filename(char *buffer, size_t size) {
     const char *home_dir = getenv("HOME");
     if (home_dir) {
-        snprintf(buffer, size, "%s/.jntd_file_history", home_dir);
+        snprintf(buffer, size, "%s/.a2_file_history", home_dir);
     } else {
-        snprintf(buffer, size, ".jntd_file_history");
+        snprintf(buffer, size, ".a2_file_history");
     }
 }
 

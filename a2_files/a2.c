@@ -22,6 +22,7 @@
 #include <limits.h> // For PATH_MAX
 #include <unistd.h> // For getcwd()
 #include <errno.h>      // For the errno variable
+#include <signal.h>
 #include <locale.h>
 #include <sys/select.h>
 #include <sys/wait.h> 
@@ -432,6 +433,8 @@ bool handle_global_shortcut(int ch, bool alt, bool ctrl, bool *should_exit) {
 
 
 int main(int argc, char *argv[]) {
+    signal(SIGPIPE, SIG_IGN); // Ignore SIGPIPE to avoid crashing when LSP server is missing/dies
+
     char exe_path_buf[PATH_MAX];
     ssize_t len = readlink("/proc/self/exe", exe_path_buf, sizeof(exe_path_buf) - 1);
     if (len != -1) {
