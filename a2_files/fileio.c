@@ -9,6 +9,7 @@
 #include "window_managment.h"
 #include "cache.h"
 #include "settings.h"
+#include "base64.h"
 #include "logger.h"
 
 
@@ -296,15 +297,39 @@ void asm_convert_file(EditorState *state, const char *filename) {
 }
 
 void load_file_core(EditorState *state, const char *filename) {
+    if (state->buffer.is_image) {
+        delete_kitty_image(state->buffer.kitty_image_id);
+        state->buffer.is_image = false;
+    }
+    
+    // Reset cursor when loading a new file
+    state->cursor.line = 0;
+    state->cursor.col = 0;
+    state->view.top_line = 0;
+    state->view.left_col = 0;
     for (int i = 0; i < state->buffer.num_lines; i++) { if(state->buffer.lines[i]) free(state->buffer.lines[i]); state->buffer.lines[i] = NULL; }
     state->buffer.num_lines = 0;
     strncpy(state->buffer.filename, filename, sizeof(state->buffer.filename) - 1);
     state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
 
+    char expanded_filename[PATH_MAX];
+    if (filename[0] == '~') {
+        const char *home = getenv("HOME");
+        if (home) {
+            snprintf(expanded_filename, PATH_MAX, "%s%s", home, filename + 1);
+        } else {
+            strncpy(expanded_filename, filename, PATH_MAX - 1);
+            expanded_filename[PATH_MAX - 1] = '\0';
+        }
+    } else {
+        strncpy(expanded_filename, filename, PATH_MAX - 1);
+        expanded_filename[PATH_MAX - 1] = '\0';
+    }
+
     char absolute_path[PATH_MAX];
-    if (realpath(filename, absolute_path) == NULL) {
-        // If realpath fails, use the original filename
-        strncpy(absolute_path, filename, PATH_MAX - 1);
+    if (realpath(expanded_filename, absolute_path) == NULL) {
+        // If realpath fails, use the expanded filename
+        strncpy(absolute_path, expanded_filename, PATH_MAX - 1);
         absolute_path[PATH_MAX - 1] = '\0';
     }
 
@@ -312,6 +337,19 @@ void load_file_core(EditorState *state, const char *filename) {
     state->buffer.num_lines = 0;
     strncpy(state->buffer.filename, absolute_path, sizeof(state->buffer.filename) - 1);
     state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
+    
+    state->buffer.is_image = false;
+    char *ext = strrchr(absolute_path, '.');
+    if (ext && (strcmp(ext, ".png") == 0 || strcmp(ext, ".jpg") == 0 || strcmp(ext, ".jpeg") == 0 || strcmp(ext, ".webp") == 0)) {
+        state->buffer.is_image = true;
+        state->buffer.image_transmitted = false;
+        state->buffer.kitty_image_id = (uint32_t)(rand() % 1000000 + 1);
+        state->buffer.lines[0] = strdup(" "); // Dummy line
+        state->buffer.num_lines = 1;
+        editor_set_status_msg(state, "Image loaded: %s", absolute_path);
+        
+        return;
+    }
 
     FILE *file = fopen(filename, "r");
     if (file) {
@@ -400,6 +438,10 @@ void load_file(EditorState *state, const char *filename) {
 }
 
 void save_file(EditorState *state) {
+    if (state->buffer.is_image) {
+        editor_set_status_msg(state, "Cannot save an image file as text.");
+        return;
+    }
     if (strcmp(state->buffer.filename, "[No Name]") == 0) { 
         editor_set_status_msg(state, "No file name. Use :w <filename>"); 
         return; 
