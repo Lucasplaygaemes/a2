@@ -39,7 +39,8 @@ A2Config global_config = {
     .git_gutter_enabled = true,
     .debug_enabled = true,
     .log_level_filter = LOG_DEBUG,
-    .icon_mode = 1
+    .icon_mode = 1,
+    .image_preview_enabled = true
 };
 
 typedef struct {
@@ -58,6 +59,7 @@ BoolSetting editor_bool_settings[] = {
     {"Status Bar Error Count", &global_config.show_error_count},
     {"Abbreviate Filename", &global_config.abbreviate_filename},
     {"Smart Merge Save", &global_config.smart_save_enabled},
+    {"Image Previews", &global_config.image_preview_enabled},
     {"Git Diff Gutter", &global_config.git_gutter_enabled}
     };
 
@@ -352,6 +354,7 @@ void save_global_config() {
         fprintf(f, "debug_enabled=%d\n", global_config.debug_enabled);
         fprintf(f, "log_level_filter=%d\n", global_config.log_level_filter);
         fprintf(f, "icon_mode=%d\n", global_config.icon_mode);
+        fprintf(f, "image_preview_enabled=%d\n", global_config.image_preview_enabled);
         fclose(f);
     }
 }
@@ -389,7 +392,8 @@ void load_global_config() {
         else if (sscanf(line, "debug_enabled=%d", &val) == 1) global_config.debug_enabled = val;
         else if (sscanf(line, "log_level_filter=%d", &val) == 1) global_config.log_level_filter = val;
         else if (sscanf(line, "icon_mode=%d", &val) == 1) global_config.icon_mode = val;
-        else if (sscanf(line, "default_spell_lang=%127s", str_val) == 1) {
+        else if (sscanf(line, "image_preview_enabled=%d", &val) == 1) global_config.image_preview_enabled = val;
+        else if (sscanf(line, "default_spell_lang=%127[^\n]", str_val) == 1) {
             strncpy(global_config.default_spell_lang, str_val, sizeof(global_config.default_spell_lang) - 1);
             global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
         }

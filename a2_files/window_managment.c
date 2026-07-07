@@ -4,6 +4,7 @@
 
 #include "window_managment.h"
 #include "defs.h"
+#include "base64.h"
 #include "fileio.h"
 #include "others.h"
 #include "screen_ui.h"
@@ -111,6 +112,10 @@ void handle_gdb_session(int pty_fd, pid_t child_pid);
 
 void free_editor_state(EditorState* state) {
     if (!state) return;
+
+    if (state->buffer.is_image) {
+        delete_kitty_image(state->buffer.kitty_image_id);
+    }
 
     // Properly shut down the LSP client before freeing the state
     if (state->lsp.client) {
@@ -928,6 +933,83 @@ void redraw_all_windows() {
     // 3. Position the cursor and update the physical screen
     position_active_cursor();
     doupdate();
+    
+    // 4. Draw Kitty Graphics overlays on top of the ncurses screen
+    printf("\0337"); // Save cursor position
+    static Workspace *last_drawn_ws = NULL;
+    if (last_drawn_ws != ws) {
+        // Check if last_drawn_ws is still a valid workspace
+        bool is_valid = false;
+        for (int i = 0; i < workspace_manager.num_workspaces; i++) {
+            if (workspace_manager.workspaces[i] == last_drawn_ws) {
+                is_valid = true;
+                break;
+            }
+        }
+        
+        // Workspace changed, hide all images in the old workspace
+        if (is_valid) {
+            for (int j = 0; j < last_drawn_ws->num_windows; j++) {
+                EditorWindow *jw = last_drawn_ws->windows[j];
+                if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                    if (jw->state->buffer.is_image) {
+                        hide_kitty_image(&jw->state->buffer);
+                    }
+                    hide_kitty_hover(&jw->state->image_hover);
+                }
+            }
+        }
+        last_drawn_ws = ws;
+    }
+
+    // Render all images in the current workspace
+    if (!ws->floating_terminal_visible) {
+        for (int j = 0; j < ws->num_windows; j++) {
+            EditorWindow *jw = ws->windows[j];
+            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                if (jw->state->buffer.is_image && global_config.image_preview_enabled) {
+                    int win_y, win_x;
+                    getbegyx(jw->content_win, win_y, win_x);
+                    int rows, cols;
+                    getmaxyx(jw->content_win, rows, cols);
+                    render_kitty_image(&jw->state->buffer, win_y, win_x, cols, rows);
+                } else {
+                    if (jw->state->buffer.image_is_visible) {
+                        hide_kitty_image(&jw->state->buffer);
+                    }
+                }
+                
+                if (jw->state->image_hover.image_path[0] != '\0' && global_config.image_preview_enabled) {
+                    int win_y, win_x;
+                    getbegyx(jw->content_win, win_y, win_x);
+                    int rows, cols;
+                    getmaxyx(jw->content_win, rows, cols);
+                    int max_cols = 40;
+                    int max_rows = 15;
+                    int draw_y = win_y + 1;
+                    int draw_x = win_x + cols - max_cols - 2;
+                    if (draw_x < win_x) draw_x = win_x;
+                    
+                    render_kitty_hover(&jw->state->image_hover, draw_y, draw_x, max_cols, max_rows);
+                } else {
+                    if (jw->state->image_hover.image_is_visible) {
+                        hide_kitty_hover(&jw->state->image_hover);
+                    }
+                }
+            }
+        }
+    } else {
+        // Hide all images while floating terminal is visible
+        for (int j = 0; j < ws->num_windows; j++) {
+            EditorWindow *jw = ws->windows[j];
+            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                if (jw->state->buffer.is_image) hide_kitty_image(&jw->state->buffer);
+                hide_kitty_hover(&jw->state->image_hover);
+            }
+        }
+    }
+    printf("\0338"); // Restore cursor position
+    fflush(stdout);
 }
 
 void position_active_cursor() {
@@ -1765,6 +1847,15 @@ void display_command_palette(EditorState *state) {
     
     FileResult *filtered_items = NULL;
     int num_filtered = 0;
+
+    // Hide any visible kitty images to prevent overlap
+    for (int j = 0; j < ACTIVE_WS->num_windows; j++) {
+        EditorWindow *jw = ACTIVE_WS->windows[j];
+        if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+            if (jw->state->buffer.image_is_visible) hide_kitty_image(&jw->state->buffer);
+            if (jw->state->image_hover.image_is_visible) hide_kitty_hover(&jw->state->image_hover);
+        }
+    }
 
     nodelay(palette_win, TRUE); // Torna o wgetch não-bloqueante
     while (1) {
