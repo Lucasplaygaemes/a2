@@ -21,6 +21,8 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *Alt+[1-9]* : Move the active window to the specified workspace.
 - *Alt+.* : Cycle through available window layouts.
 - *Alt+R* : Rotate windows within the current layout.
+- *Alt+Shift+I* : Toggle image preview hover for the Markdown image link under cursor.
+- *Ctrl+Enter* : Open the Markdown image link under cursor in a new window split.
 
 ## Normal Mode
 - *i* : Enter *Insert Mode*.
