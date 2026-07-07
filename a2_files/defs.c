@@ -153,7 +153,9 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     [ACT_SETTINGS] = {ACT_SETTINGS, 0, 'S', true, false, "SETTINGS", "Configuration", "Open settings panel"},
     [ACT_HELP] = {ACT_HELP, 0, 0, false, false, "HELP", "Help", "Show manual"},
     [ACT_KSC] = {ACT_KSC, 0, 0, false, false, "KSC", "Shortcuts", "Show shortcut list (:ksc)"},
-    [ACT_TOGGLE_FLOATING_TERMINAL] = {ACT_TOGGLE_FLOATING_TERMINAL, 0, KEY_F(12), true, false, "TOGGLE_FLOAT_TERM", "Toggle Floating Term", "Hide or show the floating terminal overlay"}
+    [ACT_TOGGLE_FLOATING_TERMINAL] = {ACT_TOGGLE_FLOATING_TERMINAL, 0, KEY_F(12), true, false, "TOGGLE_FLOAT_TERM", "Toggle Floating Term", "Hide or show the floating terminal overlay"},
+    [ACT_HOVER_IMAGE] = {ACT_HOVER_IMAGE, 0, 'I', true, false, "HOVER_IMAGE", "Hover Image", "Preview Markdown inline image (Alt+Shift+I)"},
+    [ACT_OPEN_IMAGE_SPLIT] = {ACT_OPEN_IMAGE_SPLIT, 0, 10, false, true, "OPEN_IMAGE_SPLIT", "Open Image", "Open image in split (Ctrl+Enter)"}
 };
 
 void reset_bindings_to_default() {

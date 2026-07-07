@@ -325,6 +325,7 @@ typedef struct {
     bool debug_enabled;
     int log_level_filter;
     int icon_mode;
+    bool image_preview_enabled;
 } A2Config;
 
 extern A2Config global_config;
@@ -379,6 +380,14 @@ typedef struct {
     bool is_dirty;
     bool *dirty_lines;
     int dirty_lines_cap;
+    bool is_image;
+    bool image_transmitted;
+    uint32_t kitty_image_id;
+    bool image_is_visible;
+    int image_last_cols;
+    int image_last_rows;
+    int image_last_y;
+    int image_last_x;
 } EditorBuffer;
 
 typedef struct {
@@ -457,6 +466,18 @@ typedef struct {
     char hover_word[100];
 } EditorSpell;
 
+typedef struct {
+    struct timespec hover_last_move;
+    bool hover_pending;
+    char image_path[PATH_MAX];
+    uint32_t kitty_image_id;
+    bool image_is_visible;
+    int image_last_cols;
+    int image_last_rows;
+    int image_last_y;
+    int image_last_x;
+} EditorImageHover;
+
 #endif
 
 #ifndef EDITORSTATE_DEFINED
@@ -469,6 +490,7 @@ typedef struct EditorState {
     EditorSearch search;
     EditorLsp lsp;
     EditorSpell spell;
+    EditorImageHover image_hover;
     
     DirectoryInfo **recent_dirs;
     int num_recent_dirs;
@@ -526,6 +548,9 @@ typedef enum {
     ACT_CMD_PALLETE,       // Alt+t
     
     // windows and workspaces
+    ACT_TOGGLE_DEBUG_WINDOW,
+    ACT_HOVER_IMAGE,
+    ACT_OPEN_IMAGE_SPLIT,
     ACT_NEW_WINDOW,        // Alt+Enter
     ACT_NEW_TERMINAL_WINDOW, // Alt+Shift+Enter
     ACT_CLOSE_WINDOW,      // Alt+X
