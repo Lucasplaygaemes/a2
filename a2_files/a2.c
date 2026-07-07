@@ -11,6 +11,8 @@
 #include "themes.h"
 #include "diff.h"
 #include "spell.h"
+#include "base64.h"
+#include "spell.h"
 #include "lsp_client.h"
 #include "a2_files/settings.h" // Corrected path
 #include "logger.h"
@@ -80,6 +82,30 @@ void inicializar_ncurses() {
 
 void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     A2_LOG(LOG_DEBUG, TAG_CORE, "Input: ch=%d, mode=%d, single=%d", ch, (int)state->input.mode, state->input.single_command_mode);
+
+    // Check for Kitty APC (Application Program Command) early to prevent resetting hovers!
+    if (ch == 27) {
+        WINDOW *active_win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->content_win;
+        nodelay(active_win, TRUE);
+        wint_t next_ch;
+        int get_result = wget_wch(active_win, &next_ch);
+        nodelay(active_win, FALSE);
+        
+        if (get_result != ERR && next_ch == '_') {
+            wtimeout(active_win, 500);
+            wint_t apc_ch;
+            int esc_seen = 0;
+            while (wget_wch(active_win, &apc_ch) != ERR) {
+                if (apc_ch == 27) esc_seen = 1;
+                else if (esc_seen && apc_ch == '\\') break;
+                else esc_seen = 0;
+            }
+            wtimeout(active_win, -1);
+            return; // Drop entirely, it's just a terminal response
+        } else if (get_result != ERR) {
+            unget_wch(next_ch);
+        }
+    }
     // Reset spell hover on any action
     state->spell.hover_pending = true;
     clock_gettime(CLOCK_MONOTONIC, &state->spell.hover_last_move);
@@ -87,6 +113,20 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         free(state->spell.hover_message);
         state->spell.hover_message = NULL;
         state->buffer.is_dirty = true;
+    }
+
+    state->image_hover.hover_pending = true;
+    clock_gettime(CLOCK_MONOTONIC, &state->image_hover.hover_last_move);
+    if (state->image_hover.image_is_visible) {
+        hide_kitty_hover(&state->image_hover);
+        state->buffer.is_dirty = true;
+    }
+
+    if (state->buffer.is_image) {
+        if (state->input.mode != COMMAND) {
+            state->input.mode = NORMAL;
+        }
+        state->input.single_command_mode = false;
     }
 
     // Manipulação especial para Ctrl+O para evitar reversão imediata.
@@ -886,9 +926,94 @@ int main(int argc, char *argv[]) {
                             active_state->spell.hover_word[0] = '\0';
                         }
                     }
+            }
+        }
+
+        // Debouncer for Image Hover
+        if (workspace_manager.num_workspaces > 0 && ACTIVE_WS->num_windows > 0) {
+            EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
+            if (active_jw && active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
+                EditorState *active_state = active_jw->state;
+                if (active_state->image_hover.hover_pending && global_config.image_preview_enabled) {
+                    struct timespec now;
+                    clock_gettime(CLOCK_MONOTONIC, &now);
+                    long long elapsed_ns = (now.tv_sec - active_state->image_hover.hover_last_move.tv_sec) * 1000000000LL;
+                    elapsed_ns += (now.tv_nsec - active_state->image_hover.hover_last_move.tv_nsec);
+
+                    if (elapsed_ns > 400000000) { // 400ms debounce
+                        active_state->image_hover.hover_pending = false;
+                        char *line = active_state->buffer.lines[active_state->cursor.line];
+                        char parsed_path[PATH_MAX] = {0};
+                        if (line) {
+                            char *bang = strstr(line, "![");
+                            if (bang) {
+                                char *bracket = strchr(bang, ']');
+                                if (bracket && *(bracket+1) == '(') {
+                                    char *paren = strchr(bracket + 2, ')');
+                                    if (paren) {
+                                        int len = paren - (bracket + 2);
+                                        if (len > 0 && len < PATH_MAX) {
+                                            strncpy(parsed_path, bracket + 2, len);
+                                            parsed_path[len] = '\0';
+                                        }
+                                    }
+                                }
+                            } else {
+                                char *at = strstr(line, "@[");
+                                if (at) {
+                                    char *bracket = strchr(at + 2, ']');
+                                    if (bracket) {
+                                        int len = bracket - (at + 2);
+                                        if (len > 0 && len < PATH_MAX) {
+                                            strncpy(parsed_path, at + 2, len);
+                                            parsed_path[len] = '\0';
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (parsed_path[0] != '\0') {
+                            char final_path[PATH_MAX];
+                            if (parsed_path[0] != '/' && parsed_path[0] != '~') {
+                                char dir_path[PATH_MAX];
+                                strncpy(dir_path, active_state->buffer.filename, PATH_MAX-1);
+                                char *last_slash = strrchr(dir_path, '/');
+                                if (last_slash) {
+                                    *last_slash = '\0';
+                                    snprintf(final_path, PATH_MAX, "%s/%s", dir_path, parsed_path);
+                                } else {
+                                    strncpy(final_path, parsed_path, PATH_MAX-1);
+                                }
+                            } else {
+                                strncpy(final_path, parsed_path, PATH_MAX-1);
+                            }
+                            
+                            if (final_path[0] == '~') {
+                                char expanded[PATH_MAX];
+                                const char *home = getenv("HOME");
+                                if (home) {
+                                    snprintf(expanded, PATH_MAX, "%s%s", home, final_path + 1);
+                                    strncpy(final_path, expanded, PATH_MAX-1);
+                                }
+                            }
+                            
+                            if (strcmp(active_state->image_hover.image_path, final_path) != 0) {
+                                strncpy(active_state->image_hover.image_path, final_path, PATH_MAX-1);
+                                active_state->image_hover.kitty_image_id = 0;
+                            }
+                            active_state->buffer.is_dirty = true;
+                        } else {
+                            if (active_state->image_hover.image_path[0] != '\0') {
+                                active_state->image_hover.image_path[0] = '\0';
+                                active_state->buffer.is_dirty = true;
+                            }
+                        }
+                    }
                 }
             }
         }
+    } // Missing brace for while(1)? No, the brace is further down.
                             
         pthread_mutex_lock(&global_grep_state.mutex);
         if (global_grep_state.results_ready) {
@@ -909,6 +1034,8 @@ int main(int argc, char *argv[]) {
     free(workspace_manager.workspaces);
         
     pthread_mutex_destroy(&global_grep_state.mutex);
+    printf("\033_Ga=d,d=a;\033\\"); // Clear all Kitty images
+    fflush(stdout);
     endwin(); 
     return 0;
 }
