@@ -29,7 +29,7 @@ all: $(TARGET)
 # Source files for a2
 A2_SOURCES = a2.c command_execution.c defs.c direct_navigation.c fileio.c lsp_client.c \
              editor_utils.c text_editing.c undo_redo.c search_local.c autocomplete_logic.c editor_actions.c \
-             screen_ui.c window_managment.c project.c timer.c cache.c explorer.c diff.c themes.c spell.c settings.c logger.c lsp_watchdog.c
+             screen_ui.c window_managment.c project.c timer.c cache.c explorer.c diff.c themes.c spell.c settings.c logger.c lsp_watchdog.c base64.c
 # Adds the directory prefix to source and object files
 A2_SRCS = $(addprefix $(A2_DIR)/, $(A2_SOURCES))
 A2_OBJS = $(A2_SRCS:.c=.o)

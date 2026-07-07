@@ -369,3 +369,8 @@ https://digip.org/jansson/
 Copyright (c) 1996-2024 Daniel Stenberg and contributors
 License: curl license
 https://curl.se/libcurl/
+
+### stb_image
+Copyright (c) 2017 Sean Barrett
+License: MIT License / Public Domain
+https://github.com/nothings/stb
