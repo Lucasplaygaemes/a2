@@ -52,35 +52,46 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
     if (!state && !is_global) return;
     switch (action) {
         case ACT_TOGGLE_FLOATING_TERMINAL: toggle_floating_terminal(); break;
-        case ACT_INSERT_MODE: state->input.mode = INSERT; state->buffer.is_dirty = true; break;
+        case ACT_INSERT_MODE: 
+            if (!state->buffer.is_image) {
+                state->input.mode = INSERT; 
+                state->buffer.is_dirty = true; 
+            }
+            break;
         case ACT_NORMAL_MODE: 
             state->input.mode = NORMAL; 
             state->cursor.visual_selection_mode = VISUAL_MODE_NONE; 
             state->buffer.is_dirty = true; 
             break;
         case ACT_VISUAL_MODE: 
-            state->cursor.selection_start_line = state->cursor.line;
-            state->cursor.selection_start_col = state->cursor.col;
-            state->cursor.visual_selection_mode = VISUAL_MODE_SELECT;
-            state->input.mode = VISUAL;
-            editor_set_status_msg(state, "-- VISUAL --");
-            state->buffer.is_dirty = true; 
+            if (!state->buffer.is_image) {
+                state->cursor.selection_start_line = state->cursor.line;
+                state->cursor.selection_start_col = state->cursor.col;
+                state->cursor.visual_selection_mode = VISUAL_MODE_SELECT;
+                state->input.mode = VISUAL;
+                editor_set_status_msg(state, "-- VISUAL --");
+                state->buffer.is_dirty = true; 
+            }
             break;
         case ACT_VISUAL_LINE_MODE:
-            state->cursor.selection_start_line = state->cursor.line;
-            state->cursor.selection_start_col = 0;
-            state->cursor.visual_selection_mode = VISUAL_MODE_LINE;
-            state->input.mode = VISUAL;
-            editor_set_status_msg(state, "-- VISUAL LINE --");
-            state->buffer.is_dirty = true;
+            if (!state->buffer.is_image) {
+                state->cursor.selection_start_line = state->cursor.line;
+                state->cursor.selection_start_col = 0;
+                state->cursor.visual_selection_mode = VISUAL_MODE_LINE;
+                state->input.mode = VISUAL;
+                editor_set_status_msg(state, "-- VISUAL LINE --");
+                state->buffer.is_dirty = true;
+            }
             break;
         case ACT_VISUAL_BLOCK_MODE:
-            state->cursor.selection_start_line = state->cursor.line; 
-            state->cursor.selection_start_col = state->cursor.col;
-            state->cursor.visual_selection_mode = VISUAL_MODE_BLOCK; 
-            state->input.mode = VISUAL; 
-            editor_set_status_msg(state, "-- VISUAL BLOCK --");
-            state->buffer.is_dirty = true; 
+            if (!state->buffer.is_image) {
+                state->cursor.selection_start_line = state->cursor.line; 
+                state->cursor.selection_start_col = state->cursor.col;
+                state->cursor.visual_selection_mode = VISUAL_MODE_BLOCK; 
+                state->input.mode = VISUAL; 
+                editor_set_status_msg(state, "-- VISUAL BLOCK --");
+                state->buffer.is_dirty = true; 
+            }
             break;
         case ACT_COMMAND_MODE: state->input.mode = COMMAND; state->input.history_pos = state->input.history_count; state->input.command_buffer[0] = '\0'; state->input.command_pos = 0; state->buffer.is_dirty = true; break;
         case ACT_MOVE_UP: { int r = state->input.prefix_count > 0 ? state->input.prefix_count : 1; for(int i=0;i<r;i++) if(state->cursor.line>0) state->cursor.line--; state->input.prefix_count=0; state->cursor.col=state->cursor.ideal_col; state->buffer.is_dirty=true; } break;
@@ -135,6 +146,71 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
             } else editor_set_status_msg(state, "Invalid register.");
             break; }
         case ACT_SAVE_FILE: save_file(state); break;
+        case ACT_HOVER_IMAGE:
+            state->image_hover.hover_pending = true;
+            state->image_hover.hover_last_move.tv_sec = 0; // Trigger instantly
+            break;
+        case ACT_OPEN_IMAGE_SPLIT: {
+            char *line = state->buffer.lines[state->cursor.line];
+            char parsed_path[PATH_MAX] = {0};
+            if (line) {
+                char *bang = strstr(line, "![");
+                if (bang) {
+                    char *bracket = strchr(bang, ']');
+                    if (bracket && *(bracket+1) == '(') {
+                        char *paren = strchr(bracket + 2, ')');
+                        if (paren) {
+                            int len = paren - (bracket + 2);
+                            if (len > 0 && len < PATH_MAX) {
+                                strncpy(parsed_path, bracket + 2, len);
+                                parsed_path[len] = '\0';
+                            }
+                        }
+                    }
+                } else {
+                    char *at = strstr(line, "@[");
+                    if (at) {
+                        char *bracket = strchr(at + 2, ']');
+                        if (bracket) {
+                            int len = bracket - (at + 2);
+                            if (len > 0 && len < PATH_MAX) {
+                                strncpy(parsed_path, at + 2, len);
+                                parsed_path[len] = '\0';
+                            }
+                        }
+                    }
+                }
+            }
+            if (parsed_path[0] != '\0') {
+                char final_path[PATH_MAX];
+                if (parsed_path[0] != '/' && parsed_path[0] != '~') {
+                    char dir_path[PATH_MAX];
+                    strncpy(dir_path, state->buffer.filename, PATH_MAX-1);
+                    char *last_slash = strrchr(dir_path, '/');
+                    if (last_slash) {
+                        *last_slash = '\0';
+                        snprintf(final_path, PATH_MAX, "%s/%s", dir_path, parsed_path);
+                    } else {
+                        strncpy(final_path, parsed_path, PATH_MAX-1);
+                    }
+                } else {
+                    strncpy(final_path, parsed_path, PATH_MAX-1);
+                }
+                
+                if (final_path[0] == '~') {
+                    char expanded[PATH_MAX];
+                    const char *home = getenv("HOME");
+                    if (home) {
+                        snprintf(expanded, PATH_MAX, "%s%s", home, final_path + 1);
+                        strncpy(final_path, expanded, PATH_MAX-1);
+                    }
+                }
+                create_new_window(final_path);
+            } else {
+                editor_set_status_msg(state, "No image link found on this line.");
+            }
+            break;
+        }
         case ACT_OPENS_RECENT: display_recent_files(); break;
         case ACT_FUZZY_FINDER: display_fuzzy_finder(state); break;
         case ACT_EXPLORER: create_explorer_window(); break;
