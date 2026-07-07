@@ -117,6 +117,16 @@ install_libvterm_from_source() {
     info "libvterm installed successfully."
 }
 
+# --- Install stb_image ---
+install_stb_image() {
+    info "Downloading stb_image.h..."
+    if [ ! -d "a2_files" ]; then
+        mkdir -p a2_files
+    fi
+    curl -sL "https://raw.githubusercontent.com/nothings/stb/master/stb_image.h" -o a2_files/stb_image.h
+    info "stb_image.h installed successfully in a2_files/."
+}
+
 # --- Compile Project ---
 compile_project() {
     info "Compiling a2..."
@@ -157,6 +167,7 @@ install_binaries() {
 main() {
     install_dependencies
     install_libvterm_from_source
+    install_stb_image
     compile_project
     install_binaries
 }
