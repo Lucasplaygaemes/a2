@@ -792,6 +792,49 @@ void execute_command_in_new_workspace(const char *comando_str) {
     free(argv);
 }
 
+void execute_command_in_split(const char *comando_str) {
+    Workspace *ws = ACTIVE_WS;
+    
+    // Split the window if there is only 1
+    if (ws->num_windows == 1) {
+        ws->current_layout = LAYOUT_VERTICAL_SPLIT;
+    }
+    
+    if (strlen(comando_str) == 0) {
+        char *const cmd[] = {"/bin/bash", NULL};
+        create_generic_terminal_window(cmd);
+        recalculate_window_layout();
+        return;
+    }
+
+    char *str_copia = strdup(comando_str);
+    if (!str_copia) return;
+
+    char **argv = NULL;
+    int argc = 0;
+    
+    char *token = strtok(str_copia, " ");
+    while (token != NULL) {
+        argc++;
+        argv = realloc(argv, sizeof(char*) * argc);
+        argv[argc - 1] = token;
+        token = strtok(NULL, " ");
+    }
+
+    argc++;
+    argv = realloc(argv, sizeof(char*) * argc);
+    argv[argc - 1] = NULL;
+
+    if (argv) {
+        create_generic_terminal_window(argv);
+    }
+
+    free(str_copia);
+    free(argv);
+    
+    recalculate_window_layout();
+}
+
 void free_workspace(Workspace *ws) {
     if (!ws) return;
     for (int i = 0; i < ws->num_windows; i++) {

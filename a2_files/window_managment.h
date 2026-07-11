@@ -39,6 +39,7 @@ void move_window_to_workspace(int target_idx);
 void close_active_workspace(bool *should_exit);
 void prompt_and_create_gdb_workspace();
 void execute_command_in_new_workspace(const char *comando_str);
+void execute_command_in_split(const char *comando_str);
 void execute_command_in_terminal(const char *comando_str);
 void create_generic_terminal_window(char *const argv[]);
 void toggle_floating_terminal();
