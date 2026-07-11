@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "window_managment.h"
 #include "explorer.h"
 #include "fileio.h"
@@ -217,6 +218,9 @@ void explorer_reload_entries(ExplorerState *state) {
     while ((dir = readdir(d)) != NULL) {
         if (strcmp(dir->d_name, ".") == 0) continue;
         if (!state->show_hidden && dir->d_name[0] == '.') continue;
+        if (state->is_filtering && strlen(state->filter_text) > 0) {
+            if (strcasestr(dir->d_name, state->filter_text) == NULL) continue;
+        }
         temp_num_entries++;
     }
     closedir(d);
@@ -246,6 +250,9 @@ void explorer_reload_entries(ExplorerState *state) {
     while ((dir = readdir(d)) != NULL) {
         if (strcmp(dir->d_name, ".") == 0) continue;
         if (!state->show_hidden && dir->d_name[0] == '.') continue;
+        if (state->is_filtering && strlen(state->filter_text) > 0) {
+            if (strcasestr(dir->d_name, state->filter_text) == NULL) continue;
+        }
         
         state->entries[state->num_entries] = strdup(dir->d_name);
         if (!state->entries[state->num_entries]) {
@@ -393,9 +400,15 @@ void explorer_redraw(EditorWindow *jw) {
     werase(jw->win);
     box(jw->win, 0, 0);
     
-    char display_path[jw->width - 4];
-    snprintf(display_path, sizeof(display_path), " %s ", state->current_path);
-    mvwprintw(jw->win, 0, 2, "%.*s", jw->width - 4, display_path);
+    if (state->is_filtering) {
+        mvwprintw(jw->win, 0, 2, " Filter: [%s_] ", state->filter_text);
+    } else if (strlen(state->filter_text) > 0) {
+        mvwprintw(jw->win, 0, 2, " Filtered: \"%s\" (Press '/' to change) ", state->filter_text);
+    } else {
+        char display_path[jw->width - 4];
+        snprintf(display_path, sizeof(display_path), " %s ", state->current_path);
+        mvwprintw(jw->win, 0, 2, "%.*s", jw->width - 4, display_path);
+    }
     
     
     int list_width = jw->width - 2; // default width, without preview
@@ -526,7 +539,33 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
         }
         // If it was just a plain ESC, fall through to do nothing.
     }
+
+    if (state->is_filtering) {
+        if (ch == 27 || ch == '\n' || ch == '\r') {
+            state->is_filtering = false;
+        } else if (ch == KEY_BACKSPACE || ch == 127 || ch == '\b') {
+            int len = strlen(state->filter_text);
+            if (len > 0) {
+                state->filter_text[len - 1] = '\0';
+                explorer_reload_entries(state);
+            }
+        } else if (ch >= 32 && ch <= 126 && strlen(state->filter_text) < 255) {
+            int len = strlen(state->filter_text);
+            state->filter_text[len] = (char)ch;
+            state->filter_text[len + 1] = '\0';
+            explorer_reload_entries(state);
+        }
+        if (state->selection >= state->num_entries) {
+            state->selection = state->num_entries > 0 ? state->num_entries - 1 : 0;
+        }
+        return;
+    }
+
     switch(ch) {
+        case '/':
+            state->is_filtering = true;
+            memset(state->filter_text, 0, sizeof(state->filter_text));
+            break;
         case 27: // clean selection, if theres one or acts like navigation shortcut
             if (state->num_selected > 0) {
                 memset(state->is_selected, 0, state->num_entries * sizeof(bool));
