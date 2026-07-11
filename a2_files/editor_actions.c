@@ -43,15 +43,29 @@ bool is_leader_key(int ch) {
 bool is_global_action(EditorAction action) {
     return (action >= ACT_NEW_WINDOW && action <= ACT_ROTATE_WINDOWS) || 
            (action >= ACT_SWITCH_TO_WS_1 && action <= ACT_MOVE_WIN_TO_POS_9) ||
-           (action == ACT_SETTINGS || action == ACT_HELP || action == ACT_KSC || action == ACT_TIMER_REPORT || action == ACT_TOGGLE_FLOATING_TERMINAL);
+           (action == ACT_SETTINGS || action == ACT_HELP || action == ACT_KSC || action == ACT_TIMER_REPORT || action == ACT_TOGGLE_FLOATING_TERMINAL || action == ACT_OPEN_TERMSIDE);
 }
 
 void execute_action(EditorAction action, EditorState *state, bool *should_exit) {
     if (action == ACT_NONE) return;
+    
+    if (action >= ACT_CUSTOM_TASK_START && action <= ACT_CUSTOM_TASK_END) {
+        if (!state) return; // Need state for commands
+        int task_idx = action - ACT_CUSTOM_TASK_START;
+        if (task_idx < global_task_manager.num_tasks) {
+            strncpy(state->input.command_buffer, global_task_manager.tasks[task_idx].command, sizeof(state->input.command_buffer) - 1);
+            state->input.command_buffer[sizeof(state->input.command_buffer) - 1] = '\0';
+            void process_command(EditorState *state, bool *should_exit);
+            process_command(state, should_exit);
+        }
+        return;
+    }
+
     bool is_global = is_global_action(action);
     if (!state && !is_global) return;
     switch (action) {
         case ACT_TOGGLE_FLOATING_TERMINAL: toggle_floating_terminal(); break;
+        case ACT_OPEN_TERMSIDE: execute_command_in_split(""); break;
         case ACT_INSERT_MODE: 
             if (!state->buffer.is_image) {
                 state->input.mode = INSERT; 

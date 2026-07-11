@@ -500,6 +500,7 @@ int main(int argc, char *argv[]) {
     A2_LOG(LOG_INFO, TAG_CORE, "--- A2 Editor Started ---");
     inicializar_ncurses();
     load_global_config();
+    load_custom_tasks();
     reset_bindings_to_default();
     load_keybindings();
     

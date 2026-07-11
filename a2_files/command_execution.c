@@ -138,6 +138,10 @@ void process_command(EditorState *state, bool *should_exit) {
             }
     } else if (strcmp(command, "rc") == 0) {
         editor_reload_file(state);
+    } else if (strcmp(command, "task") == 0 || strcmp(command, "tasks") == 0) {
+        void ui_create_task();
+        ui_create_task();
+        editor_set_status_msg(state, "Task updated. Check the Shortcuts menu.");
     } else if (strcmp(command, "rc!") == 0) {
         if (strcmp(state->buffer.filename, "[No Name]") == 0) {
             editor_set_status_msg(state, "No file name to reload.");
@@ -294,6 +298,8 @@ void process_command(EditorState *state, bool *should_exit) {
                 }
             } else if (strcmp(command, "term") == 0) {
                 execute_command_in_new_workspace(args);
+            } else if (strcmp(command, "termside") == 0) {
+                execute_command_in_split(args);
             
       // LSP Commands
     } else if (strncmp(command, "lsp-restart", 11) == 0) {
