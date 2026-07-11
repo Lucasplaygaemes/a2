@@ -14,4 +14,9 @@ void load_keybindings();
 void load_ds_keybindings();
 void save_ds_keybindings();
 
+void load_custom_tasks();
+void save_custom_tasks();
+void ui_create_task();
+void ui_edit_task(int idx);
+
 #endif

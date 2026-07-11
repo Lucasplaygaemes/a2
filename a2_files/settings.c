@@ -85,6 +85,7 @@ const char *main_menu_items[] = {
     "Spell Checker",
     "LSP (Language Server)",
     "Keybindings",
+    "Tasks",
     "Debug"
 };
 const int num_main_menu_items = sizeof(main_menu_items) / sizeof(char*);
@@ -198,7 +199,7 @@ static bool load_bindings_from_file(const char* path) {
         if (sscanf(line, "%31[^:]:%d:%d:%d:%d\n", slug, &key, &alt, &ctrl, &leader) == 5) {
             // Find action by slug
             for (int i = 1; i < ACT_COUNT; i++) {
-                if (strcmp(default_bindings[i].slug, slug) == 0) {
+                if (strcmp(global_bindings[i].slug, slug) == 0) {
                     global_bindings[i].key = key;
                     global_bindings[i].alt = (bool)alt;
                     global_bindings[i].ctrl = (bool)ctrl;
@@ -492,6 +493,7 @@ void draw_main_menu(EditorWindow *jw) {
         "  (S) Spell Checker", 
         "  (L) LSP (Language Server)", 
         "  (K) Keybindings",
+        "  (C) Custom Tasks",
         "  (D) Debug"
     };
 
@@ -764,6 +766,42 @@ void draw_debug_settings(EditorWindow *jw) {
     }
 }
 
+void draw_tasks_settings(EditorWindow *jw) {
+    SettingsPanelState *state = jw->settings_state;
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
+    (void)rows;
+    
+    draw_settings_header(jw->win, "SETTINGS > CUSTOM TASKS", cols);
+    
+    mvwprintw(jw->win, 3, 2, " [ENTER] Create New Task    [BACKSPACE] Delete Selected ");
+    
+    int max_display = rows - 6;
+    if (max_display < 1) return;
+    
+    int num_items = global_task_manager.num_tasks + 1; // +1 for "Create new..."
+    if (state->current_selection >= num_items) state->current_selection = num_items - 1;
+    
+    if (state->current_selection < state->scroll_top) state->scroll_top = state->current_selection;
+    if (state->current_selection >= state->scroll_top + max_display) state->scroll_top = state->current_selection - max_display + 1;
+    
+    for (int i = 0; i < max_display; i++) {
+        int idx = state->scroll_top + i;
+        if (idx >= num_items) break;
+        
+        if (idx == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
+        
+        if (idx == global_task_manager.num_tasks) {
+            mvwprintw(jw->win, 5 + i, 4, "  [+] Create New Custom Task...                       ");
+        } else {
+            CustomTask *t = &global_task_manager.tasks[idx];
+            mvwprintw(jw->win, 5 + i, 4, "  %-20s : %-30s", t->name, t->command);
+        }
+        
+        if (idx == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
+    }
+}
+
 void settings_panel_redraw(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     werase(jw->win);
@@ -787,6 +825,9 @@ void settings_panel_redraw(EditorWindow *jw) {
             break;
         case SETTINGS_VIEW_KEYBINDINGS:
             draw_keybinding_settings(jw);
+            break;
+        case SETTINGS_VIEW_TASKS:
+            draw_tasks_settings(jw);
             break;
         case SETTINGS_VIEW_DEBUG:
             draw_debug_settings(jw);
@@ -1168,11 +1209,43 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                     break;
             }
             break;
-        case SETTINGS_VIEW_DEBUG:
+        case SETTINGS_VIEW_TASKS:
             switch(ch) {
                 case 'q': case 27: 
                     state->current_view = SETTINGS_VIEW_MAIN; 
                     state->current_selection = 5; 
+                    state->scroll_top = 0;
+                    break;
+                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
+                case 'j': case KEY_DOWN:
+                    if (state->current_selection < global_task_manager.num_tasks) state->current_selection++;
+                    break;
+                case 'k': case KEY_UP:
+                    if (state->current_selection > 0) state->current_selection--;
+                    break;
+                case KEY_ENTER: case '\n':
+                    if (state->current_selection == global_task_manager.num_tasks) {
+                        ui_create_task();
+                    } else if (state->current_selection < global_task_manager.num_tasks) {
+                        ui_edit_task(state->current_selection);
+                    }
+                    break;
+                case KEY_BACKSPACE: case 127: case 8:
+                    if (state->current_selection < global_task_manager.num_tasks) {
+                        for (int i = state->current_selection; i < global_task_manager.num_tasks - 1; i++) {
+                            global_task_manager.tasks[i] = global_task_manager.tasks[i + 1];
+                        }
+                        global_task_manager.num_tasks--;
+                        save_custom_tasks();
+                    }
+                    break;
+            }
+            break;
+        case SETTINGS_VIEW_DEBUG:
+            switch(ch) {
+                case 'q': case 27: 
+                    state->current_view = SETTINGS_VIEW_MAIN; 
+                    state->current_selection = 6; 
                     break;
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
                 case 'j': case KEY_DOWN:
@@ -1218,4 +1291,103 @@ void free_settings_panel_state(SettingsPanelState *state) {
         free(state->theme_list);
     }
     free(state);
+}
+
+void get_tasks_filepath(char *buffer, size_t size) {
+    char dir[PATH_MAX];
+    ensure_a2_config_dir(dir, sizeof(dir));
+    snprintf(buffer, size, "%s/tasks.a2", dir);
+}
+
+void save_custom_tasks() {
+    char path[PATH_MAX];
+    get_tasks_filepath(path, sizeof(path));
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+    for (int i = 0; i < global_task_manager.num_tasks; i++) {
+        CustomTask *t = &global_task_manager.tasks[i];
+        fprintf(f, "%s|%s|%s|%s\n", t->id, t->name, t->description, t->command);
+    }
+    fclose(f);
+}
+
+void load_custom_tasks() {
+    char path[PATH_MAX];
+    get_tasks_filepath(path, sizeof(path));
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    
+    char line[1024];
+    global_task_manager.num_tasks = 0;
+    while (fgets(line, sizeof(line), f) && global_task_manager.num_tasks < MAX_CUSTOM_TASKS) {
+        line[strcspn(line, "\n")] = 0;
+        CustomTask *t = &global_task_manager.tasks[global_task_manager.num_tasks];
+        
+        char *id = strtok(line, "|");
+        char *name = strtok(NULL, "|");
+        char *desc = strtok(NULL, "|");
+        char *cmd = strtok(NULL, "");
+        
+        if (id && name && desc && cmd) {
+            strncpy(t->id, id, sizeof(t->id)-1);
+            strncpy(t->name, name, sizeof(t->name)-1);
+            strncpy(t->description, desc, sizeof(t->description)-1);
+            strncpy(t->command, cmd, sizeof(t->command)-1);
+            
+            int act = ACT_CUSTOM_TASK_START + global_task_manager.num_tasks;
+            strncpy(global_bindings[act].name, t->name, sizeof(global_bindings[act].name)-1);
+            strncpy(global_bindings[act].desc, t->description, sizeof(global_bindings[act].desc)-1);
+            
+            global_task_manager.num_tasks++;
+        }
+    }
+    fclose(f);
+}
+
+void ui_create_task() {
+    if (global_task_manager.num_tasks >= MAX_CUSTOM_TASKS) return;
+    
+    CustomTask new_task = {0};
+    if (!ui_ask_input("Task Name:", new_task.name, sizeof(new_task.name))) return;
+    if (!ui_ask_input("Description:", new_task.description, sizeof(new_task.description))) return;
+    if (!ui_ask_input("Command (e.g. 'term make'):", new_task.command, sizeof(new_task.command))) return;
+    
+    snprintf(new_task.id, sizeof(new_task.id), "TASK_%d", global_task_manager.num_tasks);
+    
+    global_task_manager.tasks[global_task_manager.num_tasks] = new_task;
+    
+    int act = ACT_CUSTOM_TASK_START + global_task_manager.num_tasks;
+    strncpy(global_bindings[act].name, new_task.name, sizeof(global_bindings[act].name)-1);
+    strncpy(global_bindings[act].desc, new_task.description, sizeof(global_bindings[act].desc)-1);
+    
+    global_task_manager.num_tasks++;
+    save_custom_tasks();
+}
+
+void ui_edit_task(int idx) {
+    if (idx < 0 || idx >= global_task_manager.num_tasks) return;
+    
+    CustomTask *t = &global_task_manager.tasks[idx];
+    
+    char name[64];
+    char desc[128];
+    char cmd[256];
+    
+    strncpy(name, t->name, sizeof(name)-1);
+    strncpy(desc, t->description, sizeof(desc)-1);
+    strncpy(cmd, t->command, sizeof(cmd)-1);
+    
+    if (!ui_ask_input("Task Name:", name, sizeof(name))) return;
+    if (!ui_ask_input("Description:", desc, sizeof(desc))) return;
+    if (!ui_ask_input("Command (e.g. 'term make'):", cmd, sizeof(cmd))) return;
+    
+    strncpy(t->name, name, sizeof(t->name)-1);
+    strncpy(t->description, desc, sizeof(t->description)-1);
+    strncpy(t->command, cmd, sizeof(t->command)-1);
+    
+    int act = ACT_CUSTOM_TASK_START + idx;
+    strncpy(global_bindings[act].name, t->name, sizeof(global_bindings[act].name)-1);
+    strncpy(global_bindings[act].desc, t->description, sizeof(global_bindings[act].desc)-1);
+    
+    save_custom_tasks();
 }
