@@ -95,6 +95,7 @@ typedef enum {
     SETTINGS_VIEW_SPELL,
     SETTINGS_VIEW_LSP,
     SETTINGS_VIEW_KEYBINDINGS,
+    SETTINGS_VIEW_TASKS,
     SETTINGS_VIEW_DEBUG
 } SettingsPanelView;
 
@@ -633,9 +634,29 @@ typedef enum {
     ACT_HELP,              // :help
     ACT_KSC,               // :ksc
     ACT_TOGGLE_FLOATING_TERMINAL,
+    ACT_OPEN_TERMSIDE,
+    
+    ACT_CUSTOM_TASK_START,
+    ACT_CUSTOM_TASK_END = ACT_CUSTOM_TASK_START + 49,
     
     ACT_COUNT              // totalizer
 } EditorAction;
+
+#define MAX_CUSTOM_TASKS 50
+
+typedef struct {
+    char id[32];
+    char name[64];
+    char description[128];
+    char command[256];
+} CustomTask;
+
+typedef struct {
+    CustomTask tasks[MAX_CUSTOM_TASKS];
+    int num_tasks;
+} TaskManager;
+
+extern TaskManager global_task_manager;
 
 typedef struct {
     EditorAction action;
@@ -680,6 +701,9 @@ typedef struct {
     bool *is_selected;
     int num_selected;
     bool show_preview;
+    
+    bool is_filtering;
+    char filter_text[256];
 } ExplorerState;
 #endif
 

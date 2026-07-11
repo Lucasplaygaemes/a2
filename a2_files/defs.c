@@ -155,11 +155,30 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     [ACT_KSC] = {ACT_KSC, 0, 0, false, false, "KSC", "Shortcuts", "Show shortcut list (:ksc)"},
     [ACT_TOGGLE_FLOATING_TERMINAL] = {ACT_TOGGLE_FLOATING_TERMINAL, 0, KEY_F(12), true, false, "TOGGLE_FLOAT_TERM", "Toggle Floating Term", "Hide or show the floating terminal overlay"},
     [ACT_HOVER_IMAGE] = {ACT_HOVER_IMAGE, 0, 'I', true, false, "HOVER_IMAGE", "Hover Image", "Preview Markdown inline image (Alt+Shift+I)"},
-    [ACT_OPEN_IMAGE_SPLIT] = {ACT_OPEN_IMAGE_SPLIT, 0, 10, false, true, "OPEN_IMAGE_SPLIT", "Open Image", "Open image in split (Ctrl+Enter)"}
+    [ACT_OPEN_IMAGE_SPLIT] = {ACT_OPEN_IMAGE_SPLIT, 0, 10, false, true, "OPEN_IMAGE_SPLIT", "Open Image", "Open image in split (Ctrl+Enter)"},
+    [ACT_OPEN_TERMSIDE] = {ACT_OPEN_TERMSIDE, ' ', 10, false, false, "OPEN_TERMSIDE", "Term Side", "Open terminal on side window (Space+Enter)"}
 };
+
+TaskManager global_task_manager = {0};
 
 void reset_bindings_to_default() {
     for (int i = 0; i < ACT_COUNT; i++) {
         global_bindings[i] = default_bindings[i];
+    }
+    for (int i = 0; i < MAX_CUSTOM_TASKS; i++) {
+        int act = ACT_CUSTOM_TASK_START + i;
+        global_bindings[act].action = act;
+        global_bindings[act].leader = 0;
+        global_bindings[act].key = 0;
+        global_bindings[act].alt = false;
+        global_bindings[act].ctrl = false;
+        snprintf(global_bindings[act].slug, sizeof(global_bindings[act].slug), "CUSTOM_TASK_%d", i);
+        if (i < global_task_manager.num_tasks) {
+            strncpy(global_bindings[act].name, global_task_manager.tasks[i].name, sizeof(global_bindings[act].name)-1);
+            strncpy(global_bindings[act].desc, global_task_manager.tasks[i].description, sizeof(global_bindings[act].desc)-1);
+        } else {
+            snprintf(global_bindings[act].name, sizeof(global_bindings[act].name), "Custom Task %d", i);
+            snprintf(global_bindings[act].desc, sizeof(global_bindings[act].desc), "Unassigned custom task");
+        }
     }
 }
