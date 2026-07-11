@@ -23,6 +23,7 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *Alt+R* : Rotate windows within the current layout.
 - *Alt+Shift+I* : Toggle image preview hover for the Markdown image link under cursor.
 - *Ctrl+Enter* : Open the Markdown image link under cursor in a new window split.
+- *Space, Enter* : Open a new terminal on a side window split (`:termside`).
 
 ## Normal Mode
 - *i* : Enter *Insert Mode*.
@@ -79,6 +80,7 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *Alt+c* : Toggle comments on all lines in the selection.
 
 ## File Explorer Mode
+- */* : Filter files and directories by name.
 - *j, k*, *Arrows* : Navigate up and down.
 - *Enter* : Open a file or enter a directory.
 - *r* : Rename the selected item.

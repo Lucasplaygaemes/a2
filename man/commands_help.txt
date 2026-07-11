@@ -26,6 +26,7 @@ This page details the commands available in Command Mode (activated with *:*).
 
 ## Windows & Workspaces
 - *:term [cmd]*: Opens a command in a new terminal split (e.g., `:term ls -l`).
+- *:termside [cmd]*: Opens a command in a new terminal side split.
 - *:mtw <num>*: Moves the current window to the specified workspace number.
 
 ## Git Integration
@@ -55,6 +56,7 @@ This page details the commands available in Command Mode (activated with *:*).
 - *:! <cmd>*: Executes a shell command and shows the output.
 - *:help*: Shows the main help screen.
 - *:ksc*: Shows the keyboard shortcuts screen.
+- *:task*: Opens the Custom Tasks menu to create and edit tasks.
 - *:theme <name>*: Loads and applies a theme.
 - *:gcc [libs]*: Compiles the current C/C++ file.
 - *:diff [f1] [f2]*: Shows file differences. Runs interactively if args omitted. Can be triggered from explorer with 'D'.

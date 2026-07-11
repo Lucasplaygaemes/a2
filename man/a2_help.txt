@@ -23,3 +23,4 @@ Welcome to `a2`, a lightweight, fast, and configurable text editor inspired by V
 - *Assembly View:* Compile and view assembly code synchronized with your C source (*Alt+A*).
 - *Snippets:* Expand code snippets from the completion menu (*Alt+S* during completion).
 - *Project Management:* Save and load project sessions, including open files, window layouts, and cursor positions.
+- *Custom Tasks:* Define commands and assign them customized keybindings to quickly automate your workflow.

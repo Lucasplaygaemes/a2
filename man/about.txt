@@ -12,6 +12,7 @@ a2 is made possible by these incredible open-source projects:
 - **Hunspell**: Providing high-performance spell checking.
 - **Jansson**: Handling JSON for configuration and LSP.
 - **Libcurl**: Managing network dictionary downloads.
+- **stb_image**: Image loading for markdown previews.
 
 ## Author
 Built with passion by Lucas.
