@@ -52,6 +52,7 @@ The a2 editor is built upon these excellent open-source libraries:
 * **Hunspell** - Robust spell checking.
 * **Jansson** - JSON support for LSP and sessions.
 * **Libcurl** - Network capabilities for dictionary downloads.
+* **stb_image** - Image loading for markdown previews.
 
 *Full license details for a2 and its dependencies can be found in the [LICENSE](./LICENSE) file.*
 
