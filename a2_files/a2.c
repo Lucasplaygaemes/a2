@@ -80,6 +80,7 @@ void inicializar_ncurses() {
     bkgd(COLOR_PAIR(8));
 }
 
+
 void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     A2_LOG(LOG_DEBUG, TAG_CORE, "Input: ch=%d, mode=%d, single=%d", ch, (int)state->input.mode, state->input.single_command_mode);
 
@@ -471,8 +472,41 @@ bool handle_global_shortcut(int ch, bool alt, bool ctrl, bool *should_exit) {
     return false;
 }
 
+bool g_safe_mode = false;
+
+void emergency_crash_handler(int sig) {
+    endwin();
+    fprintf(stderr, "\n[CRITICAL ERROR] a2 crashed (Signal %d). Entering emergency recovery...\n", sig);
+    if (workspace_manager.num_workspaces > 0) {
+        for (int i = 0; i < workspace_manager.num_workspaces; i++) {
+            Workspace *ws = workspace_manager.workspaces[i];
+            for (int j = 0; j < ws->num_windows; j++) {
+                EditorWindow *jw = ws->windows[j];
+                if (jw->type == WINDOW_TYPE_EDITOR && jw->state && jw->state->buffer.is_dirty) {
+                    char backup_name[PATH_MAX];
+                    snprintf(backup_name, PATH_MAX, "%s.crash_backup", jw->state->buffer.filename);
+                    FILE *f = fopen(backup_name, "w");
+                    if (f) {
+                        for (int k = 0; k < jw->state->buffer.num_lines; k++) {
+                            if (jw->state->buffer.lines[k]) {
+                                fprintf(f, "%s\n", jw->state->buffer.lines[k]);
+                            }
+                        }
+                        fclose(f);
+                        fprintf(stderr, "-> Saved backup of %s in %s\n", jw->state->buffer.filename, backup_name);
+                    }
+                }
+            }
+        }
+    }
+    fprintf(stderr, "Recovery completed. Editor terminated to prevent data loss.\n");
+    exit(1);
+}
 
 int main(int argc, char *argv[]) {
+    signal(SIGSEGV, emergency_crash_handler);
+    signal(SIGILL, emergency_crash_handler);
+    signal(SIGABRT, emergency_crash_handler);
     signal(SIGPIPE, SIG_IGN); // Ignore SIGPIPE to avoid crashing when LSP server is missing/dies
 
     char exe_path_buf[PATH_MAX];
@@ -497,37 +531,58 @@ int main(int argc, char *argv[]) {
     start_work_timer();
     setlocale(LC_ALL, "");
     a2_log_init();
-    A2_LOG(LOG_INFO, TAG_CORE, "--- A2 Editor Started ---");
+    
+    int file_arg_index = 1;
+    if (argc > 1 && strcmp(argv[1], "--safe") == 0) {
+        g_safe_mode = true;
+        file_arg_index = 2;
+        A2_LOG(LOG_INFO, TAG_CORE, "--- A2 Editor Started (SAFE MODE) ---");
+    } else {
+        A2_LOG(LOG_INFO, TAG_CORE, "--- A2 Editor Started ---");
+    }
+    
     inicializar_ncurses();
-    load_global_config();
-    load_custom_tasks();
+    
+    if (!g_safe_mode) {
+        load_global_config();
+        load_custom_tasks();
+    }
+    
     reset_bindings_to_default();
     load_keybindings();
     
-    char *default_theme_name = load_default_theme_name();
-    bool theme_loaded = false;
-    if (default_theme_name) {
-        if (load_theme(default_theme_name)) {
-            theme_loaded = true;
+    if (!g_safe_mode) {
+        char *default_theme_name = load_default_theme_name();
+        bool theme_loaded = false;
+        if (default_theme_name) {
+            if (load_theme(default_theme_name)) {
+                theme_loaded = true;
+            }
+            free(default_theme_name);
         }
-        free(default_theme_name);
+        
+        if (!theme_loaded) {
+            load_theme("dark.theme");
+        }
+        apply_theme();
     }
-    
-    if (!theme_loaded) {
-        load_theme("dark.theme");
-    }
-    apply_theme();
     pthread_mutex_init(&global_grep_state.mutex, NULL);
     initialize_workspaces();
 
     project_startup_check();
 
     if (workspace_manager.num_workspaces > 0 && ACTIVE_WS->num_windows > 0 && ACTIVE_WS->windows[0]->state) {
-        editor_set_status_msg(ACTIVE_WS->windows[0]->state, "Welcome to a2!");
+        if (g_safe_mode) {
+            editor_set_status_msg(ACTIVE_WS->windows[0]->state, "[SAFE MODE] Welcome to a2!");
+        } else {
+            editor_set_status_msg(ACTIVE_WS->windows[0]->state, "Welcome to a2!");
+        }
     }
 
     // Automatically load macros on startup
-    load_macros(ACTIVE_WS->windows[0]->state);
+    if (!g_safe_mode) {
+        load_macros(ACTIVE_WS->windows[0]->state);
+    }
 
     EditorState *initial_state = ACTIVE_WS->windows[0]->state;
     char cwd[PATH_MAX];
@@ -535,16 +590,18 @@ int main(int argc, char *argv[]) {
         update_directory_access(initial_state, cwd);
     }
 
-    if (argc > 1) {
-        load_file(ACTIVE_WS->windows[0]->state, argv[1]);
+    if (argc > file_arg_index) {
+        load_file(ACTIVE_WS->windows[0]->state, argv[file_arg_index]);
         EditorState *state = ACTIVE_WS->windows[0]->state;
 
-        napms(100);
-        lsp_initialize(state);
-        napms(500);
+        if (!g_safe_mode) {
+            napms(100);
+            lsp_initialize(state);
+            napms(500);
+        }
 
-        if (argc > 2) {
-            state->cursor.line = atoi(argv[2]) - 1;
+        if (argc > file_arg_index + 1) {
+            state->cursor.line = atoi(argv[file_arg_index + 1]) - 1;
             if (state->cursor.line >= state->buffer.num_lines) {
                 state->cursor.line = state->buffer.num_lines - 1;
             }
