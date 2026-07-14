@@ -25,6 +25,7 @@ A2Config global_config = {
     .paste_mode = false,
     .lsp_enabled = true,
     .lsp_diagnostics = true,
+    .lsp_highlight = true,
     .lsp_completion = true,
     .lsp_hover = true,
     .tab_size = 4,
@@ -218,13 +219,20 @@ void load_keybindings() {
     
     // 1. Try User Shortcuts (sc.a2)
     get_sc_path(path, sizeof(path));
-    if (load_bindings_from_file(path)) return;
+    if (load_bindings_from_file(path)) {
+        A2_LOG(LOG_INFO, TAG_CORE, "Loaded user keybindings from %s", path);
+        return;
+    }
     
     // 2. Try Default Shortcuts (ds.a2)
     get_ds_path(path, sizeof(path));
-    if (load_bindings_from_file(path)) return;
+    if (load_bindings_from_file(path)) {
+        A2_LOG(LOG_INFO, TAG_CORE, "Loaded default keybindings from %s", path);
+        return;
+    }
     
     // 3. Fallback to hardcoded defaults
+    A2_LOG(LOG_WARN, TAG_CORE, "Failed to load any keybindings file. Falling back to hardcoded defaults.");
     reset_bindings_to_default();
 }
 
@@ -345,7 +353,9 @@ void save_global_config() {
         fprintf(f, "show_line_numbers=%d\n", global_config.show_line_numbers);
         fprintf(f, "show_scrollbar=%d\n", global_config.show_scrollbar);
         fprintf(f, "relative_line_numbers=%d\n", global_config.relative_line_numbers);
+        fprintf(f, "paste_mode=%d\n", global_config.paste_mode);
         fprintf(f, "lsp_diagnostics=%d\n", global_config.lsp_diagnostics);
+        fprintf(f, "lsp_highlight=%d\n", global_config.lsp_highlight);
         fprintf(f, "lsp_completion=%d\n", global_config.lsp_completion);
         fprintf(f, "lsp_hover=%d\n", global_config.lsp_hover);
         fprintf(f, "show_error_count=%d\n", global_config.show_error_count);
@@ -383,7 +393,9 @@ void load_global_config() {
         else if (sscanf(line, "show_line_numbers=%d", &val) == 1) global_config.show_line_numbers = val;
         else if (sscanf(line, "show_scrollbar=%d", &val) == 1) global_config.show_scrollbar = val;
         else if (sscanf(line, "relative_line_numbers=%d", &val) == 1) global_config.relative_line_numbers = val;
+        else if (sscanf(line, "paste_mode=%d", &val) == 1) global_config.paste_mode = val;
         else if (sscanf(line, "lsp_diagnostics=%d", &val) == 1) global_config.lsp_diagnostics = val;
+        else if (sscanf(line, "lsp_highlight=%d", &val) == 1) global_config.lsp_highlight = val;
         else if (sscanf(line, "lsp_completion=%d", &val) == 1) global_config.lsp_completion = val;
         else if (sscanf(line, "lsp_hover=%d", &val) == 1) global_config.lsp_hover = val;
         else if (sscanf(line, "show_error_count=%d", &val) == 1) global_config.show_error_count = val;
@@ -692,21 +704,23 @@ void draw_lsp_settings(EditorWindow *jw) {
     const char *lsp_opts[] = { 
         "LSP Enabled", 
         "Show Diagnostics",
+        "Highlight Code",
         "Auto-completion",
         "Show Hover Info",
         "RESTART LSP SERVER" 
     };
     
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         if (i == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
         
         bool status = false;
         if (i == 0) status = global_config.lsp_enabled;
         else if (i == 1) status = global_config.lsp_diagnostics;
-        else if (i == 2) status = global_config.lsp_completion;
-        else if (i == 3) status = global_config.lsp_hover;
+        else if (i == 2) status = global_config.lsp_highlight;
+        else if (i == 3) status = global_config.lsp_completion;
+        else if (i == 4) status = global_config.lsp_hover;
         
-        if (i == 4) {
+        if (i == 5) {
             mvwprintw(jw->win, 4 + i, 4, "  !!! %s !!! ", lsp_opts[i]);
         } else {
             mvwprintw(jw->win, 4 + i, 4, "  %-20s : ", lsp_opts[i]);
@@ -1186,7 +1200,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                     break;
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
                 case 'j': case KEY_DOWN:
-                    if (state->current_selection < 4) state->current_selection++; // Aumentado limite para 4
+                    if (state->current_selection < 5) state->current_selection++;
                     break;
                 case 'k': case KEY_UP:
                     if (state->current_selection > 0) state->current_selection--;
@@ -1196,11 +1210,17 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                         global_config.lsp_enabled = !global_config.lsp_enabled;
                     } else if (state->current_selection == 1) {
                         global_config.lsp_diagnostics = !global_config.lsp_diagnostics;
+                        if (!global_config.lsp_diagnostics) {
+                            EditorState *es = get_any_editor_state();
+                            if (es) lsp_cleanup_diagnostics(es);
+                        }
                     } else if (state->current_selection == 2) {
-                        global_config.lsp_completion = !global_config.lsp_completion;
+                        global_config.lsp_highlight = !global_config.lsp_highlight;
                     } else if (state->current_selection == 3) {
-                        global_config.lsp_hover = !global_config.lsp_hover;
+                        global_config.lsp_completion = !global_config.lsp_completion;
                     } else if (state->current_selection == 4) {
+                        global_config.lsp_hover = !global_config.lsp_hover;
+                    } else if (state->current_selection == 5) {
                         EditorState *editor_state = get_any_editor_state();
                         if (editor_state) process_lsp_restart(editor_state);
                     }

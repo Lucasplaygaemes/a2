@@ -63,6 +63,7 @@ typedef struct {
 #define MAX_UNDO_LEVELS 512
 
 struct EditorState;
+extern bool g_safe_mode;
 
 #ifndef LSPMESSAGE_DEFINED
 #define LSPMESSAGE_DEFINED
@@ -305,6 +306,7 @@ typedef struct {
     bool auto_indent;
     bool paste_mode;
     bool lsp_diagnostics;
+    bool lsp_highlight;
     bool lsp_completion;
     bool lsp_hover;
     bool lsp_enabled;

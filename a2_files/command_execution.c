@@ -19,6 +19,8 @@
 #include <unistd.h> // For chdir, getcwd, close
 #include <sys/wait.h> // For WIFEXITED, WEXITSTATUS
 
+void load_global_config();
+
 // ===================================================================
 // 6. Command Execution & Processing
 // ===================================================================
@@ -34,6 +36,11 @@ void process_command(EditorState *state, bool *should_exit) {
     }
 
     if (state->input.command_buffer[0] == '!') {
+        if (g_safe_mode) {
+            editor_set_status_msg(state, "Terminal/External features disabled in Safe Mode. Run :full_load");
+            state->input.mode = NORMAL;
+            return;
+        }
         execute_shell_command(state);
         add_to_command_history(state, state->input.command_buffer);
         state->input.mode = NORMAL;
@@ -49,6 +56,17 @@ void process_command(EditorState *state, bool *should_exit) {
     char *trimmed_args = trim_whitespace(buffer_ptr);
     strncpy(args, trimmed_args, sizeof(args) - 1);
     args[sizeof(args)-1] = '\0';
+
+    if (g_safe_mode) {
+        if (strcmp(command, "term") == 0 || strcmp(command, "termside") == 0 ||
+            strcmp(command, "gstatus") == 0 || strcmp(command, "gadd") == 0 ||
+            strcmp(command, "gcommit") == 0 || strcmp(command, "gpush") == 0 ||
+            strcmp(command, "gpull") == 0 || strcmp(command, "gcc") == 0) {
+            editor_set_status_msg(state, "Terminal features disabled in Safe Mode. Run :full_load");
+            state->input.mode = NORMAL;
+            return;
+        }
+    }
 
     if (strcmp(command, "q") == 0) {
         close_active_window(should_exit);
@@ -136,6 +154,62 @@ void process_command(EditorState *state, bool *should_exit) {
         } else {
             make_make_file(state, args);
             }
+    } else if (strcmp(command, "lsp-start") == 0) {
+        if (g_safe_mode) {
+            editor_set_status_msg(state, "Attempting to start LSP (Bypassing safe mode restriction)...");
+            g_safe_mode = false;
+            lsp_initialize(state);
+            g_safe_mode = true;
+        } else {
+            editor_set_status_msg(state, "LSP is already enabled. Use :lsp-restart to restart it.");
+        }
+    } else if (strcmp(command, "load-config") == 0) {
+        if (g_safe_mode) {
+            load_global_config();
+            load_keybindings();
+            editor_set_status_msg(state, "Configurations and keybindings loaded.");
+        } else {
+            editor_set_status_msg(state, "Configurations are already loaded.");
+        }
+    } else if (strcmp(command, "full_load") == 0) {
+        if (g_safe_mode) {
+            A2_LOG(LOG_INFO, TAG_CORE, "Starting FULL LOAD from safe mode...");
+            editor_set_status_msg(state, "Running full load... check logs.");
+            
+            A2_LOG(LOG_INFO, TAG_CORE, "Loading configurations...");
+            load_global_config();
+            
+            A2_LOG(LOG_INFO, TAG_CORE, "Loading custom tasks...");
+            load_custom_tasks();
+            
+            A2_LOG(LOG_INFO, TAG_CORE, "Loading keybindings...");
+            load_keybindings();
+            
+            A2_LOG(LOG_INFO, TAG_CORE, "Loading macros...");
+            load_macros(state);
+            
+            A2_LOG(LOG_INFO, TAG_CORE, "Loading themes...");
+            char *default_theme_name = load_default_theme_name();
+            bool theme_loaded = false;
+            if (default_theme_name) {
+                theme_loaded = load_theme(default_theme_name);
+                free(default_theme_name);
+            }
+            if (!theme_loaded) {
+                load_theme("dark.theme");
+            }
+            apply_theme();
+            
+            A2_LOG(LOG_INFO, TAG_CORE, "Initializing LSP...");
+            lsp_initialize(state);
+            
+            g_safe_mode = false; // Turn off safe mode!
+            editor_set_status_msg(state, "Full load complete! Safe mode disabled.");
+            A2_LOG(LOG_INFO, TAG_CORE, "FULL LOAD completed successfully.");
+            redraw_all_windows();
+        } else {
+            editor_set_status_msg(state, "Not in safe mode. Full load not needed.");
+        }
     } else if (strcmp(command, "rc") == 0) {
         editor_reload_file(state);
     } else if (strcmp(command, "task") == 0 || strcmp(command, "tasks") == 0) {

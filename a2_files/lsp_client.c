@@ -776,6 +776,8 @@ void get_word_at_cursor(EditorState *state, char *buffer, size_t buffer_size) {
 }
 
 void lsp_initialize(EditorState *state) {
+    if (g_safe_mode) return;
+    
     if (state->lsp.client) {
         lsp_shutdown(state);
     }

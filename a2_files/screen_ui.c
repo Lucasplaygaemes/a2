@@ -588,6 +588,31 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                             } else break;
                         }
                     }
+                    
+                    // --- LSP DIAGNOSTICS HIGHLIGHT (WORD WRAP) ---
+                    if (global_config.lsp_diagnostics && global_config.lsp_highlight && state->lsp.enabled && state->lsp.document) {
+                        for (int d = 0; d < state->lsp.document->diagnostics_count; d++) {
+                            LspDiagnostic *diag = &state->lsp.document->diagnostics[d];
+                            if (diag->range.start.line <= file_line_idx && diag->range.end.line >= file_line_idx) {
+                                int diag_start_col = (diag->range.start.line == file_line_idx) ? diag->range.start.character : 0;
+                                int diag_end_col = (diag->range.end.line == file_line_idx) ? diag->range.end.character : line_len;
+                                
+                                int s_start = max(diag_start_col, line_offset);
+                                int s_end = min(diag_end_col, line_offset + break_pos);
+                                
+                                if (s_start < s_end) {
+                                    int sx = border_offset + line_number_width + get_visual_col(line + line_offset, s_start - line_offset);
+                                    int ex = border_offset + line_number_width + get_visual_col(line + line_offset, s_end - line_offset);
+                                    int mx = cols - border_offset;
+                                    
+                                    if (sx < mx) {
+                                        int lsp_color_pair = (diag->severity == LSP_SEVERITY_ERROR) ? 11 : 3;
+                                        mvwchgat(win, screen_y + border_offset, sx, min(ex, mx) - sx, A_UNDERLINE, lsp_color_pair, NULL);
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     if (current_conflict_block != 0) wattroff(win, A_DIM);
                     if (strncmp(line, ">>>>>>>", 7) == 0) current_conflict_block = 0;
@@ -763,6 +788,29 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     }
                 }
                 if (has_regex) regfree(&regex);
+                
+                if (global_config.lsp_diagnostics && global_config.lsp_highlight && state->lsp.enabled && state->lsp.document) {
+                    for (int d = 0; d < state->lsp.document->diagnostics_count; d++) {
+                        LspDiagnostic *diag = &state->lsp.document->diagnostics[d];
+                        if (diag->range.start.line <= line_idx && diag->range.end.line >= line_idx) {
+                            int diag_start_col = (diag->range.start.line == line_idx) ? diag->range.start.character : 0;
+                            int diag_end_col = (diag->range.end.line == line_idx) ? diag->range.end.character : line_len;
+                            
+                            int s_start = max(diag_start_col, state->view.left_col);
+                            int s_end = min(diag_end_col, line_len);
+                            if (s_start < s_end) {
+                                int sx = border_offset + line_number_width + get_visual_col(line + state->view.left_col, s_start - state->view.left_col);
+                                int ex = border_offset + line_number_width + get_visual_col(line + state->view.left_col, s_end - state->view.left_col);
+                                int mx = cols - border_offset;
+                                if (sx < mx) {
+                                    int color = (diag->severity == LSP_SEVERITY_ERROR) ? 11 : 3;
+                                    mvwchgat(win, i + border_offset, sx, min(ex, mx) - sx, A_UNDERLINE, color, NULL);
+                                }
+                            }
+                        }
+                    }
+                }
+                
                 state->buffer.dirty_lines[line_idx] = false;
             } else {
                 // If line not dirty, we still need to maintain in_multiline_comment state

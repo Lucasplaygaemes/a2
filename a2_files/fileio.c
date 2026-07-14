@@ -534,15 +534,28 @@ void save_file(EditorState *state) {
         }
     }
     
-    // --- ACTUAL FILE SAVING LOGIC ---
-    FILE *file = fopen(state->buffer.filename, "w");
+    // --- ACTUAL FILE SAVING LOGIC (ATOMIC) ---
+    char temp_filename[PATH_MAX + 10];
+    snprintf(temp_filename, sizeof(temp_filename), "%s.tmp", state->buffer.filename);
+    FILE *file = fopen(temp_filename, "w");
     if (file) {
         for (int i = 0; i < state->buffer.num_lines; i++) {
             if (state->buffer.lines[i]) fprintf(file, "%s\n", state->buffer.lines[i]);
         }
+        
+        // Ensure all data is written to disk before renaming
+        fflush(file);
+        fsync(fileno(file));
         fclose(file); 
         
-        // Finalize standard save
+        // Atomically replace the original file
+        if (rename(temp_filename, state->buffer.filename) != 0) {
+            editor_set_status_msg(state, "Error saving: %s", strerror(errno));
+            remove(temp_filename);
+            return;
+        }
+        
+        // Finalize standard save by removing the backup file AFTER atomic save succeeds
         char auto_save_filename[PATH_MAX + 10];
         snprintf(auto_save_filename, sizeof(auto_save_filename), "%s%s", state->buffer.filename, AUTO_SAVE_EXTENSION);
         if (remove(auto_save_filename) != 0 && errno != ENOENT) {
@@ -568,23 +581,27 @@ void save_file(EditorState *state) {
         if (errno == EACCES) {
            A2_LOG(LOG_WARN, TAG_FS, "Permission denied for %s. Prompting for sudo save.", state->buffer.filename);
            if (ui_confirm("Permission denied. Save with sudo?")) {
-               char *temp_filename = get_cache_filename("a2_sudo_save.XXXXXX");
-               if (!temp_filename) return;
-               int fd = mkstemp(temp_filename);
-               if (fd == -1) { free(temp_filename); return; }
+               char *temp_sudo_filename = get_cache_filename("a2_sudo_save.XXXXXX");
+               if (!temp_sudo_filename) return;
+               int fd = mkstemp(temp_sudo_filename);
+               if (fd == -1) { free(temp_sudo_filename); return; }
                FILE *temp_file = fdopen(fd, "w");
-               if (!temp_file) { close(fd); remove(temp_filename); free(temp_filename); return; }
+               if (!temp_file) { close(fd); remove(temp_sudo_filename); free(temp_sudo_filename); return; }
                for (int i = 0; i < state->buffer.num_lines; i++) { if (state->buffer.lines[i]) fprintf(temp_file, "%s\n", state->buffer.lines[i]); }
+               fflush(temp_file);
+               fsync(fileno(temp_file));
                fclose(temp_file);
                
+               // Use cat to write to sudo tee, this will unfortunately overwrite in place rather than atomic rename
+               // because sudo mv might have issues across mount points. 
                char command[PATH_MAX * 2 + 50];
-               snprintf(command, sizeof(command), "cat \"%s\" | sudo tee \"%s\" > /dev/null", temp_filename, state->buffer.filename);
+               snprintf(command, sizeof(command), "cat \"%s\" | sudo tee \"%s\" > /dev/null", temp_sudo_filename, state->buffer.filename);
                
                def_prog_mode(); endwin();
                int ret = system(command);
                reset_prog_mode(); refresh(); redraw_all_windows();
                
-               remove(temp_filename); free(temp_filename);
+               remove(temp_sudo_filename); free(temp_sudo_filename);
                
                if (WIFEXITED(ret) && WEXITSTATUS(ret) == 0) {
                    state->buffer.modified = false;
@@ -597,6 +614,7 @@ void save_file(EditorState *state) {
 
                    if (state->lsp.enabled) lsp_did_save(state);
                    editor_set_status_msg(state, "'%s' saved with sudo.", basename(state->buffer.filename));
+                   
                    char auto_save_filename[PATH_MAX];
                    snprintf(auto_save_filename, sizeof(auto_save_filename), "%s%s", state->buffer.filename, AUTO_SAVE_EXTENSION);
                    remove(auto_save_filename);
