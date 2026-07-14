@@ -3,7 +3,7 @@
 This page details the commands available in Command Mode (activated with *:*).
 
 ## File Operations
-- *:w [name]*: Writes (saves) the current file. Can optionally save to a new `name`.
+- *:w [name]*: Writes (saves) the current file safely using atomic saving. Can optionally save to a new `name`.
 - *:q*: Quits the active window. Exits `a2` if it's the last window.
 - *:q!*: Forces quit without saving.
 - *:wq*: Writes and quits.
