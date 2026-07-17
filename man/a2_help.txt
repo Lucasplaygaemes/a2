@@ -17,6 +17,7 @@ Welcome to `a2`, a lightweight, fast, and configurable text editor inspired by V
 - *File Explorer:* A built-in file explorer (*:explorer*) to navigate and manage files.
 - *Atomic Save:* Writes files safely to prevent corruption in the event of power loss or a crash, while maintaining the automatic `.sv` backup.
 - *LSP Support:* Language Server Protocol integration for real-time diagnostics, code highlighting, and completion.
+- *Interactive Popups:* Diagnostic and spell checking hovers can become movable floating windows (use *Ctrl+Shift+M* or click them). Press Enter to pin them to the screen.
 - *Macros:* Record and play back sequences of commands (*q* and *@*) to automate repetitive tasks.
 - *Advanced Search & Replace:* A powerful *:s* command that supports regular expressions for text substitutions.
 - *Unified Search:* Search with */* or *Ctrl+F* using the unified command bar with full history and arrow navigation.

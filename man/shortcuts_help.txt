@@ -21,6 +21,7 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *Alt+[1-9]* : Move the active window to the specified workspace.
 - *Alt+.* : Cycle through available window layouts.
 - *Alt+R* : Rotate windows within the current layout.
+- *Ctrl+Shift+M* : Toggle Movable Hover Mode for LSP diagnostics and spell-checking popups. Use arrows/mouse to move, Enter to pin, Esc to close.
 - *Alt+Shift+I* : Toggle image preview hover for the Markdown image link under cursor.
 - *Ctrl+Enter* : Open the Markdown image link under cursor in a new window split.
 - *Space, Enter* : Open a new terminal on a side window split (`:termside`).
