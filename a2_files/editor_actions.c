@@ -43,7 +43,7 @@ bool is_leader_key(int ch) {
 bool is_global_action(EditorAction action) {
     return (action >= ACT_NEW_WINDOW && action <= ACT_ROTATE_WINDOWS) || 
            (action >= ACT_SWITCH_TO_WS_1 && action <= ACT_MOVE_WIN_TO_POS_9) ||
-           (action == ACT_SETTINGS || action == ACT_HELP || action == ACT_KSC || action == ACT_TIMER_REPORT || action == ACT_TOGGLE_FLOATING_TERMINAL || action == ACT_OPEN_TERMSIDE);
+           (action == ACT_SETTINGS || action == ACT_HELP || action == ACT_KSC || action == ACT_TIMER_REPORT || action == ACT_TOGGLE_FLOATING_TERMINAL || action == ACT_OPEN_TERMSIDE || action == ACT_TOGGLE_POPUP_MOVE);
 }
 
 void execute_action(EditorAction action, EditorState *state, bool *should_exit) {
@@ -65,6 +65,15 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
     if (!state && !is_global) return;
     switch (action) {
         case ACT_TOGGLE_FLOATING_TERMINAL: toggle_floating_terminal(); break;
+        case ACT_TOGGLE_POPUP_MOVE:
+            if (state->lsp.is_popup_visible) {
+                state->lsp.is_popup_movable = !state->lsp.is_popup_movable;
+                state->buffer.is_dirty = true;
+                if (state->lsp.is_popup_movable) {
+                    ui_show_message("Hover Mode", "Use arrows/mouse to move, ENTER to pin, ESC to close.");
+                }
+            }
+            break;
         case ACT_OPEN_TERMSIDE: execute_command_in_split(""); break;
         case ACT_INSERT_MODE: 
             if (!state->buffer.is_image) {

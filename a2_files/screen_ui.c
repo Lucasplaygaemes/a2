@@ -244,24 +244,44 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
         if (line_number_width < 4) line_number_width = 4;
     }
 
-    cursor_y = (visual_y - state->view.top_line) + border_offset;
-    cursor_x = (visual_x - state->view.left_col) + border_offset + line_number_width;
+    if (!state->lsp.is_popup_movable && !state->lsp.is_popup_pinned) {
+        cursor_y = (visual_y - state->view.top_line) + border_offset;
+        cursor_x = (visual_x - state->view.left_col) + border_offset + line_number_width;
 
-    win_y = getbegy(main_win) + cursor_y + 1;
-    win_x = getbegx(main_win) + cursor_x;
+        win_y = getbegy(main_win) + cursor_y + 1;
+        win_x = getbegx(main_win) + cursor_x;
 
-    if (win_y + win_height > term_rows) {
-        win_y = getbegy(main_win) + cursor_y - win_height;
+        if (win_y + win_height > term_rows) {
+            win_y = getbegy(main_win) + cursor_y - win_height;
+        }
+        if (win_x + win_width > term_cols) {
+            win_x = term_cols - win_width - 1;
+        }
+        if (win_x < 0) win_x = 0;
+        if (win_y < 0) win_y = 0;
+
+        state->lsp.popup_y = win_y;
+        state->lsp.popup_x = win_x;
     }
-    if (win_x + win_width > term_cols) {
-        win_x = term_cols - win_width - 1;
-    }
-    if (win_x < 0) win_x = 0;
-    if (win_y < 0) win_y = 0; // FIX: was 'y = 0', now is 'win_y = 0'
 
-    state->lsp.diagnostic_popup = newwin(win_height, win_width, win_y, win_x);
+    if (state->lsp.diagnostic_popup) {
+        delwin(state->lsp.diagnostic_popup);
+    }
+
+    state->lsp.diagnostic_popup = newwin(win_height, win_width, state->lsp.popup_y, state->lsp.popup_x);
+    state->lsp.is_popup_visible = true;
+    state->lsp.popup_width = win_width;
+    state->lsp.popup_height = win_height;
+
     wbkgd(state->lsp.diagnostic_popup, COLOR_PAIR(8));
-    box(state->lsp.diagnostic_popup, 0, 0);
+    
+    if (state->lsp.is_popup_movable) {
+        wattron(state->lsp.diagnostic_popup, COLOR_PAIR(2)); // Cor de destaque para indicar que é movível
+        box(state->lsp.diagnostic_popup, 0, 0);
+        wattroff(state->lsp.diagnostic_popup, COLOR_PAIR(2));
+    } else {
+        box(state->lsp.diagnostic_popup, 0, 0);
+    }
 
     ptr = message;
     for (int i = 0; i < num_lines; i++) {

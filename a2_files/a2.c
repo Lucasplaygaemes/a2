@@ -51,10 +51,11 @@ const int ansi_to_ncurses_map[16] = {
 
 void inicializar_ncurses() {
     initscr(); cbreak(); noecho(); keypad(stdscr, TRUE);
+    mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, NULL);
+    mouseinterval(0);
     set_escdelay(25);
     start_color();
     
-    // FIX: Replaces use_default_colors() with a robust solution
     // Tells ncurses to map the terminal's default colors to COLOR_WHITE and COLOR_BLACK
     assume_default_colors(COLOR_WHITE, COLOR_BLACK);
 
@@ -84,6 +85,51 @@ void inicializar_ncurses() {
 void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     A2_LOG(LOG_DEBUG, TAG_CORE, "Input: ch=%d, mode=%d, single=%d", ch, (int)state->input.mode, state->input.single_command_mode);
 
+    // --- FLOTING WINDOW MOVABLE MODE ---
+    if (state->lsp.is_popup_movable) {
+        switch(ch) {
+            case KEY_UP:    state->lsp.popup_y--; break;
+            case KEY_DOWN:  state->lsp.popup_y++; break;
+            case KEY_LEFT:  state->lsp.popup_x--; break;
+            case KEY_RIGHT: state->lsp.popup_x++; break;
+            case KEY_MOUSE: {
+                MEVENT event;
+                if (getmouse(&event) == OK) {
+                    if (event.bstate & BUTTON1_CLICKED || event.bstate & BUTTON1_PRESSED) {
+                        state->lsp.popup_y = event.y - (state->lsp.popup_height / 2);
+                        state->lsp.popup_x = event.x - (state->lsp.popup_width / 2);
+                    }
+                }
+                break;
+            }
+            case '\n':
+            case '\r':
+            case KEY_ENTER:
+                state->lsp.is_popup_pinned = true;
+                state->lsp.is_popup_movable = false;
+                break;
+            case 27: // ESC
+                state->lsp.is_popup_movable = false;
+                state->lsp.is_popup_pinned = false;
+                if (state->lsp.diagnostic_popup) {
+                    delwin(state->lsp.diagnostic_popup);
+                    state->lsp.diagnostic_popup = NULL;
+                }
+                state->lsp.is_popup_visible = false;
+                if (state->spell.hover_message) {
+                    free(state->spell.hover_message);
+                    state->spell.hover_message = NULL;
+                }
+                break;
+        }
+        
+        if (state->lsp.popup_y < 0) state->lsp.popup_y = 0;
+        if (state->lsp.popup_x < 0) state->lsp.popup_x = 0;
+        
+        state->buffer.is_dirty = true;
+        return; // Consume input completely
+    }
+
     // Check for Kitty APC (Application Program Command) early to prevent resetting hovers!
     if (ch == 27) {
         WINDOW *active_win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->content_win;
@@ -107,13 +153,29 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
             unget_wch(next_ch);
         }
     }
-    // Reset spell hover on any action
-    state->spell.hover_pending = true;
-    clock_gettime(CLOCK_MONOTONIC, &state->spell.hover_last_move);
-    if (state->spell.hover_message) {
-        free(state->spell.hover_message);
-        state->spell.hover_message = NULL;
-        state->buffer.is_dirty = true;
+    if (!state->lsp.is_popup_movable && state->lsp.is_popup_visible && ch == KEY_MOUSE) {
+        MEVENT event;
+        if (getmouse(&event) == OK) {
+            if (event.bstate & BUTTON1_CLICKED || event.bstate & BUTTON1_PRESSED) {
+                if (event.y >= state->lsp.popup_y && event.y < state->lsp.popup_y + state->lsp.popup_height &&
+                    event.x >= state->lsp.popup_x && event.x < state->lsp.popup_x + state->lsp.popup_width) {
+                    state->lsp.is_popup_movable = true;
+                    state->buffer.is_dirty = true;
+                    return; // Enter movable mode and consume input
+                }
+            }
+        }
+    }
+
+    // Reset spell hover on any action, unless popup is in movable mode or pinned
+    if (!state->lsp.is_popup_movable && !state->lsp.is_popup_pinned) {
+        state->spell.hover_pending = true;
+        clock_gettime(CLOCK_MONOTONIC, &state->spell.hover_last_move);
+        if (state->spell.hover_message) {
+            free(state->spell.hover_message);
+            state->spell.hover_message = NULL;
+            state->buffer.is_dirty = true;
+        }
     }
 
     state->image_hover.hover_pending = true;
