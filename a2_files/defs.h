@@ -449,6 +449,15 @@ typedef struct {
     LspDocumentState *document;
     bool enabled;
     WINDOW *diagnostic_popup;
+    // New variables for movable popups
+    int popup_y;
+    int popup_x;
+    int popup_width;
+    int popup_height;
+    bool is_popup_visible;
+    bool is_popup_movable;
+    bool is_popup_pinned;
+    
     time_t last_change_time;
     time_t init_time;
     int init_retries;
@@ -637,6 +646,7 @@ typedef enum {
     ACT_KSC,               // :ksc
     ACT_TOGGLE_FLOATING_TERMINAL,
     ACT_OPEN_TERMSIDE,
+    ACT_TOGGLE_POPUP_MOVE,
     
     ACT_CUSTOM_TASK_START,
     ACT_CUSTOM_TASK_END = ACT_CUSTOM_TASK_START + 49,

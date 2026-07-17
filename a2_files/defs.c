@@ -156,7 +156,8 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     [ACT_TOGGLE_FLOATING_TERMINAL] = {ACT_TOGGLE_FLOATING_TERMINAL, 0, KEY_F(12), true, false, "TOGGLE_FLOAT_TERM", "Toggle Floating Term", "Hide or show the floating terminal overlay"},
     [ACT_HOVER_IMAGE] = {ACT_HOVER_IMAGE, 0, 'I', true, false, "HOVER_IMAGE", "Hover Image", "Preview Markdown inline image (Alt+Shift+I)"},
     [ACT_OPEN_IMAGE_SPLIT] = {ACT_OPEN_IMAGE_SPLIT, 0, 10, false, true, "OPEN_IMAGE_SPLIT", "Open Image", "Open image in split (Ctrl+Enter)"},
-    [ACT_OPEN_TERMSIDE] = {ACT_OPEN_TERMSIDE, ' ', 10, false, false, "OPEN_TERMSIDE", "Term Side", "Open terminal on side window (Space+Enter)"}
+    [ACT_OPEN_TERMSIDE] = {ACT_OPEN_TERMSIDE, ' ', 10, false, false, "OPEN_TERMSIDE", "Term Side", "Open terminal on side window (Space+Enter)"},
+    [ACT_TOGGLE_POPUP_MOVE] = {ACT_TOGGLE_POPUP_MOVE, 0, 'h', true, false, "TOGGLE_POPUP_MOVE", "Move Popup", "Toggle movable popup mode (Alt+H)"}
 };
 
 TaskManager global_task_manager = {0};
