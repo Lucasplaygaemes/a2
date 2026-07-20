@@ -943,7 +943,9 @@ void redraw_all_windows() {
             else if (state->lsp.enabled) {
                 LspDiagnostic *diag = get_diagnostic_under_cursor(state);
                 if (diag) {
-                    draw_diagnostic_popup(active_jw->win, state, diag->message);
+                    if (!global_config.lsp_inline_diagnostics || state->lsp.is_popup_movable || state->lsp.is_popup_pinned) {
+                        draw_diagnostic_popup(active_jw->win, state, diag->message);
+                    }
                 }
             }
         } else if (active_jw->type == WINDOW_TYPE_SETTINGS_PANEL && active_jw->settings_state) {

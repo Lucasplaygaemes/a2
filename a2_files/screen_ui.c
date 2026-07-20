@@ -631,6 +631,39 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                                     }
                                 }
                             }
+                            
+                            // Inline diagnostic for word wrap
+                            if (global_config.lsp_inline_diagnostics && diag->range.end.line == file_line_idx && line_offset + break_pos >= line_len) {
+                                int base_x = border_offset + line_number_width;
+                                int visual_line_len = get_visual_col(line + line_offset, break_pos);
+                                int end_x = base_x + visual_line_len + 4; // padding
+                                if (end_x < cols - border_offset - 2) {
+                                    int max_len = (cols - border_offset) - end_x;
+                                    
+                                    wattron(win, COLOR_PAIR(8)); // Usando cor do popup
+                                    char truncated_msg[512];
+                                    snprintf(truncated_msg, sizeof(truncated_msg), " ■ %s ", diag->message);
+                                    
+                                    // Remove newlines from message if any
+                                    for(int c = 0; truncated_msg[c]; c++) {
+                                        if (truncated_msg[c] == '\n' || truncated_msg[c] == '\r') {
+                                            truncated_msg[c] = ' ';
+                                        }
+                                    }
+                                    
+                                    if ((int)strlen(truncated_msg) > max_len) {
+                                        truncated_msg[max_len] = '\0';
+                                        if (max_len > 3) {
+                                            truncated_msg[max_len-1] = '.';
+                                            truncated_msg[max_len-2] = '.';
+                                            truncated_msg[max_len-3] = '.';
+                                        }
+                                    }
+                                    
+                                    mvwprintw(win, screen_y + border_offset, end_x, "%s", truncated_msg);
+                                    wattroff(win, COLOR_PAIR(8));
+                                }
+                            }
                         }
                     }
 
@@ -825,6 +858,42 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                                 if (sx < mx) {
                                     int color = (diag->severity == LSP_SEVERITY_ERROR) ? 11 : 3;
                                     mvwchgat(win, i + border_offset, sx, min(ex, mx) - sx, A_UNDERLINE, color, NULL);
+                                }
+                            }
+
+                            if (global_config.lsp_inline_diagnostics && diag->range.end.line == line_idx) {
+                                int base_x = border_offset + line_number_width;
+                                int remaining_len = line_len - state->view.left_col;
+                                int visual_line_len = 0;
+                                if (remaining_len > 0) {
+                                    visual_line_len = get_visual_col(line + state->view.left_col, remaining_len);
+                                }
+                                int end_x = base_x + visual_line_len + 4; // padding
+                                if (end_x < cols - border_offset - 2) {
+                                    int max_len = (cols - border_offset) - end_x;
+                                    
+                                    wattron(win, COLOR_PAIR(8)); // Usando cor do popup para destaque visual e legibilidade
+                                    char truncated_msg[512];
+                                    snprintf(truncated_msg, sizeof(truncated_msg), " ■ %s ", diag->message);
+                                    
+                                    // Remove newlines from message if any
+                                    for(int c = 0; truncated_msg[c]; c++) {
+                                        if (truncated_msg[c] == '\n' || truncated_msg[c] == '\r') {
+                                            truncated_msg[c] = ' ';
+                                        }
+                                    }
+                                    
+                                    if ((int)strlen(truncated_msg) > max_len) {
+                                        truncated_msg[max_len] = '\0';
+                                        if (max_len > 3) {
+                                            truncated_msg[max_len-1] = '.';
+                                            truncated_msg[max_len-2] = '.';
+                                            truncated_msg[max_len-3] = '.';
+                                        }
+                                    }
+                                    
+                                    mvwprintw(win, i + border_offset, end_x, "%s", truncated_msg);
+                                    wattroff(win, COLOR_PAIR(8));
                                 }
                             }
                         }

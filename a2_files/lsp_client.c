@@ -291,6 +291,12 @@ void lsp_parse_diagnostics(EditorState *state, const char *json_response) {
     
     lsp_free_message(msg);
     lsp_log("Debug: %d diagnostics processed\n", state->lsp.document->diagnostics_count);
+
+    if (state->buffer.dirty_lines) {
+        for (int i = 0; i < state->buffer.num_lines && i < state->buffer.dirty_lines_cap; i++) {
+            state->buffer.dirty_lines[i] = true;
+        }
+    }
 }
 
 void process_lsp_status(EditorState *state) {

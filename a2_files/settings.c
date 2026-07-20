@@ -25,6 +25,7 @@ A2Config global_config = {
     .paste_mode = false,
     .lsp_enabled = true,
     .lsp_diagnostics = true,
+    .lsp_inline_diagnostics = false,
     .lsp_highlight = true,
     .lsp_completion = true,
     .lsp_hover = true,
@@ -355,6 +356,7 @@ void save_global_config() {
         fprintf(f, "relative_line_numbers=%d\n", global_config.relative_line_numbers);
         fprintf(f, "paste_mode=%d\n", global_config.paste_mode);
         fprintf(f, "lsp_diagnostics=%d\n", global_config.lsp_diagnostics);
+        fprintf(f, "lsp_inline_diagnostics=%d\n", global_config.lsp_inline_diagnostics);
         fprintf(f, "lsp_highlight=%d\n", global_config.lsp_highlight);
         fprintf(f, "lsp_completion=%d\n", global_config.lsp_completion);
         fprintf(f, "lsp_hover=%d\n", global_config.lsp_hover);
@@ -395,6 +397,7 @@ void load_global_config() {
         else if (sscanf(line, "relative_line_numbers=%d", &val) == 1) global_config.relative_line_numbers = val;
         else if (sscanf(line, "paste_mode=%d", &val) == 1) global_config.paste_mode = val;
         else if (sscanf(line, "lsp_diagnostics=%d", &val) == 1) global_config.lsp_diagnostics = val;
+        else if (sscanf(line, "lsp_inline_diagnostics=%d", &val) == 1) global_config.lsp_inline_diagnostics = val;
         else if (sscanf(line, "lsp_highlight=%d", &val) == 1) global_config.lsp_highlight = val;
         else if (sscanf(line, "lsp_completion=%d", &val) == 1) global_config.lsp_completion = val;
         else if (sscanf(line, "lsp_hover=%d", &val) == 1) global_config.lsp_hover = val;
@@ -707,10 +710,11 @@ void draw_lsp_settings(EditorWindow *jw) {
         "Highlight Code",
         "Auto-completion",
         "Show Hover Info",
+        "Inline Diagnostics",
         "RESTART LSP SERVER" 
     };
     
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
         if (i == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
         
         bool status = false;
@@ -719,8 +723,9 @@ void draw_lsp_settings(EditorWindow *jw) {
         else if (i == 2) status = global_config.lsp_highlight;
         else if (i == 3) status = global_config.lsp_completion;
         else if (i == 4) status = global_config.lsp_hover;
+        else if (i == 5) status = global_config.lsp_inline_diagnostics;
         
-        if (i == 5) {
+        if (i == 6) {
             mvwprintw(jw->win, 4 + i, 4, "  !!! %s !!! ", lsp_opts[i]);
         } else {
             mvwprintw(jw->win, 4 + i, 4, "  %-20s : ", lsp_opts[i]);
@@ -1200,7 +1205,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                     break;
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
                 case 'j': case KEY_DOWN:
-                    if (state->current_selection < 5) state->current_selection++;
+                    if (state->current_selection < 6) state->current_selection++;
                     break;
                 case 'k': case KEY_UP:
                     if (state->current_selection > 0) state->current_selection--;
@@ -1221,6 +1226,8 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                     } else if (state->current_selection == 4) {
                         global_config.lsp_hover = !global_config.lsp_hover;
                     } else if (state->current_selection == 5) {
+                        global_config.lsp_inline_diagnostics = !global_config.lsp_inline_diagnostics;
+                    } else if (state->current_selection == 6) {
                         EditorState *editor_state = get_any_editor_state();
                         if (editor_state) process_lsp_restart(editor_state);
                     }
@@ -1233,7 +1240,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
             switch(ch) {
                 case 'q': case 27: 
                     state->current_view = SETTINGS_VIEW_MAIN; 
-                    state->current_selection = 5; 
+                    state->current_selection = 6; 
                     state->scroll_top = 0;
                     break;
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
