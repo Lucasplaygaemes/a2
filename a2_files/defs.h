@@ -310,6 +310,7 @@ typedef struct {
     bool lsp_completion;
     bool lsp_hover;
     bool lsp_enabled;
+    bool lsp_inline_diagnostics;
     
     int tab_size;
     bool expand_tab;
