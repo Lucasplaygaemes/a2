@@ -79,6 +79,40 @@ install_dependencies() {
             info "Running pacman to install them..."
             sudo pacman -Syu --noconfirm $PACKAGES_TO_INSTALL
         fi
+    elif command -v zypper &> /dev/null; then
+        info "Detected Zypper package manager (openSUSE)."
+        REQUIRED_PACKAGES="gcc ncurses-devel libjansson-devel libcurl-devel libopenssl-devel git cmake glibc-devel hunspell-devel"
+        PACKAGES_TO_INSTALL=""
+        for pkg in $REQUIRED_PACKAGES; do
+            if ! rpm -q "$pkg" &> /dev/null; then
+                PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL $pkg"
+            fi
+        done
+
+        if [ -z "$PACKAGES_TO_INSTALL" ]; then
+            info "All Zypper dependencies are already installed. Skipping."
+        else
+            info "Missing Zypper dependencies:$PACKAGES_TO_INSTALL"
+            info "Running zypper to install them..."
+            sudo zypper install -y $PACKAGES_TO_INSTALL
+        fi
+    elif command -v apk &> /dev/null; then
+        info "Detected APK package manager (Alpine Linux)."
+        REQUIRED_PACKAGES="build-base ncurses-dev jansson-dev curl-dev openssl-dev git cmake hunspell-dev"
+        PACKAGES_TO_INSTALL=""
+        for pkg in $REQUIRED_PACKAGES; do
+            if [ -z "$(apk info -e "$pkg")" ]; then
+                PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL $pkg"
+            fi
+        done
+
+        if [ -z "$PACKAGES_TO_INSTALL" ]; then
+            info "All APK dependencies are already installed. Skipping."
+        else
+            info "Missing APK dependencies:$PACKAGES_TO_INSTALL"
+            info "Running apk to install them..."
+            sudo apk add --no-cache $PACKAGES_TO_INSTALL
+        fi
     else
         error "Unsupported package manager. Please install dependencies manually."
     fi
