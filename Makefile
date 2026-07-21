@@ -4,7 +4,7 @@
 CC = gcc
 
 # Base CFLAGS and LDFLAGS
-CFLAGS = -g -Wall -Wextra -I. -I./a2_files $(shell pkg-config --cflags hunspell)
+CFLAGS = -g -Wall -Wextra -I. -I./a2_files $(shell pkg-config --cflags hunspell) $(shell pkg-config --cflags ncursesw 2>/dev/null)
 LDFLAGS = -lncursesw -ljansson -lcurl -lpthread -ldl -lssl -lcrypto -lvterm $(shell pkg-config --libs hunspell) -lm -Wl,-rpath=/usr/local/lib
 
 # Enable ASan if ASAN=1 is passed: make ASAN=1

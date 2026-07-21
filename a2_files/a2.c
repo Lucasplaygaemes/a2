@@ -429,7 +429,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         state->input.pending_operator = 0;
         state->input.mode = NORMAL;
 
-        if (ch == op) { // dd, yy ou cc
+        if (ch == (wint_t)op) { // dd, yy ou cc
             if (op == 'd') {
                 editor_delete_line(state);
             } else if (op == 'y') {
