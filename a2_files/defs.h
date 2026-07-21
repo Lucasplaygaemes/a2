@@ -10,6 +10,7 @@
 #include <limits.h> // For PATH_MAX
 #define LSP_DEBOUNCE_NS 300000000 // 300ms in nanoseconds
 
+#define _XOPEN_SOURCE_EXTENDED 1
 #include <ncurses.h>
 #include <stdlib.h>
 #include <string.h>
