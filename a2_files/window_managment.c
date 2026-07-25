@@ -935,8 +935,16 @@ void redraw_all_windows() {
         EditorWindow *active_jw = ws->windows[ws->active_window_idx];
         if (active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
             EditorState *state = active_jw->state;
+            // Draw Dictionary Hover
+            if (state->dictionary.is_visible) {
+                WINDOW *pop = draw_pop_up(state->dictionary.content_text, state->dictionary.popup_y, state->dictionary.popup_x);
+                if (pop) {
+                    wnoutrefresh(pop);
+                    delwin(pop);
+                }
+            }
             // Draw spell-checker hover popup
-            if (state->spell.hover_message) {
+            else if (state->spell.hover_message) {
                 draw_diagnostic_popup(active_jw->win, state, state->spell.hover_message);
             } 
             // Draw LSP diagnostic popup

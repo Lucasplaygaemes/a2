@@ -331,6 +331,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
     int old_left_col = state->view.left_col;
     adjust_viewport(win, state);
     bool scrolled = (state->view.top_line != old_top_line) || (state->view.left_col != old_left_col);
+    if (state->buffer.mapping || find_assembly_state_for_source(state->buffer.filename)) scrolled = true;
 
     if (scrolled) {
         werase(win); // If scrolled, a full erase is the simplest, most reliable way
@@ -430,9 +431,17 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         if (range.active && file_line_idx >= range.start_line && file_line_idx <= range.end_line) highlight_this_line = true;
                     }
                 }
+            } else {
+                EditorState *asm_state = find_assembly_state_for_source(state->buffer.filename);
+                if (asm_state && asm_state->buffer.mapping) {
+                    int asm_cursor = asm_state->cursor.line;
+                    if (asm_cursor < asm_state->buffer.mapping->asm_line_count) {
+                        if (asm_state->buffer.mapping->asm_to_source[asm_cursor] == file_line_idx) highlight_this_line = true;
+                    }
+                }
             }
             
-            if (highlight_this_line) wattron(win, COLOR_PAIR(12));
+            if (highlight_this_line) wattron(win, A_REVERSE);
             
             int line_len = strlen(line);
             int line_offset = 0;
@@ -683,7 +692,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                 if (line_len == 0) break;
             }
             if (has_regex) regfree(&regex);
-            if (highlight_this_line) wattroff(win, COLOR_PAIR(2));
+            if (highlight_this_line) wattroff(win, A_REVERSE);
         }
     } else { // NO WORD WRAP
         for (int i = 0; i < content_height; i++) {
@@ -702,6 +711,28 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     wattroff(win, A_BOLD); wattroff(win, COLOR_PAIR(8) | A_DIM);
                 }
                 wmove(win, i + border_offset, border_offset + line_number_width);
+
+                bool highlight_this_line = false;
+                if (state->buffer.mapping) {
+                    EditorState *source = find_source_state_for_assembly(state->buffer.filename);
+                    if (source) {
+                        int c_cursor = source->cursor.line;
+                        if (c_cursor < state->buffer.mapping->source_line_count) {
+                            AsmRange range = state->buffer.mapping->source_to_asm[c_cursor];
+                            if (range.active && line_idx >= range.start_line && line_idx <= range.end_line) highlight_this_line = true;
+                        }
+                    }
+                } else {
+                    EditorState *asm_state = find_assembly_state_for_source(state->buffer.filename);
+                    if (asm_state && asm_state->buffer.mapping) {
+                        int asm_cursor = asm_state->cursor.line;
+                        if (asm_cursor < asm_state->buffer.mapping->asm_line_count) {
+                            if (asm_state->buffer.mapping->asm_to_source[asm_cursor] == line_idx) highlight_this_line = true;
+                        }
+                    }
+                }
+                
+                if (highlight_this_line) wattron(win, A_REVERSE);
 
                 int current_col_val = 0, line_len = strlen(line);
                 bool is_line_comment = false;
@@ -840,7 +871,9 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         } else break;
                     }
                 }
+                
                 if (has_regex) regfree(&regex);
+                if (highlight_this_line) wattroff(win, A_REVERSE);
                 
                 if (global_config.lsp_diagnostics && global_config.lsp_highlight && state->lsp.enabled && state->lsp.document) {
                     for (int d = 0; d < state->lsp.document->diagnostics_count; d++) {

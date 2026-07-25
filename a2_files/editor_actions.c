@@ -11,6 +11,9 @@
 #include "autocomplete_logic.h"
 #include "project.h"
 #include "timer.h"
+#include "cache.h"
+#include "themes.h"
+#include "dictionary.h"
 #include "fileio.h"
 #include "diff.h"
 #include "direct_navigation.h"
@@ -413,6 +416,7 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_SETTINGS: create_settings_panel_window(); break;
         case ACT_HELP: display_help_viewer("a2_help.txt"); break;
         case ACT_KSC: display_dynamic_ksc(); break;
+        case ACT_DICTIONARY_HOVER: dictionary_trigger_hover(state); break;
         default: break;
     }
 }

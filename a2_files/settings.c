@@ -42,7 +42,8 @@ A2Config global_config = {
     .debug_enabled = true,
     .log_level_filter = LOG_DEBUG,
     .icon_mode = 1,
-    .image_preview_enabled = true
+    .image_preview_enabled = true,
+    .dictionary_lang = "auto"
 };
 
 typedef struct {
@@ -88,7 +89,8 @@ const char *main_menu_items[] = {
     "LSP (Language Server)",
     "Keybindings",
     "Tasks",
-    "Debug"
+    "Debug",
+    "Dictionary"
 };
 const int num_main_menu_items = sizeof(main_menu_items) / sizeof(char*);
 
@@ -368,6 +370,7 @@ void save_global_config() {
         fprintf(f, "log_level_filter=%d\n", global_config.log_level_filter);
         fprintf(f, "icon_mode=%d\n", global_config.icon_mode);
         fprintf(f, "image_preview_enabled=%d\n", global_config.image_preview_enabled);
+        fprintf(f, "dictionary_lang=%s\n", global_config.dictionary_lang);
         fclose(f);
     }
 }
@@ -412,6 +415,10 @@ void load_global_config() {
         else if (sscanf(line, "default_spell_lang=%127[^\n]", str_val) == 1) {
             strncpy(global_config.default_spell_lang, str_val, sizeof(global_config.default_spell_lang) - 1);
             global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
+        }
+        else if (sscanf(line, "dictionary_lang=%15[^\n]", str_val) == 1) {
+            strncpy(global_config.dictionary_lang, str_val, sizeof(global_config.dictionary_lang) - 1);
+            global_config.dictionary_lang[sizeof(global_config.dictionary_lang) - 1] = '\0';
         }
     }
     fclose(f);
@@ -509,7 +516,8 @@ void draw_main_menu(EditorWindow *jw) {
         "  (L) LSP (Language Server)", 
         "  (K) Keybindings",
         "  (C) Custom Tasks",
-        "  (D) Debug"
+        "  (D) Debug",
+        "  (W) Dictionary"
     };
 
     for (int i = 0; i < num_main_menu_items; i++) {
@@ -776,13 +784,29 @@ void draw_debug_settings(EditorWindow *jw) {
                 wattroff(jw->win, PAIR_ERROR | A_BOLD);
             }
         } else if (i == 1) {
-            mvwprintw(jw->win, 4 + i, 4, "  %-20s : [%s]", debug_opts[i], level_strings[global_config.log_level_filter]);
+            mvwprintw(jw->win, 4 + i, 4, "  %-20s : %s ", debug_opts[i], level_strings[global_config.log_level_filter]);
         } else {
-            mvwprintw(jw->win, 4 + i, 4, "  !!! %s !!! ", debug_opts[i]);
+            mvwprintw(jw->win, 4 + i, 4, "  %-20s   ", debug_opts[i]);
         }
-         
         if (i == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
+}
+
+void draw_dictionary_settings(EditorWindow *jw) {
+    SettingsPanelState *state = jw->settings_state;
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
+    (void)rows;
+    (void)state;
+    
+    draw_settings_header(jw->win, "SETTINGS > DICTIONARY", cols);
+
+    wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
+    mvwprintw(jw->win, 4, 4, "  Current Language     : %s ", global_config.dictionary_lang);
+    wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
+    
+    mvwprintw(jw->win, 6, 4, "[ENTER] to change language (e.g. 'en', 'pt').");
+    mvwprintw(jw->win, 7, 4, "Type 'auto' to use Spell Checker language.");
 }
 
 void draw_tasks_settings(EditorWindow *jw) {
@@ -850,6 +874,9 @@ void settings_panel_redraw(EditorWindow *jw) {
             break;
         case SETTINGS_VIEW_DEBUG:
             draw_debug_settings(jw);
+            break;
+        case SETTINGS_VIEW_DICTIONARY:
+            draw_dictionary_settings(jw);
             break;
     }
     
@@ -1306,6 +1333,26 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                     }
                     save_global_config();
                     break;
+            }
+            break;
+        case SETTINGS_VIEW_DICTIONARY:
+            switch(ch) {
+                case 'q': case 27: case 'h': case KEY_LEFT:
+                    state->current_view = SETTINGS_VIEW_MAIN; 
+                    state->current_selection = 7; 
+                    break;
+                case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
+                case KEY_ENTER: case '\n': {
+                    char new_lang[16] = "";
+                    ui_ask_input("New Lang ('auto' or 'en', 'pt', etc.):", new_lang, 16);
+                    if (strlen(new_lang) > 0) {
+                        strncpy(global_config.dictionary_lang, new_lang, 15);
+                        global_config.dictionary_lang[15] = '\0';
+                        save_global_config();
+                        state->is_dirty = true;
+                    }
+                    break;
+                }
             }
             break;
     }

@@ -372,7 +372,27 @@ void handle_command_mode_key(EditorState *state, wint_t ch, bool *should_exit) {
             } 
             break;
         case KEY_ENTER: case '\n': process_command(state, should_exit); break;
-        case KEY_BACKSPACE: case 127: case 8: if (state->input.command_pos > 0) { memmove(&state->input.command_buffer[state->input.command_pos - 1], &state->input.command_buffer[state->input.command_pos], strlen(state->input.command_buffer) - state->input.command_pos + 1); state->input.command_pos--; state->buffer.is_dirty = true; } break;
-        default: if (iswprint(ch) && strlen(state->input.command_buffer) < 99) { memmove(&state->input.command_buffer[state->input.command_pos + 1], &state->input.command_buffer[state->input.command_pos], strlen(state->input.command_buffer) - state->input.command_pos + 1); state->input.command_buffer[state->input.command_pos] = (char)ch; state->input.command_pos++; state->buffer.is_dirty = true; } break;
+        case KEY_BACKSPACE: case 127: case 8: 
+            if (state->input.command_pos > 0) { 
+                int new_pos = state->input.command_pos - 1;
+                while (new_pos > 0 && (state->input.command_buffer[new_pos] & 0xC0) == 0x80) new_pos--;
+                int del_len = state->input.command_pos - new_pos;
+                memmove(&state->input.command_buffer[new_pos], &state->input.command_buffer[state->input.command_pos], strlen(state->input.command_buffer) - state->input.command_pos + 1);
+                state->input.command_pos = new_pos;
+                state->buffer.is_dirty = true;
+            }
+            break;
+        default: 
+            if (iswprint(ch)) { 
+                char mb[MB_CUR_MAX + 1];
+                int char_len = wctomb(mb, ch);
+                if (char_len > 0 && strlen(state->input.command_buffer) + char_len < 99) {
+                    memmove(&state->input.command_buffer[state->input.command_pos + char_len], &state->input.command_buffer[state->input.command_pos], strlen(state->input.command_buffer) - state->input.command_pos + 1);
+                    memcpy(&state->input.command_buffer[state->input.command_pos], mb, char_len);
+                    state->input.command_pos += char_len;
+                    state->buffer.is_dirty = true;
+                }
+            } 
+            break;
     }
 }
