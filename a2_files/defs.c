@@ -157,7 +157,8 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     [ACT_HOVER_IMAGE] = {ACT_HOVER_IMAGE, 0, 'I', true, false, "HOVER_IMAGE", "Hover Image", "Preview Markdown inline image (Alt+Shift+I)"},
     [ACT_OPEN_IMAGE_SPLIT] = {ACT_OPEN_IMAGE_SPLIT, 0, 10, false, true, "OPEN_IMAGE_SPLIT", "Open Image", "Open image in split (Ctrl+Enter)"},
     [ACT_OPEN_TERMSIDE] = {ACT_OPEN_TERMSIDE, ' ', 10, false, false, "OPEN_TERMSIDE", "Term Side", "Open terminal on side window (Space+Enter)"},
-    [ACT_TOGGLE_POPUP_MOVE] = {ACT_TOGGLE_POPUP_MOVE, 0, 'h', true, false, "TOGGLE_POPUP_MOVE", "Move Popup", "Toggle movable popup mode (Alt+H)"}
+    [ACT_TOGGLE_POPUP_MOVE] = {ACT_TOGGLE_POPUP_MOVE, 0, 'h', true, false, "TOGGLE_POPUP_MOVE", "Move Popup", "Toggle movable popup mode (Alt+H)"},
+    [ACT_DICTIONARY_HOVER] = {ACT_DICTIONARY_HOVER, 0, 'D', false, false, "DICTIONARY_HOVER", "Dictionary", "Wiktionary lookup for word under cursor"}
 };
 
 TaskManager global_task_manager = {0};

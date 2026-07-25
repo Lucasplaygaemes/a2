@@ -98,7 +98,8 @@ typedef enum {
     SETTINGS_VIEW_LSP,
     SETTINGS_VIEW_KEYBINDINGS,
     SETTINGS_VIEW_TASKS,
-    SETTINGS_VIEW_DEBUG
+    SETTINGS_VIEW_DEBUG,
+    SETTINGS_VIEW_DICTIONARY
 } SettingsPanelView;
 
 typedef struct {
@@ -331,6 +332,7 @@ typedef struct {
     int log_level_filter;
     int icon_mode;
     bool image_preview_enabled;
+    char dictionary_lang[16];
 } A2Config;
 
 extern A2Config global_config;
@@ -506,6 +508,15 @@ typedef struct EditorState {
     EditorSpell spell;
     EditorImageHover image_hover;
     
+    struct {
+        bool is_visible;
+        bool is_loading;
+        char current_word[100];
+        char content_text[4096];
+        int popup_y;
+        int popup_x;
+    } dictionary;
+    
     DirectoryInfo **recent_dirs;
     int num_recent_dirs;
     FileInfo **recent_files;
@@ -652,6 +663,8 @@ typedef enum {
     
     ACT_CUSTOM_TASK_START,
     ACT_CUSTOM_TASK_END = ACT_CUSTOM_TASK_START + 49,
+    
+    ACT_DICTIONARY_HOVER,
     
     ACT_COUNT              // totalizer
 } EditorAction;
