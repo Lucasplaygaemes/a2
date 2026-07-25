@@ -54,6 +54,7 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *Alt+c* : Toggle comment on the current line or visual selection.
 - *Alt+C* : Change inside (prompts for ", ', (, [, {, <) and enter Insert Mode.
 - *Alt+D* : Delete inside (prompts for ", ', (, [, {, <).
+- *D* : Fetch and display the Wiktionary definition of the word under cursor.
 - *Alt+Backspace* : Delete the previous word (Works in Insert Mode).
 
 ## Insert Mode
