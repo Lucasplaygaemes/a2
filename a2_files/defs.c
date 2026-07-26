@@ -32,6 +32,8 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     [ACT_MOVE_BOTTOM] = {ACT_MOVE_BOTTOM, 0, 'G', false, false, "MOVE_BOTTOM", "Bottom", "Move to bottom of file"},
     [ACT_SCROLL_UP] = {ACT_SCROLL_UP, 0, KEY_SR, false, false, "SCROLL_UP", "Jump Up", "Jump 10 lines up"},
     [ACT_SCROLL_DOWN] = {ACT_SCROLL_DOWN, 0, KEY_SF, false, false, "SCROLL_DOWN", "Jump Down", "Jump 10 lines down"},
+    [ACT_MULTI_CURSOR_UP] = {ACT_MULTI_CURSOR_UP, 0, KEY_UP, true, true, "MULTI_CURSOR_UP", "Clonar Cursor Acima", "Adicona Um cursoir na linha de cima"},
+    [ACT_MULTI_CURSOR_DOWN] = {ACT_MULTI_CURSOR_DOWN, 0, KEY_DOWN, true, true, "MULTI_CURSOR_DOWN", "Clonar Cursor Abaixo", "Adicona Um cursor na linha de baixo"},
 
     [ACT_DIGIT_0] = {ACT_DIGIT_0, 0, '0', false, false, "DIGIT_0", "0", "Prefix digit 0"},
     [ACT_DIGIT_1] = {ACT_DIGIT_1, 0, '1', false, false, "DIGIT_1", "1", "Prefix digit 1"},

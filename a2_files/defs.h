@@ -63,6 +63,8 @@ typedef struct {
 #define AUTO_SAVE_EXTENSION ".sv"
 #define MAX_UNDO_LEVELS 512
 
+#define MAX_EXTRA_CURSORS 64
+
 struct EditorState;
 extern bool g_safe_mode;
 
@@ -500,6 +502,8 @@ typedef struct {
 #define EDITORSTATE_DEFINED
 typedef struct EditorState {
     EditorCursor cursor;
+    EditorCursor extra_cursors[MAX_EXTRA_CURSORS];
+    int num_extra_cursors;
     EditorBuffer buffer;
     EditorView view;
     EditorInput input;
@@ -552,6 +556,10 @@ typedef enum {
     ACT_MOVE_BOTTOM,       // G
     ACT_SCROLL_UP,         // Shift+Up
     ACT_SCROLL_DOWN,       // Shift+Down
+    
+    ACT_MULTI_CURSOR_UP,
+    ACT_MULTI_CURSOR_DOWN,
+    ACT_MULTI_CURSOR_CLEAR,
 
     // Prefix Digits
     ACT_DIGIT_0, ACT_DIGIT_1, ACT_DIGIT_2, ACT_DIGIT_3, ACT_DIGIT_4,
