@@ -84,9 +84,32 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
                 state->buffer.is_dirty = true; 
             }
             break;
+        case ACT_MULTI_CURSOR_UP:
+            if (state->num_extra_cursors < MAX_EXTRA_CURSORS && state->cursor.line > 0) {
+                state->extra_cursors[state->num_extra_cursors].line = state->cursor.line;
+                state->extra_cursors[state->num_extra_cursors].col = state->cursor.col;
+                state->num_extra_cursors++;
+                state->cursor.line--;
+                state->buffer.is_dirty = true;
+            }
+            break;
+        case ACT_MULTI_CURSOR_DOWN:
+            if (state->num_extra_cursors < MAX_EXTRA_CURSORS && state->cursor.line < state->buffer.num_lines - 1) {
+                state->extra_cursors[state->num_extra_cursors].line = state->cursor.line;
+                state->extra_cursors[state->num_extra_cursors].col = state->cursor.col;
+                state->num_extra_cursors++;
+                state->cursor.line++;
+                state->buffer.is_dirty = true;
+            }
+            break;
+        case ACT_MULTI_CURSOR_CLEAR:
+            state->num_extra_cursors = 0;
+            state->buffer.is_dirty = true;
+            break;
         case ACT_NORMAL_MODE: 
             state->input.mode = NORMAL; 
             state->cursor.visual_selection_mode = VISUAL_MODE_NONE; 
+            state->num_extra_cursors = 0;
             state->buffer.is_dirty = true; 
             break;
         case ACT_VISUAL_MODE: 

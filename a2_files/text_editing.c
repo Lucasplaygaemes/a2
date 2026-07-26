@@ -10,7 +10,141 @@
 #include <string.h>
 #include <ctype.h>
 
-void editor_insert_char(EditorState *state, wint_t ch) {
+
+bool in_multi_cursor = false;
+
+typedef void (*EditorFuncChar)(EditorState*, wint_t);
+typedef void (*EditorFunc)(EditorState*);
+
+static void merge_cursors(EditorState *state) {
+    for (int i = 0; i < state->num_extra_cursors; i++) {
+        bool dup = false;
+        if (state->extra_cursors[i].line == state->cursor.line && 
+            state->extra_cursors[i].col == state->cursor.col) {
+            dup = true;
+        } else {
+            for (int j = 0; j < i; j++) {
+                if (state->extra_cursors[i].line == state->extra_cursors[j].line && 
+                    state->extra_cursors[i].col == state->extra_cursors[j].col) {
+                    dup = true;
+                    break;
+                }
+            }
+        }
+        if (dup) {
+            for (int k = i; k < state->num_extra_cursors - 1; k++) {
+                state->extra_cursors[k] = state->extra_cursors[k+1];
+            }
+            state->num_extra_cursors--;
+            i--;
+        }
+    }
+}
+
+static void execute_multi_cursor_char(EditorState *state, EditorFuncChar func, wint_t ch) {
+    if (state->num_extra_cursors == 0) { func(state, ch); return; }
+    state->buffer.modified = true;
+    if (!in_multi_cursor) { push_undo(state); clear_redo_stack(state); }
+    in_multi_cursor = true;
+    int total = state->num_extra_cursors + 1;
+    int indices[100];
+    for (int i = 0; i < total; i++) indices[i] = i;
+    for (int i = 0; i < total - 1; i++) {
+        for (int j = 0; j < total - i - 1; j++) {
+            EditorCursor c1 = (indices[j] == 0) ? state->cursor : state->extra_cursors[indices[j]-1];
+            EditorCursor c2 = (indices[j+1] == 0) ? state->cursor : state->extra_cursors[indices[j+1]-1];
+            bool swap = false;
+            if (c1.line < c2.line) swap = true;
+            else if (c1.line == c2.line && c1.col < c2.col) swap = true;
+            if (swap) { int tmp = indices[j]; indices[j] = indices[j+1]; indices[j+1] = tmp; }
+        }
+    }
+    for (int i = 0; i < total; i++) {
+        int idx = indices[i];
+        int lines_before = state->buffer.num_lines;
+        int edit_line = (idx == 0) ? state->cursor.line : state->extra_cursors[idx-1].line;
+        
+        if (idx == 0) { func(state, ch); }
+        else {
+            EditorCursor orig = state->cursor;
+            state->cursor = state->extra_cursors[idx-1];
+            func(state, ch);
+            state->extra_cursors[idx-1] = state->cursor;
+            state->cursor = orig;
+        }
+        
+        int diff = state->buffer.num_lines - lines_before;
+        if (diff != 0) {
+            if (idx != 0 && state->cursor.line >= edit_line) {
+                if (state->cursor.line > edit_line || diff > 0) state->cursor.line += diff;
+            }
+            for (int c = 0; c < state->num_extra_cursors; c++) {
+                if (idx - 1 != c && state->extra_cursors[c].line >= edit_line) {
+                    if (state->extra_cursors[c].line > edit_line || diff > 0) state->extra_cursors[c].line += diff;
+                }
+            }
+        }
+    }
+    merge_cursors(state);
+    in_multi_cursor = false;
+}
+
+static void execute_multi_cursor(EditorState *state, EditorFunc func) {
+    if (state->num_extra_cursors == 0) { func(state); return; }
+    state->buffer.modified = true;
+    if (!in_multi_cursor) { push_undo(state); clear_redo_stack(state); }
+    in_multi_cursor = true;
+    int total = state->num_extra_cursors + 1;
+    int indices[100];
+    for (int i = 0; i < total; i++) indices[i] = i;
+    for (int i = 0; i < total - 1; i++) {
+        for (int j = 0; j < total - i - 1; j++) {
+            EditorCursor c1 = (indices[j] == 0) ? state->cursor : state->extra_cursors[indices[j]-1];
+            EditorCursor c2 = (indices[j+1] == 0) ? state->cursor : state->extra_cursors[indices[j+1]-1];
+            bool swap = false;
+            if (c1.line < c2.line) swap = true;
+            else if (c1.line == c2.line && c1.col < c2.col) swap = true;
+            if (swap) { int tmp = indices[j]; indices[j] = indices[j+1]; indices[j+1] = tmp; }
+        }
+    }
+    for (int i = 0; i < total; i++) {
+        int idx = indices[i];
+        int lines_before = state->buffer.num_lines;
+        int edit_line = (idx == 0) ? state->cursor.line : state->extra_cursors[idx-1].line;
+        
+        if (idx == 0) { func(state); }
+        else {
+            EditorCursor orig = state->cursor;
+            state->cursor = state->extra_cursors[idx-1];
+            func(state);
+            state->extra_cursors[idx-1] = state->cursor;
+            state->cursor = orig;
+        }
+        
+        int diff = state->buffer.num_lines - lines_before;
+        if (diff != 0) {
+            if (idx != 0 && state->cursor.line >= edit_line) {
+                if (state->cursor.line > edit_line || diff > 0) state->cursor.line += diff;
+            }
+            for (int c = 0; c < state->num_extra_cursors; c++) {
+                if (idx - 1 != c && state->extra_cursors[c].line >= edit_line) {
+                    if (state->extra_cursors[c].line > edit_line || diff > 0) state->extra_cursors[c].line += diff;
+                }
+            }
+        }
+    }
+    merge_cursors(state);
+    in_multi_cursor = false;
+}
+
+
+void _editor_insert_char(EditorState *state, wint_t ch) {
+    if (state->cursor.line >= state->buffer.num_lines) state->cursor.line = state->buffer.num_lines - 1;
+    if (state->cursor.line < 0) state->cursor.line = 0;
+    char *l = state->buffer.lines[state->cursor.line];
+    int l_len = l ? strlen(l) : 0;
+    if (state->cursor.col > l_len) state->cursor.col = l_len;
+
     state->buffer.modified = true;
     push_undo(state);
     clear_redo_stack(state);
@@ -40,7 +174,13 @@ void editor_insert_char(EditorState *state, wint_t ch) {
     }
 }
 
-void editor_handle_enter(EditorState *state) {
+void _editor_handle_enter(EditorState *state) {
+    if (state->cursor.line >= state->buffer.num_lines) state->cursor.line = state->buffer.num_lines - 1;
+    if (state->cursor.line < 0) state->cursor.line = 0;
+    char *l = state->buffer.lines[state->cursor.line];
+    int l_len = l ? strlen(l) : 0;
+    if (state->cursor.col > l_len) state->cursor.col = l_len;
+
     state->buffer.modified = true;
     push_undo(state);
     clear_redo_stack(state);
@@ -100,7 +240,13 @@ void editor_handle_enter(EditorState *state) {
     }
 }
 
-void editor_handle_backspace(EditorState *state) {
+void _editor_handle_backspace(EditorState *state) {
+    if (state->cursor.line >= state->buffer.num_lines) state->cursor.line = state->buffer.num_lines - 1;
+    if (state->cursor.line < 0) state->cursor.line = 0;
+    char *l = state->buffer.lines[state->cursor.line];
+    int l_len = l ? strlen(l) : 0;
+    if (state->cursor.col > l_len) state->cursor.col = l_len;
+
     state->buffer.modified = true;
     push_undo(state);
     clear_redo_stack(state);
@@ -167,13 +313,19 @@ void editor_delete_specific_line(EditorState *state, int line_num) {
     if (state->cursor.line >= state->buffer.num_lines) state->cursor.line = state->buffer.num_lines - 1;
 }
 
-void editor_delete_line(EditorState *state) {
+void _editor_delete_line(EditorState *state) {
     state->buffer.modified = true;
     push_undo(state);
     clear_redo_stack(state);
-    if (state->buffer.num_lines <= 1 && state->cursor.line == 0) {
+    if (state->cursor.line >= state->buffer.num_lines) {
+        state->cursor.line = state->buffer.num_lines - 1;
+    }
+    if (state->cursor.line < 0) state->cursor.line = 0;
+    
+    if (state->buffer.num_lines <= 1) {
         free(state->buffer.lines[0]);
         state->buffer.lines[0] = calloc(1, 1);
+        state->cursor.line = 0;
         state->cursor.col = 0; state->cursor.ideal_col = 0;
         return;
     }
@@ -841,4 +993,19 @@ void editor_paste_from_global_move_register(EditorState *state) {
     global_yank_register = global_move_register;
     editor_global_paste(state);
     global_yank_register = prev_yank;
+}
+
+void editor_insert_char(EditorState *state, wint_t ch) {
+    execute_multi_cursor_char(state, _editor_insert_char, ch);
+}
+
+void editor_handle_enter(EditorState *state) {
+    execute_multi_cursor(state, _editor_handle_enter);
+}
+void editor_handle_backspace(EditorState *state) {
+    execute_multi_cursor(state, _editor_handle_backspace);
+}
+
+void editor_delete_line(EditorState *state) {
+    execute_multi_cursor(state, _editor_delete_line);
 }

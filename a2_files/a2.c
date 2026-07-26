@@ -386,6 +386,34 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
             goto check_single_command;
         }
     }
+    if (ch == KEY_MOUSE) {
+        MEVENT event;
+        if (getmouse(&event) == OK) {
+            if (event.bstate & BUTTON2_CLICKED || event.bstate & BUTTON2_PRESSED) {
+                Workspace *ws = ACTIVE_WS;
+                EditorWindow *jw = ws->windows[ws->active_window_idx];
+                if (jw && jw->type == WINDOW_TYPE_EDITOR && jw->state == state) {
+                    int beg_y, beg_x;
+                    getbegyx(jw->win, beg_y, beg_x);
+                    int win_y = event.y - beg_y;
+                    int win_x = event.x - beg_x;
+                    int border_offset = (ws->num_windows > 1) ? 1 : 0;
+                    int line_number_width = snprintf(NULL, 0, "%d", state->buffer.num_lines) + 1;
+                    if (line_number_width < 4) line_number_width = 4;
+                    int click_line = state->view.top_line + (win_y - border_offset);
+                    int click_col = state->view.left_col + (win_x - border_offset - line_number_width);
+                    if (click_line >= 0 && click_line < state->buffer.num_lines && click_col >= 0) {
+                        if (state->num_extra_cursors < MAX_EXTRA_CURSORS) {
+                            state->extra_cursors[state->num_extra_cursors].line = click_line;
+                            state->extra_cursors[state->num_extra_cursors].col = click_col;
+                            state->num_extra_cursors++;
+                            state->buffer.is_dirty = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     switch (state->input.mode) {
         case VISUAL:

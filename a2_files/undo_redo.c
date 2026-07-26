@@ -40,7 +40,10 @@ void restore_from_snapshot(EditorState *state, EditorSnapshot *snapshot) {
     free(snapshot);
 }
 
+extern bool in_multi_cursor;
+
 void push_undo(EditorState *state) {
+    if (in_multi_cursor) return;
     if (state->buffer.undo_count >= MAX_UNDO_LEVELS) {
         A2_LOG(LOG_DEBUG, TAG_CORE, "Undo stack limit reached. Dropping oldest snapshot.");
         free_snapshot(state->buffer.undo_stack[0]);

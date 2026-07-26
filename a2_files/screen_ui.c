@@ -933,6 +933,15 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     }
                 }
                 
+                for (int c = 0; c < state->num_extra_cursors; c++) {
+                    if (state->extra_cursors[c].line == line_idx) {
+                        int cx = state->extra_cursors[c].col - state->view.left_col + border_offset + line_number_width;
+                        if (cx >= border_offset + line_number_width && cx < cols) {
+                            mvwchgat(win, i + border_offset, cx, 1, A_REVERSE, 0, NULL);
+                        }
+                    }
+                }
+                
                 state->buffer.dirty_lines[line_idx] = false;
             } else {
                 // If line not dirty, we still need to maintain in_multiline_comment state
