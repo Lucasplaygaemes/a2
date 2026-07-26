@@ -22,6 +22,7 @@ Welcome to `a2`, a lightweight, fast, and configurable text editor inspired by V
 - *Macros:* Record and play back sequences of commands (*q* and *@*) to automate repetitive tasks.
 - *Advanced Search & Replace:* A powerful *:s* command that supports regular expressions for text substitutions.
 - *Unified Search:* Search with */* or *Ctrl+F* using the unified command bar with full history and arrow navigation.
+- *Multi-Cursor:* Edit multiple lines simultaneously. Add extra cursors using *Alt+Shift+Up/Down* or *Middle Mouse Click*. Clear them with *Esc*.
 - *Theming:* Customize the editor's appearance with simple `.theme` files.
 - *Assembly View:* Compile and view assembly code synchronized with your C source (*Alt+A*).
 - *Snippets:* Expand code snippets from the completion menu (*Alt+S* during completion).

@@ -101,6 +101,12 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *p* : Git Push.
 - *q* : Close the explorer window.
 
+## Multi-Cursor
+- *Alt+Shift+Up* : Add an extra cursor on the line above.
+- *Alt+Shift+Down* : Add an extra cursor on the line below.
+- *Middle Mouse Click* : Add an extra cursor exactly where you click.
+- *Esc* : Clear all extra cursors and return to a single cursor.
+
 ## Multi-key Sequences (ALT)
 Press the first key, release, then press the second.
 - *Alt+d, f* : Go to the definition of an function with lsp.
