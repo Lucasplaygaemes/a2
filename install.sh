@@ -29,7 +29,7 @@ install_dependencies() {
 
     if command -v apt-get &> /dev/null; then
         info "Detected APT package manager (Debian/Ubuntu)."
-        REQUIRED_PACKAGES="build-essential libncursesw5-dev libjansson-dev libcurl4-openssl-dev libssl-dev hunspell git cmake hunspell libhunspell-dev"
+        REQUIRED_PACKAGES="build-essential libncursesw5-dev libjansson-dev libcurl4-openssl-dev libssl-dev hunspell git cmake hunspell libhunspell-dev gcc curl"
         PACKAGES_TO_INSTALL=""
         for pkg in $REQUIRED_PACKAGES; do
             if ! dpkg -s "$pkg" &> /dev/null; then
@@ -47,7 +47,7 @@ install_dependencies() {
         fi
     elif command -v dnf &> /dev/null; then
         info "Detected DNF package manager (Fedora)."
-        REQUIRED_PACKAGES="gcc ncurses-devel jansson-devel libcurl-devel openssl-devel git cmake glibc-devel hunspell-devel"
+        REQUIRED_PACKAGES="gcc ncurses-devel jansson-devel libcurl-devel openssl-devel git cmake glibc-devel hunspell-devel gcc curl"
         PACKAGES_TO_INSTALL=""
         for pkg in $REQUIRED_PACKAGES; do
             if ! rpm -q "$pkg" &> /dev/null; then
@@ -64,7 +64,7 @@ install_dependencies() {
         fi
     elif command -v pacman &> /dev/null; then
         info "Detected Pacman package manager (Arch Linux)."
-        REQUIRED_PACKAGES="base-devel ncurses jansson curl openssl git cmake hunspell"
+        REQUIRED_PACKAGES="base-devel ncurses jansson curl openssl git cmake hunspell gcc curl"
         PACKAGES_TO_INSTALL=""
         for pkg in $REQUIRED_PACKAGES; do
             if ! pacman -Q "$pkg" &> /dev/null; then
@@ -81,7 +81,7 @@ install_dependencies() {
         fi
     elif command -v zypper &> /dev/null; then
         info "Detected Zypper package manager (openSUSE)."
-        REQUIRED_PACKAGES="gcc ncurses-devel libjansson-devel libcurl-devel libopenssl-devel git cmake glibc-devel hunspell-devel"
+        REQUIRED_PACKAGES="gcc ncurses-devel libjansson-devel libcurl-devel libopenssl-devel git cmake glibc-devel hunspell-devel gcc curl"
         PACKAGES_TO_INSTALL=""
         for pkg in $REQUIRED_PACKAGES; do
             if ! rpm -q "$pkg" &> /dev/null; then
@@ -98,7 +98,7 @@ install_dependencies() {
         fi
     elif command -v apk &> /dev/null; then
         info "Detected APK package manager (Alpine Linux)."
-        REQUIRED_PACKAGES="build-base ncurses-dev jansson-dev curl-dev openssl-dev git cmake hunspell-dev"
+        REQUIRED_PACKAGES="build-base ncurses-dev jansson-dev curl-dev openssl-dev git cmake hunspell-dev gcc curl"
         PACKAGES_TO_INSTALL=""
         for pkg in $REQUIRED_PACKAGES; do
             if [ -z "$(apk info -e "$pkg")" ]; then
