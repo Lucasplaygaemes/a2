@@ -248,7 +248,7 @@ const char * get_syntax_file_from_extension(const char* filename) {
     
     if (strcmp(ext, ".c") == 0 || strcmp(ext, ".h") == 0)
         return "c.syntax";
-    else if (strcmp(ext, ".cpp") == 0 || strcmp(ext, ".hpp") == 0)
+    else if (strcmp(ext, ".cpp") == 0 || strcmp(ext, ".hpp") == 0 || strcmp(ext, ".cxx") == 0 || strcmp(ext, ".hxx") == 0)
         return "cpp.syntax";
     else if (strcmp(ext, ".py") == 0)
         return "python.syntax";

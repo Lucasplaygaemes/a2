@@ -46,7 +46,7 @@ const char* get_explorer_icon(const char *filename, bool is_dir) {
         }
         if (strcmp(ext, ".c") == 0) return "";
         if (strcmp(ext, ".h") == 0) return "";
-        if (strcmp(ext, ".cpp") == 0 || strcmp(ext, ".hpp") == 0) return "";
+        if (strcmp(ext, ".cpp") == 0 || strcmp(ext, ".hpp") == 0 || strcmp(ext, ".cxx") == 0 || strcmp(ext, ".hxx") == 0) return "";
         if (strcmp(ext, ".py") == 0) return "";
         if (strcmp(ext, ".js") == 0 || strcmp(ext, ".jsx") == 0) return "";
         if (strcmp(ext, ".ts") == 0 || strcmp(ext, ".tsx") == 0) return "";

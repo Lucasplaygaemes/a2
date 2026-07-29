@@ -297,6 +297,7 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
             state->cursor.selection_start_line = state->cursor.line; state->cursor.selection_start_col = state->cursor.col;
             state->cursor.line = el; state->cursor.col = ec;
             editor_delete_selection(state);
+            state->input.mode = INSERT;
         } break;
         case ACT_INDENT_LINE: editor_ident_line(state, state->cursor.line); break;
         case ACT_UNINDENT_LINE: editor_unindent_line(state, state->cursor.line); break;

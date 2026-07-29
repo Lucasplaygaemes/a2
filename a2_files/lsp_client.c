@@ -805,7 +805,7 @@ void lsp_initialize(EditorState *state) {
         if (strcmp(ext, ".c") == 0 || strcmp(ext, ".h") == 0) {
             state->lsp.client->languageId = strdup("c");
             lsp_will_be_enabled = true;
-        } else if (strcmp(ext, ".cpp") == 0 || strcmp(ext, ".hpp") == 0) {
+        } else if (strcmp(ext, ".cpp") == 0 || strcmp(ext, ".hpp") == 0 || strcmp(ext, ".cxx") == 0 || strcmp(ext, ".hxx") == 0) {
             state->lsp.client->languageId = strdup("cpp");
             lsp_will_be_enabled = true;
         } else if (strcmp(ext, ".py") == 0) {

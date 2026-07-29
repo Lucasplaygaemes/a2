@@ -466,6 +466,7 @@ void apply_settings_globally() {
                     if (ext) {
                         if (strcmp(ext, ".c") == 0 || strcmp(ext, ".h") == 0 ||
                             strcmp(ext, ".cpp") == 0 || strcmp(ext, ".hpp") == 0 ||
+                            strcmp(ext, ".cxx") == 0 || strcmp(ext, ".hxx") == 0 ||
                             strcmp(ext, ".py") == 0) {
                             lsp_will_be_enabled = true;
                         }
