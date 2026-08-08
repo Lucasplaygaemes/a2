@@ -1,10 +1,10 @@
 #ifndef DEFS_H
 #define DEFS_H
 
-#define _XOPEN_SOURCE 700 // Habilita funcionalidades POSIX, incluindo para wcwidth
-#include <locale.h>       // Essencial para funcionalidades de caracteres largos
-#include <stddef.h>       // Define tipos como wchar_t
-#include <wchar.h>        // Define funções como wcwidth
+#define _XOPEN_SOURCE 700 // Activate the POSIX functionalitys, including the wcwidth
+#include <locale.h>       // Essential for the funcionality of the large characteres
+#include <stddef.h>       // Define types like wchar_t
+#include <wchar.h>        // Define functions like wcwidth
 
 #define NCURSES_WIDECHAR 1
 #include <limits.h> // For PATH_MAX
@@ -53,7 +53,7 @@ typedef struct {
 #define LSP_SEVERITY_INFO 3
 #define LSP_SEVERITY_HINT 4
 
-#define MAX_LINES 16486
+#define MAX_LINES 32768
 #define MAX_LINE_LEN 4096
 #define STATUS_MSG_LEN 250
 #define PAGE_JUMP 10
