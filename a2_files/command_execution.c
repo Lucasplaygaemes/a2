@@ -76,6 +76,23 @@ void process_command(EditorState *state, bool *should_exit) {
         close_active_window(should_exit);
         return;
     } else if (strcmp(command, "wq") == 0) {
+        // If buffer has no name, prompt for one before saving
+        if (strcmp(state->buffer.filename, "[No Name]") == 0) {
+            char new_name[PATH_MAX] = "";
+            if (!ui_ask_input("Save as:", new_name, sizeof(new_name))) {
+                editor_set_status_msg(state, "Save cancelled.");
+                return;
+            }
+            char abs_path[PATH_MAX];
+            if (realpath(new_name, abs_path) == NULL) {
+                strncpy(state->buffer.filename, new_name, sizeof(state->buffer.filename) - 1);
+            } else {
+                strncpy(state->buffer.filename, abs_path, sizeof(state->buffer.filename) - 1);
+            }
+            state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
+            const char *syntax_file = get_syntax_file_from_extension(state->buffer.filename);
+            load_syntax_file(state, syntax_file);
+        }
         save_file(state);
         if (!state->buffer.modified) { // Only close if save was successful
             close_active_window(should_exit);
@@ -92,6 +109,22 @@ void process_command(EditorState *state, bool *should_exit) {
                 strncpy(state->buffer.filename, abs_path, sizeof(state->buffer.filename) - 1);
             }
             const char * syntax_file =  get_syntax_file_from_extension(state->buffer.filename);
+            load_syntax_file(state, syntax_file);
+        } else if (strcmp(state->buffer.filename, "[No Name]") == 0) {
+            // No args and no filename: prompt the user
+            char new_name[PATH_MAX] = "";
+            if (!ui_ask_input("Save as:", new_name, sizeof(new_name))) {
+                editor_set_status_msg(state, "Save cancelled.");
+                return;
+            }
+            char abs_path[PATH_MAX];
+            if (realpath(new_name, abs_path) == NULL) {
+                strncpy(state->buffer.filename, new_name, sizeof(state->buffer.filename) - 1);
+            } else {
+                strncpy(state->buffer.filename, abs_path, sizeof(state->buffer.filename) - 1);
+            }
+            state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
+            const char *syntax_file = get_syntax_file_from_extension(state->buffer.filename);
             load_syntax_file(state, syntax_file);
         }
         save_file(state);
