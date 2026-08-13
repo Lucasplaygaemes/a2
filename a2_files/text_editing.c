@@ -327,6 +327,8 @@ void _editor_delete_line(EditorState *state) {
         state->buffer.lines[0] = calloc(1, 1);
         state->cursor.line = 0;
         state->cursor.col = 0; state->cursor.ideal_col = 0;
+        mark_line_as_dirty(state, 0);
+        if (state->lsp.enabled) lsp_did_change(state);
         return;
     }
     free(state->buffer.lines[state->cursor.line]);
