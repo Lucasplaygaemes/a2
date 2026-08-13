@@ -19,6 +19,9 @@ char* trim_whitespace(char *str);
 void ensure_cursor_in_bounds(EditorState *state);
 void editor_move_to_next_word(EditorState *state);
 void editor_move_to_previous_word(EditorState *state);
+void editor_move_to_end_of_word(EditorState *state);
+void editor_find_char(EditorState *state, char target, bool forward, bool till);
+void editor_repeat_find_char(EditorState *state, bool reverse);
 
 // Bracket Matching
 void editor_find_unmatched_brackets(EditorState *state);

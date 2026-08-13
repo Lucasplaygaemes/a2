@@ -435,6 +435,9 @@ typedef struct {
     bool is_recording_macro;
     int recording_register_idx;
     char last_played_macro_register;
+    // Char-find state (f/F/t/T/;/,)
+    char find_char_last;  // last char searched with f/F/t/T
+    char find_char_type;  // 'f'=forward, 'F'=backward, 't'=till-fwd, 'T'=till-bwd
 } EditorInput;
 
 typedef struct {

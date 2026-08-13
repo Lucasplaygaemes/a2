@@ -301,10 +301,14 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 state->input.mode = NORMAL;
                 state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
             } else if (state->input.mode == NORMAL) {
-                // Clear search highlight on ESC in normal mode
+                // Clear search highlight and any pending count on ESC in normal mode
                 if (state->search.last_term[0] != '\0') {
                     state->search.last_term[0] = '\0';
                     state->buffer.is_dirty = true;
+                }
+                if (state->input.prefix_count != 0) {
+                    state->input.prefix_count = 0;
+                    editor_set_status_msg(state, "");
                 }
             }
 
@@ -448,6 +452,14 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
             } else if (op == 'c') {
                 editor_delete_selection(state);
                 state->input.mode = INSERT;
+            } else if (op == '>' || op == '<') {
+                push_undo(state); clear_redo_stack(state);
+                for (int i = sl; i <= el; i++) {
+                    if (op == '>') editor_ident_line(state, i);
+                    else           editor_unindent_line(state, i);
+                }
+                state->cursor.line = sl; state->cursor.col = 0;
+                state->cursor.ideal_col = 0; state->buffer.is_dirty = true;
             }
         } else {
             editor_set_status_msg(state, "Objeto de texto nao encontrado.");
@@ -460,14 +472,27 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     }
     // Execução padrão: duplicação de operador (dd, yy, cc) ou operador + movimento
     else {
+        int count = state->input.prefix_count > 0 ? state->input.prefix_count : 1;
+        state->input.prefix_count = 0;
         state->input.pending_operator = 0;
         state->input.mode = NORMAL;
 
-        if (ch == (wint_t)op) { // dd, yy ou cc
+        if (ch == (wint_t)op) { // dd, yy ou cc — repete N vezes
             if (op == 'd') {
-                editor_delete_line(state);
+                for (int i = 0; i < count; i++) editor_delete_line(state);
             } else if (op == 'y') {
-                editor_yank_line(state);
+                // Para yy com count, selecionamos N linhas e yankamos
+                state->cursor.selection_start_line = state->cursor.line;
+                state->cursor.selection_start_col = 0;
+                int end = state->cursor.line + count - 1;
+                if (end >= state->buffer.num_lines) end = state->buffer.num_lines - 1;
+                state->cursor.line = end;
+                state->cursor.col = state->buffer.lines[end] ? (int)strlen(state->buffer.lines[end]) : 0;
+                state->cursor.visual_selection_mode = VISUAL_MODE_LINE;
+                editor_yank_selection(state);
+                state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
+                state->cursor.line = state->cursor.selection_start_line;
+                state->cursor.col = 0;
             } else if (op == 'c') { // cc: limpa a linha e entra em INSERT
                 push_undo(state);
                 clear_redo_stack(state);
@@ -479,17 +504,29 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     state->input.mode = INSERT;
                     state->buffer.is_dirty = true;
                 }
+            } else if (op == '>' || op == '<') { // >> ou << — N linhas
+                int end_line = state->cursor.line + count - 1;
+                if (end_line >= state->buffer.num_lines) end_line = state->buffer.num_lines - 1;
+                push_undo(state); clear_redo_stack(state);
+                for (int i = state->cursor.line; i <= end_line; i++) {
+                    if (op == '>') editor_ident_line(state, i);
+                    else           editor_unindent_line(state, i);
+                }
+                state->cursor.col = 0; state->cursor.ideal_col = 0;
+                state->buffer.is_dirty = true;
             }
-        } else { // Operador + Movimento (ex: d$, d Alt+W)
+        } else { // Operador + Movimento — executa o motion N vezes
             int start_line = state->cursor.line;
             int start_col = state->cursor.col;
 
-            // Executa o movimento usando o sistema de ações mapeadas ou teclas normais
-            EditorAction action = get_action_from_key(ch, false, false, 0);
-            if (action != ACT_NONE) {
-                execute_action(action, state, should_exit);
-            } else {
-                handle_normal_mode_key(state, ch);
+            // Executa o movimento N vezes
+            for (int i = 0; i < count; i++) {
+                EditorAction action = get_action_from_key(ch, false, false, 0);
+                if (action != ACT_NONE) {
+                    execute_action(action, state, should_exit);
+                } else {
+                    handle_normal_mode_key(state, ch);
+                }
             }
 
             // Organiza os limites da seleção
@@ -515,6 +552,14 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
             } else if (op == 'c') {
                 editor_delete_selection(state);
                 state->input.mode = INSERT;
+            } else if (op == '>' || op == '<') { // >motion ou <motion
+                push_undo(state); clear_redo_stack(state);
+                for (int i = sl; i <= el; i++) {
+                    if (op == '>') editor_ident_line(state, i);
+                    else           editor_unindent_line(state, i);
+                }
+                state->cursor.line = sl; state->cursor.col = 0;
+                state->cursor.ideal_col = 0; state->buffer.is_dirty = true;
             }
         }
     }
