@@ -35,15 +35,24 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *h, j, k, l* / *Arrows* : Move cursor left, down, up, right.
 - *{ / }* : Jump to previous / next paragraph (separated by blank lines).
 - *%* : Jump to the matching bracket `()`, `[]`, `{}`.
-- *%* : Jump to the matching bracket `()`, `[]`, `{}`.
 - *g* / *G* : Jump to the start / end of the file.
 - *K* / *Home* : Jump to the start of the line.
 - *Ç* / *End* : Jump to the end of the line.
 - *O* / *L* / *PageUp* / *PageDown* : Page up/down.
-- *Alt+W* / *Alt+B* : Move to next / previous word.
+- *w* : Move to the start of the next word.
+- *b* : Move to the start of the previous word.
+- *e* : Move to the end of the current/next word.
+- *Alt+W* / *Alt+Q* : Same as *w* / *b* (also works in Insert Mode).
+- *f{char}* : Jump forward to the next occurrence of *{char}* on the line.
+- *F{char}* : Jump backward to the previous occurrence of *{char}* on the line.
+- *t{char}* : Jump forward to just *before* the next occurrence of *{char}*.
+- *T{char}* : Jump backward to just *after* the previous occurrence of *{char}*.
+- *;* : Repeat the last *f/F/t/T* motion in the same direction.
+- *,* : Repeat the last *f/F/t/T* motion in the opposite direction.
+- *[count]* : Type a number before any motion or operator to repeat it. Example: *3w* moves 3 words, *5j* moves 5 lines down.
 - *u* / *U* : Create a new line above/below and enter Insert Mode.
 - *J* : Join the current line with the line below.
-- *yy* : Yank (copy) the current line to the local register.
+- *yy* / *[N]yy* : Yank (copy) N lines to the local register (default: 1).
 - *p* / *P* : Paste from local / global register after the cursor.
 - *m* : Paste from the "move" register (used after cutting in Visual Mode).
 - *q[a-z]* : Start or stop recording a macro.
@@ -56,6 +65,30 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *Alt+D* : Delete inside (prompts for ", ', (, [, {, <).
 - *D* : Fetch and display the Wiktionary definition of the word under cursor.
 - *Alt+Backspace* : Delete the previous word (Works in Insert Mode).
+
+### Composable Operators (Normal Mode)
+Operators combine with motions, counts, and text objects: `[count] operator [motion | text-object]`.
+
+- *d{motion}* : Delete from cursor to where *{motion}* lands. Examples: *dw*, *d3j*, *df,*, *diw*.
+- *dd* / *[N]dd* : Delete N full lines (default: 1).
+- *y{motion}* : Yank (copy) from cursor to where *{motion}* lands. Examples: *yw*, *y}*, *yiw*.
+- *c{motion}* : Change (delete + enter Insert). Examples: *cw*, *ct"*, *ciw*.
+- *cc* : Clear the current line and enter Insert Mode.
+- *>{motion}* : Indent the lines covered by *{motion}*. Examples: *>>* (current line), *>3j*, *>ip*.
+- *<{motion}* : Un-indent the lines covered by *{motion}*. Examples: *<<*, *<3j*, *<ip*.
+- *r{char}* : Replace the character under cursor with *{char}*, stay in Normal Mode. With count: *3rX* replaces 3 chars with X.
+- *x* / *[N]x* : Delete N characters under/after the cursor.
+- *X* / *[N]X* : Delete N characters before the cursor.
+- *s* / *[N]s* : Delete N characters and enter Insert Mode.
+- *S* : Clear the current line and enter Insert Mode (same as *cc*).
+
+### Text Objects (use after an operator + *i* or *a*)
+- *iw / aw* : Inner word / a word (with surrounding space).
+- *i( / a(* : Inner / outer parentheses.
+- *i[ / a[* : Inner / outer brackets.
+- *i{ / a{* : Inner / outer braces.
+- *i" / a"* : Inner / outer double quotes.
+- *i' / a'* : Inner / outer single quotes.
 
 ## Insert Mode
 - *Esc* : Return to *Normal Mode*.
@@ -72,6 +105,12 @@ This page lists the keyboard shortcuts for the `a2` editor.
 ## Visual Mode
 - *Esc* : Exit Visual Mode and return to Normal Mode.
 - *s* : Start or end a character-wise selection.
+- *w* : Extend selection to the start of the next word.
+- *b* : Extend selection back to the start of the previous word.
+- *e* : Extend selection to the end of the current/next word.
+- *f{char}* / *F{char}* : Extend selection forward/backward to *{char}*.
+- *t{char}* / *T{char}* : Extend selection forward/backward to just before/after *{char}*.
+- *;* / *,* : Repeat last *f/F/t/T* in same / opposite direction.
 - *y* : Yank (copy) the selected text to the local register.
 - *Ctrl+y* : Yank the selected text to the global register.
 - *Alt+y* : Copy the selection to the system clipboard.
