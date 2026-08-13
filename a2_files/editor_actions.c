@@ -480,8 +480,118 @@ void handle_normal_mode_key(EditorState *state, wint_t ch) {
 
     switch (ch) {
         case KEY_BTAB: push_undo(state); editor_unindent_line(state, state->cursor.line); break;
-        case '>': push_undo(state); editor_ident_line(state, state->cursor.line); break;
-        case '<': push_undo(state); editor_unindent_line(state, state->cursor.line); break;
+        case '>': state->input.mode = OPERATOR_PENDING; state->input.pending_operator = '>'; break;
+        case '<': state->input.mode = OPERATOR_PENDING; state->input.pending_operator = '<'; break;
+        case 'w': { int r = state->input.prefix_count > 0 ? state->input.prefix_count : 1; state->input.prefix_count = 0; for (int i = 0; i < r; i++) editor_move_to_next_word(state); state->buffer.is_dirty = true; break; }
+        case 'b': { int r = state->input.prefix_count > 0 ? state->input.prefix_count : 1; state->input.prefix_count = 0; for (int i = 0; i < r; i++) editor_move_to_previous_word(state); state->buffer.is_dirty = true; break; }
+        case 'e': { int r = state->input.prefix_count > 0 ? state->input.prefix_count : 1; state->input.prefix_count = 0; for (int i = 0; i < r; i++) editor_move_to_end_of_word(state); state->buffer.is_dirty = true; break; }
+        case 'f': {
+            editor_set_status_msg(state, "f"); redraw_all_windows();
+            wint_t tc; wget_wch(ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win, &tc);
+            if (tc > 0 && tc < 128) editor_find_char(state, (char)tc, true, false);
+            else { state->input.prefix_count = 0; editor_set_status_msg(state, ""); }
+            break; }
+        case 'F': {
+            editor_set_status_msg(state, "F"); redraw_all_windows();
+            wint_t tc; wget_wch(ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win, &tc);
+            if (tc > 0 && tc < 128) editor_find_char(state, (char)tc, false, false);
+            else { state->input.prefix_count = 0; editor_set_status_msg(state, ""); }
+            break; }
+        case 't': {
+            editor_set_status_msg(state, "t"); redraw_all_windows();
+            wint_t tc; wget_wch(ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win, &tc);
+            if (tc > 0 && tc < 128) editor_find_char(state, (char)tc, true, true);
+            else { state->input.prefix_count = 0; editor_set_status_msg(state, ""); }
+            break; }
+        case 'T': {
+            editor_set_status_msg(state, "T"); redraw_all_windows();
+            wint_t tc; wget_wch(ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win, &tc);
+            if (tc > 0 && tc < 128) editor_find_char(state, (char)tc, false, true);
+            else { state->input.prefix_count = 0; editor_set_status_msg(state, ""); }
+            break; }
+        case ';': editor_repeat_find_char(state, false); break;
+        case ',': editor_repeat_find_char(state, true); break;
+        // --- Single-char operators ---
+        case 'r': { // Replace char(s) under cursor, stay in Normal
+            editor_set_status_msg(state, "r"); redraw_all_windows();
+            wint_t rc; wget_wch(ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win, &rc);
+            editor_set_status_msg(state, "");
+            if (rc == 27) { state->input.prefix_count = 0; break; } // ESC cancels
+            char *line = state->buffer.lines[state->cursor.line];
+            if (line && rc > 0 && rc < 128) {
+                int count = state->input.prefix_count > 0 ? state->input.prefix_count : 1;
+                state->input.prefix_count = 0;
+                int len = strlen(line);
+                if (state->cursor.col < len) {
+                    push_undo(state); clear_redo_stack(state);
+                    for (int i = 0; i < count && state->cursor.col + i < len; i++)
+                        line[state->cursor.col + i] = (char)rc;
+                    if (count > 1 && state->cursor.col + count - 1 < len)
+                        state->cursor.col += count - 1;
+                    state->cursor.ideal_col = state->cursor.col;
+                    state->buffer.modified = true; state->buffer.is_dirty = true;
+                    mark_line_as_dirty(state, state->cursor.line);
+                }
+            } else { state->input.prefix_count = 0; }
+            break; }
+        case 'x': { // Delete char(s) under cursor (like Ndl)
+            char *line = state->buffer.lines[state->cursor.line];
+            if (!line) break;
+            int len = strlen(line);
+            if (state->cursor.col >= len) break;
+            int count = state->input.prefix_count > 0 ? state->input.prefix_count : 1;
+            state->input.prefix_count = 0;
+            push_undo(state); clear_redo_stack(state);
+            int end = state->cursor.col + count;
+            if (end > len) end = len;
+            memmove(line + state->cursor.col, line + end, len - end + 1);
+            len = strlen(line);
+            if (state->cursor.col > 0 && state->cursor.col >= len) state->cursor.col = len > 0 ? len - 1 : 0;
+            state->cursor.ideal_col = state->cursor.col;
+            state->buffer.modified = true; state->buffer.is_dirty = true;
+            mark_line_as_dirty(state, state->cursor.line);
+            break; }
+        case 'X': { // Delete char(s) before cursor (like Ndh)
+            char *line = state->buffer.lines[state->cursor.line];
+            if (!line || state->cursor.col == 0) break;
+            int count = state->input.prefix_count > 0 ? state->input.prefix_count : 1;
+            state->input.prefix_count = 0;
+            push_undo(state); clear_redo_stack(state);
+            int len = strlen(line);
+            int start = state->cursor.col - count;
+            if (start < 0) start = 0;
+            memmove(line + start, line + state->cursor.col, len - state->cursor.col + 1);
+            state->cursor.col = start; state->cursor.ideal_col = start;
+            state->buffer.modified = true; state->buffer.is_dirty = true;
+            mark_line_as_dirty(state, state->cursor.line);
+            break; }
+        case 's': { // Substitute char(s): delete N chars, enter Insert
+            char *line = state->buffer.lines[state->cursor.line];
+            int count = state->input.prefix_count > 0 ? state->input.prefix_count : 1;
+            state->input.prefix_count = 0;
+            if (line) {
+                int len = strlen(line);
+                if (state->cursor.col < len) {
+                    push_undo(state); clear_redo_stack(state);
+                    int end = state->cursor.col + count;
+                    if (end > len) end = len;
+                    memmove(line + state->cursor.col, line + end, len - end + 1);
+                    state->buffer.modified = true; state->buffer.is_dirty = true;
+                    mark_line_as_dirty(state, state->cursor.line);
+                }
+            }
+            state->input.mode = INSERT;
+            break; }
+        case 'S': { // Substitute line: clear content, enter Insert (like cc)
+            push_undo(state); clear_redo_stack(state);
+            char *l = state->buffer.lines[state->cursor.line];
+            if (l) { l[0] = '\0'; }
+            state->cursor.col = 0; state->cursor.ideal_col = 0;
+            state->input.prefix_count = 0;
+            state->buffer.modified = true; state->buffer.is_dirty = true;
+            mark_line_as_dirty(state, state->cursor.line);
+            state->input.mode = INSERT;
+            break; }
         case 'd': state->input.mode = OPERATOR_PENDING; state->input.pending_operator = 'd'; break;
         case KEY_ENTER: case '\n': case 13:
             if (state->cursor.line < state->buffer.num_lines - 1) {
@@ -596,6 +706,35 @@ void handle_visual_mode_key(EditorState *state, wint_t ch) {
             state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
             state->buffer.is_dirty = true; 
             break;
+        case 'w': editor_move_to_next_word(state); state->buffer.is_dirty = true; break;
+        case 'b': editor_move_to_previous_word(state); state->buffer.is_dirty = true; break;
+        case 'e': editor_move_to_end_of_word(state); state->buffer.is_dirty = true; break;
+        case 'f': {
+            editor_set_status_msg(state, "f"); redraw_all_windows();
+            wint_t tc; wget_wch(ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win, &tc);
+            if (tc > 0 && tc < 128) editor_find_char(state, (char)tc, true, false);
+            else editor_set_status_msg(state, "");
+            break; }
+        case 'F': {
+            editor_set_status_msg(state, "F"); redraw_all_windows();
+            wint_t tc; wget_wch(ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win, &tc);
+            if (tc > 0 && tc < 128) editor_find_char(state, (char)tc, false, false);
+            else editor_set_status_msg(state, "");
+            break; }
+        case 't': {
+            editor_set_status_msg(state, "t"); redraw_all_windows();
+            wint_t tc; wget_wch(ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win, &tc);
+            if (tc > 0 && tc < 128) editor_find_char(state, (char)tc, true, true);
+            else editor_set_status_msg(state, "");
+            break; }
+        case 'T': {
+            editor_set_status_msg(state, "T"); redraw_all_windows();
+            wint_t tc; wget_wch(ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win, &tc);
+            if (tc > 0 && tc < 128) editor_find_char(state, (char)tc, false, true);
+            else editor_set_status_msg(state, "");
+            break; }
+        case ';': editor_repeat_find_char(state, false); break;
+        case ',': editor_repeat_find_char(state, true); break;
         case 'o': case KEY_UP: if (state->cursor.line > 0) state->cursor.line--; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true; break;
         case 'l': case KEY_DOWN: if (state->cursor.line < state->buffer.num_lines - 1) state->cursor.line++; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true; break;
         case 'k': case KEY_LEFT:
