@@ -238,6 +238,76 @@ void editor_move_to_previous_word(EditorState *state) {
     state->cursor.ideal_col = state->cursor.col;
 }
 
+void editor_move_to_end_of_word(EditorState *state) {
+    if (!state) return;
+    char *line = state->buffer.lines[state->cursor.line]; if (!line) return;
+    int len = strlen(line);
+    int col = state->cursor.col;
+    // If already at end of a word, skip forward past whitespace first
+    if (col < len && isspace(line[col])) {
+        while (col < len && isspace(line[col])) col++;
+    } else if (col + 1 < len && !isspace(line[col + 1])) {
+        col++; // move one forward if mid-word
+    } else {
+        // at end of word, jump over whitespace then to end of next word
+        col++;
+        while (col < len && isspace(line[col])) col++;
+    }
+    // Advance to the last char of the current word
+    while (col + 1 < len && !isspace(line[col + 1])) col++;
+    if (col < len) state->cursor.col = col;
+    state->cursor.ideal_col = state->cursor.col;
+}
+
+void editor_find_char(EditorState *state, char target, bool forward, bool till) {
+    char *line = state->buffer.lines[state->cursor.line];
+    if (!line || target == 0) return;
+    int len = strlen(line);
+    int col  = state->cursor.col;
+    int count = state->input.prefix_count > 0 ? state->input.prefix_count : 1;
+    state->input.prefix_count = 0;
+
+    // Store for ; / , repeat
+    state->input.find_char_last = target;
+    state->input.find_char_type = forward ? (till ? 't' : 'f') : (till ? 'T' : 'F');
+
+    int found = forward ? col + 1 : col - 1;
+    int n = 0;
+    while (forward ? found < len : found >= 0) {
+        if (line[found] == target) {
+            if (++n == count) {
+                if (till)
+                    state->cursor.col = forward ? found - 1 : found + 1;
+                else
+                    state->cursor.col = found;
+                state->cursor.ideal_col = state->cursor.col;
+                state->buffer.is_dirty = true;
+                return;
+            }
+        }
+        found += forward ? 1 : -1;
+    }
+    // Not found — leave cursor where it is
+}
+
+void editor_repeat_find_char(EditorState *state, bool reverse) {
+    if (state->input.find_char_last == 0) return;
+    // Save stored motion (repeat must not overwrite it)
+    char saved_last = state->input.find_char_last;
+    char saved_type = state->input.find_char_type;
+
+    char type  = saved_type;
+    bool forward = (type == 'f' || type == 't');
+    bool till    = (type == 't' || type == 'T');
+    if (reverse) forward = !forward;
+
+    editor_find_char(state, saved_last, forward, till);
+
+    // Restore so ; and , keep repeating the original motion
+    state->input.find_char_last = saved_last;
+    state->input.find_char_type = saved_type;
+}
+
 bool is_line_blank(const char *line) {
     if (!line) return true;
     while (*line) { if (!isspace((unsigned char)*line)) return false; line++; }
