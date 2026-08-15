@@ -189,6 +189,18 @@ typedef struct {
 } EditorSnapshot;
 #endif
 
+
+#ifndef EDITORMARK_DEFINED
+#define EDITORMARK_DEFINED
+
+typedef struct {
+    bool active;     // true if this mark is defined.
+    int line;        // line (0-based)
+    int col;         // column (0-based)
+} EditorMark;
+
+#endif
+
 #ifndef SYNTAXRULETYPE_DEFINED
 #define SYNTAXRULETYPE_DEFINED
 enum SyntaxRuleType { 
@@ -397,6 +409,10 @@ typedef struct {
     int image_last_rows;
     int image_last_y;
     int image_last_x;
+    EditorMark marks[26];
+    // Last position before the last jump with mark, to ''
+    int mark_prev_line;
+    int mark_prev_col;
 } EditorBuffer;
 
 typedef struct {

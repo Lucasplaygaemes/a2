@@ -365,23 +365,41 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
             break;
         case ACT_MOVE_LOCAL:
             if (state->input.mode == VISUAL) {
+                /* Visual mode: existing move-register behaviour */
                 if (state->cursor.visual_selection_mode != VISUAL_MODE_NONE) { 
                     editor_yank_to_move_register(state); 
                     editor_delete_selection(state); 
                     state->cursor.is_moving = true; 
                     editor_set_status_msg(state, "Text cut. Press 'm' again to paste."); 
                 }
+            } else if (state->cursor.is_moving) {
+                /* Normal mode, mid-move: paste moved text */
+                editor_paste_from_move_register(state); 
+                state->cursor.is_moving = false; 
+                free(state->cursor.move_register); 
+                state->cursor.move_register = NULL; 
+                editor_set_status_msg(state, "Text moved.");
             } else {
-                if (state->cursor.is_moving) { 
-                    editor_paste_from_move_register(state); 
-                    state->cursor.is_moving = false; 
-                    free(state->cursor.move_register); 
-                    state->cursor.move_register = NULL; 
-                    editor_set_status_msg(state, "Text moved."); 
+                /* Normal mode, not moving: set a mark (a–z) */
+                editor_set_status_msg(state, "m");
+                redraw_all_windows();
+                wint_t mc;
+                wget_wch(ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win, &mc);
+                editor_set_status_msg(state, "");
+                if (mc >= 'a' && mc <= 'z') {
+                    int idx = mc - 'a';
+                    state->buffer.marks[idx].active = true;
+                    state->buffer.marks[idx].line   = state->cursor.line;
+                    state->buffer.marks[idx].col    = state->cursor.col;
+                    editor_set_status_msg(state, "Mark '%c' set at line %d",
+                                          (char)mc, state->cursor.line + 1);
+                } else {
+                    editor_set_status_msg(state, "Invalid mark.");
                 }
             }
             state->buffer.is_dirty = true;
             break;
+
         case ACT_MOVE_GLOBAL:
             if (state->input.mode == VISUAL) {
                 if (state->cursor.visual_selection_mode != VISUAL_MODE_NONE) { 
@@ -661,6 +679,62 @@ void handle_normal_mode_key(EditorState *state, wint_t ch) {
         case 'L': case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->cursor.line < state->buffer.num_lines - 1) state->cursor.line++; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true; break;
         case 'K': case KEY_HOME: state->cursor.col = 0; state->cursor.ideal_col = 0; state->buffer.is_dirty = true; break;
         case 199: case KEY_END: { char* l = state->buffer.lines[state->cursor.line]; if(l) state->cursor.col = strlen(l); state->cursor.ideal_col = state->cursor.col; state->buffer.is_dirty = true; } break;
+        /* ── MARKS (jump only — set is handled via ACT_MOVE_LOCAL) ─ */
+        case '\'':  /* ' -> jump to mark line (first non-blank col) */
+        case '`': { /* ` -> jump to exact mark position (line + col) */
+            bool exact_col = (ch == '`');
+            editor_set_status_msg(state, exact_col ? "`" : "'");
+            redraw_all_windows();
+            wint_t mc;
+            wget_wch(ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win, &mc);
+            editor_set_status_msg(state, "");
+
+            /* '' or `` -> jump back to position before the last mark jump */
+            if (mc == '\'' || mc == '`') {
+                int prev_l = state->buffer.mark_prev_line;
+                int prev_c = state->buffer.mark_prev_col;
+                state->buffer.mark_prev_line = state->cursor.line;
+                state->buffer.mark_prev_col  = state->cursor.col;
+                state->cursor.line      = prev_l;
+                state->cursor.col       = exact_col ? prev_c : 0;
+                state->cursor.ideal_col = state->cursor.col;
+                state->buffer.is_dirty  = true;
+                break;
+            }
+
+            if (mc >= 'a' && mc <= 'z') {
+                int idx = mc - 'a';
+                if (state->buffer.marks[idx].active) {
+                    /* Save current position as "before jump" */
+                    state->buffer.mark_prev_line = state->cursor.line;
+                    state->buffer.mark_prev_col  = state->cursor.col;
+
+                    state->cursor.line = state->buffer.marks[idx].line;
+                    if (state->cursor.line >= state->buffer.num_lines)
+                        state->cursor.line = state->buffer.num_lines - 1;
+
+                    if (exact_col) {
+                        state->cursor.col = state->buffer.marks[idx].col;
+                    } else {
+                        /* Jump to the first non-blank character on the line */
+                        state->cursor.col = 0;
+                        char *ml = state->buffer.lines[state->cursor.line];
+                        if (ml) {
+                            while (ml[state->cursor.col] && isspace((unsigned char)ml[state->cursor.col]))
+                                state->cursor.col++;
+                        }
+                    }
+                    state->cursor.ideal_col = state->cursor.col;
+                    state->buffer.is_dirty  = true;
+                } else {
+                    editor_set_status_msg(state, "Mark '%c' not set.", (char)mc);
+                }
+            } else {
+                editor_set_status_msg(state, "Invalid mark.");
+            }
+            break;
+        }
+        /* ── END MARKS ──────────────────────────────────────────── */
         case KEY_SDC: editor_delete_line(state); break;
     }
 }

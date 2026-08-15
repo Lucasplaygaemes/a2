@@ -362,6 +362,23 @@ void process_command(EditorState *state, bool *should_exit) {
                 editor_set_status_msg(state, "Macros loaded.");
             } else if (strcmp(command, "listmacros") == 0) {
                 display_macros_list(state);
+            } else if (strcmp(command, "marks") == 0) {
+                char marks_buf[1024] = "Active marks:\n";
+                bool any = false;
+                for (int i = 0; i < 26; i++) {
+                    if (state->buffer.marks[i].active) {
+                        char entry[64];
+                        snprintf(entry, sizeof(entry), "  '%c'  line %-5d  col %d\n",
+                                 'a' + i,
+                                 state->buffer.marks[i].line + 1,
+                                 state->buffer.marks[i].col);
+                        strncat(marks_buf, entry, sizeof(marks_buf) - strlen(marks_buf) - 1);
+                        any = true;
+                    }
+                }
+                if (!any)
+                    strncpy(marks_buf, "No marks set.", sizeof(marks_buf) - 1);
+                editor_set_status_msg(state, "%s", marks_buf);
             } else if (strcmp(command, "grep") == 0) {
                 display_content_search(state, args);
             } else if (strcmp(command, "showgrep") == 0) {
