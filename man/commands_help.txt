@@ -68,3 +68,4 @@ This page details the commands available in Command Mode (activated with *:*).
 - *:savemacros*: Saves current macros to `~/.a2/macros.a2`.
 - *:loadmacros*: Loads macros from the config folder.
 - *:listmacros*: Displays all loaded macros.
+- *:marks*: Lists all active marks with their line and column positions.

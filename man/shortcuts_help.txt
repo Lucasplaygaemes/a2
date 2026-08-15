@@ -66,6 +66,12 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *D* : Fetch and display the Wiktionary definition of the word under cursor.
 - *Alt+Backspace* : Delete the previous word (Works in Insert Mode).
 
+### Marks
+- *m{a-z}* : Set mark `{a-z}` at the current cursor position.
+- *'{a-z}* : Jump to the line of mark `{a-z}` (first non-blank character).
+- *`{a-z}* : Jump to the exact position (line and column) of mark `{a-z}`.
+- *''* / *``* : Jump back to the position before the last mark jump.
+
 ### Composable Operators (Normal Mode)
 Operators combine with motions, counts, and text objects: `[count] operator [motion | text-object]`.
 
