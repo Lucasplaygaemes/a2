@@ -261,6 +261,16 @@ typedef struct {
 } LspDiagnostic;
 #endif
 
+#ifndef LSPCODEACTION_DEFINED
+#define LSPCODEACTION_DEFINED
+typedef struct {
+    char   *title;    /* Human-readable label, e.g. "Remove unused variable" */
+    char   *kind;     /* LSP category: "quickfix", "refactor", etc. (may be NULL) */
+    json_t *edit;     /* WorkspaceEdit JSON — applied when the action is accepted */
+    json_t *command;  /* Command object (alternative to edit, less common) */
+} LspCodeAction;
+#endif
+
 #ifndef LSPCLIENT_DEFINED
 #define LSPCLIENT_DEFINED
 typedef struct {
@@ -493,6 +503,12 @@ typedef struct {
     int watchdog_restart_attempts;
     time_t watchdog_last_restart;
     bool watchdog_disabled;
+
+    /* Code Actions state */
+    LspCodeAction *code_actions;        /* Array of actions received from the LSP server */
+    int            code_actions_count;  /* Number of actions in the array */
+    bool           code_action_popup_visible; /* Whether the selection popup is shown */
+    int            code_action_selected;      /* Index of the highlighted action */
 } EditorLsp;
 
 typedef struct {
@@ -678,6 +694,7 @@ typedef enum {
     ACT_LOAD_PROJECT,
     ACT_LSP_RENAME,
     ACT_LSP_RESTART,
+    ACT_LSP_CODE_ACTION,   /* Opens the code actions popup (default: Alt+d, a) */
     ACT_TIMER_REPORT,
     
     // System
