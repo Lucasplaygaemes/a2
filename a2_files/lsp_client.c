@@ -394,6 +394,9 @@ void lsp_did_save(EditorState *state) {
 void lsp_shutdown(EditorState *state) {
     if (!state || !state->lsp.client) return;
 
+    /* Free any cached code actions before tearing down the connection */
+    lsp_free_code_actions(state);
+
     if ((uintptr_t)state->lsp.client < 0x1000) {
         state->lsp.client = NULL;
         return;
@@ -1103,6 +1106,21 @@ void lsp_send_initialize(EditorState *state) {
     json_object_set_new(textDocument, "typeDefinition", json_object());
     json_object_set_new(textDocument, "implementation", json_object());
     json_object_set_new(textDocument, "documentSymbol", json_object());
+
+    /* Declare code action capability so the server returns full CodeAction objects
+     * (with edit/command fields) instead of the legacy Command-only format. */
+    json_t *codeAction            = json_object();
+    json_t *codeActionLiteral     = json_object();
+    json_t *codeActionKindValueSet = json_array();
+    json_array_append_new(codeActionKindValueSet, json_string(""));
+    json_array_append_new(codeActionKindValueSet, json_string("quickfix"));
+    json_array_append_new(codeActionKindValueSet, json_string("refactor"));
+    json_t *codeActionKind = json_object();
+    json_object_set_new(codeActionKind, "valueSet", codeActionKindValueSet);
+    json_object_set_new(codeActionLiteral, "codeActionKind", codeActionKind);
+    json_object_set_new(codeAction, "codeActionLiteralSupport", codeActionLiteral);
+    json_object_set_new(textDocument, "codeAction", codeAction);
+
     json_object_set_new(capabilities, "workspace", workspace);
     json_object_set_new(capabilities, "textDocument", textDocument);
     
@@ -1409,6 +1427,10 @@ void lsp_process_received_data(EditorState *state, const char *buffer, size_t bu
                         state->lsp.symbols[i].line = line;
                     }
                 }
+            } else if (msg->id && strcmp(msg->id, "5") == 0) {
+                /* Code action response — result may be null/empty if no actions are available */
+                lsp_log("Code action response received\n");
+                lsp_handle_code_action_response(state, msg->result);
             }
             lsp_free_message(msg);
         }
@@ -1616,4 +1638,254 @@ void lsp_request_document_symbols(EditorState *state) {
 
     free(json_str);
     lsp_free_message(msg);
+}
+
+/* =========================================================
+ * Code Actions
+ * ========================================================= */
+
+void lsp_free_code_actions(EditorState *state) {
+    if (!state->lsp.code_actions) return;
+    for (int i = 0; i < state->lsp.code_actions_count; i++) {
+        free(state->lsp.code_actions[i].title);
+        free(state->lsp.code_actions[i].kind);
+        if (state->lsp.code_actions[i].edit)    json_decref(state->lsp.code_actions[i].edit);
+        if (state->lsp.code_actions[i].command) json_decref(state->lsp.code_actions[i].command);
+    }
+    free(state->lsp.code_actions);
+    state->lsp.code_actions              = NULL;
+    state->lsp.code_actions_count        = 0;
+    state->lsp.code_action_popup_visible = false;
+}
+
+void lsp_request_code_actions(EditorState *state) {
+    if (!lsp_is_available(state)) {
+        editor_set_status_msg(state, "LSP not available");
+        return;
+    }
+
+    /* Free any previously cached actions */
+    lsp_free_code_actions(state);
+
+    LspMessage *msg = lsp_create_message();
+    msg->id     = strdup("5");
+    msg->method = strdup("textDocument/codeAction");
+
+    json_t *params      = json_object();
+    json_t *textDoc     = json_object();
+    json_t *range       = json_object();
+    json_t *rangeStart  = json_object();
+    json_t *rangeEnd    = json_object();
+    json_t *context     = json_object();
+    json_t *diag_array  = json_array();
+
+    json_object_set_new(textDoc, "uri", json_string(state->lsp.document->uri));
+    json_object_set_new(params, "textDocument", textDoc);
+
+    /* range = current cursor position (point, not a selection) */
+    json_object_set_new(rangeStart, "line",      json_integer(state->cursor.line));
+    json_object_set_new(rangeStart, "character", json_integer(state->cursor.col));
+    json_object_set_new(rangeEnd,   "line",      json_integer(state->cursor.line));
+    json_object_set_new(rangeEnd,   "character", json_integer(state->cursor.col));
+    json_object_set_new(range, "start", rangeStart);
+    json_object_set_new(range, "end",   rangeEnd);
+    json_object_set_new(params, "range", range);
+
+    /* Include the diagnostic under the cursor in the context so the server
+     * can return specific quick-fixes for that error/warning. */
+    LspDiagnostic *diag = get_diagnostic_under_cursor(state);
+    if (diag) {
+        json_t *d   = json_object();
+        json_t *dr  = json_object();
+        json_t *drs = json_object();
+        json_t *dre = json_object();
+        json_object_set_new(drs, "line",      json_integer(diag->range.start.line));
+        json_object_set_new(drs, "character", json_integer(diag->range.start.character));
+        json_object_set_new(dre, "line",      json_integer(diag->range.end.line));
+        json_object_set_new(dre, "character", json_integer(diag->range.end.character));
+        json_object_set_new(dr, "start", drs);
+        json_object_set_new(dr, "end",   dre);
+        json_object_set_new(d, "range",    dr);
+        json_object_set_new(d, "message",  json_string(diag->message ? diag->message : ""));
+        json_object_set_new(d, "severity", json_integer(diag->severity));
+        json_array_append_new(diag_array, d);
+    }
+
+    json_object_set_new(context, "diagnostics", diag_array);
+    json_object_set_new(context, "triggerKind", json_integer(1)); /* 1 = Invoked */
+    json_object_set_new(params, "context", context);
+
+    msg->params = params;
+
+    char *json_str = lsp_serialize_message(msg);
+    lsp_send_message(state, json_str);
+    free(json_str);
+    lsp_free_message(msg);
+
+    editor_set_status_msg(state, "Requesting code actions...");
+}
+
+void lsp_handle_code_action_response(EditorState *state, json_t *result) {
+    lsp_free_code_actions(state);
+
+    if (!result || !json_is_array(result) || json_array_size(result) == 0) {
+        editor_set_status_msg(state, "No code actions available here.");
+        return;
+    }
+
+    size_t n = json_array_size(result);
+    state->lsp.code_actions = calloc(n, sizeof(LspCodeAction));
+    if (!state->lsp.code_actions) return;
+    state->lsp.code_actions_count = 0;
+
+    for (size_t i = 0; i < n; i++) {
+        json_t *item    = json_array_get(result, i);
+        if (!json_is_object(item)) continue;
+
+        json_t *title_j = json_object_get(item, "title");
+        json_t *kind_j  = json_object_get(item, "kind");
+        json_t *edit_j  = json_object_get(item, "edit");
+        json_t *cmd_j   = json_object_get(item, "command");
+
+        if (!json_is_string(title_j)) continue; /* skip malformed entries */
+
+        LspCodeAction *a = &state->lsp.code_actions[state->lsp.code_actions_count++];
+        a->title   = strdup(json_string_value(title_j));
+        a->kind    = json_is_string(kind_j) ? strdup(json_string_value(kind_j)) : NULL;
+        a->edit    = edit_j ? (json_incref(edit_j), edit_j) : NULL;
+        a->command = cmd_j  ? (json_incref(cmd_j),  cmd_j)  : NULL;
+    }
+
+    if (state->lsp.code_actions_count == 0) {
+        editor_set_status_msg(state, "No applicable code actions.");
+        lsp_free_code_actions(state);
+        return;
+    }
+
+    state->lsp.code_action_popup_visible = true;
+    state->lsp.code_action_selected      = 0;
+    state->buffer.is_dirty = true;
+    editor_set_status_msg(state,
+        "%d code action(s) — j/k to navigate, Enter to apply, Esc to cancel.",
+        state->lsp.code_actions_count);
+}
+
+void lsp_apply_code_action(EditorState *state, int index) {
+    if (index < 0 || index >= state->lsp.code_actions_count) return;
+    LspCodeAction *action = &state->lsp.code_actions[index];
+
+    if (!action->edit) {
+        editor_set_status_msg(state, "Action '%s': no text edit to apply.", action->title);
+        state->lsp.code_action_popup_visible = false;
+        return;
+    }
+
+    /* Resolve to the array of TextEdits for the current file.
+     * The LSP protocol has two formats:
+     *   edit.changes          — map { URI: [TextEdit] }
+     *   edit.documentChanges  — array of TextDocumentEdit (LSP 3.13+)
+     */
+    json_t *edits = NULL;
+
+    json_t *changes = json_object_get(action->edit, "changes");
+    if (changes && json_is_object(changes)) {
+        char *cur_uri = lsp_get_uri_from_path(state->buffer.filename);
+        if (cur_uri) {
+            edits = json_object_get(changes, cur_uri);
+            free(cur_uri);
+        }
+    } else {
+        json_t *doc_changes = json_object_get(action->edit, "documentChanges");
+        if (doc_changes && json_is_array(doc_changes)) {
+            for (size_t i = 0; i < json_array_size(doc_changes); i++) {
+                json_t *dc  = json_array_get(doc_changes, i);
+                json_t *td  = json_object_get(dc, "textDocument");
+                const char *uri = td ? json_string_value(json_object_get(td, "uri")) : NULL;
+                if (!uri) continue;
+                char *cur_uri = lsp_get_uri_from_path(state->buffer.filename);
+                bool match = cur_uri && strcmp(uri, cur_uri) == 0;
+                free(cur_uri);
+                if (match) { edits = json_object_get(dc, "edits"); break; }
+            }
+        }
+    }
+
+    if (!edits || !json_is_array(edits)) {
+        editor_set_status_msg(state,
+            "No edits for current file in action '%s'.", action->title);
+        state->lsp.code_action_popup_visible = false;
+        return;
+    }
+
+    /* Apply TextEdits in REVERSE order so earlier edits don't shift
+     * the line numbers of later ones. */
+    size_t num_edits = json_array_size(edits);
+    for (int ei = (int)num_edits - 1; ei >= 0; ei--) {
+        json_t *edit    = json_array_get(edits, ei);
+        json_t *range_j = json_object_get(edit, "range");
+        json_t *newText = json_object_get(edit, "newText");
+        if (!range_j || !json_is_string(newText)) continue;
+
+        json_t *s_j = json_object_get(range_j, "start");
+        json_t *e_j = json_object_get(range_j, "end");
+        int sl = (int)json_integer_value(json_object_get(s_j, "line"));
+        int sc = (int)json_integer_value(json_object_get(s_j, "character"));
+        int el = (int)json_integer_value(json_object_get(e_j, "line"));
+        int ec = (int)json_integer_value(json_object_get(e_j, "character"));
+        const char *nt = json_string_value(newText);
+
+        if (sl < 0 || sl >= state->buffer.num_lines) continue;
+        if (el < 0 || el >= state->buffer.num_lines) continue;
+
+        if (sl == el) {
+            /* Single-line edit: replace [sc, ec) with nt */
+            char *line = state->buffer.lines[sl];
+            if (!line) continue;
+            int ll = (int)strlen(line);
+            if (sc > ll) sc = ll;
+            if (ec > ll) ec = ll;
+            size_t new_len = (size_t)sc + strlen(nt) + (size_t)(ll - ec) + 1;
+            char *new_line = malloc(new_len);
+            if (!new_line) continue;
+            memcpy(new_line, line, (size_t)sc);
+            strcpy(new_line + sc, nt);
+            strcat(new_line, line + ec);
+            free(state->buffer.lines[sl]);
+            state->buffer.lines[sl] = new_line;
+        } else {
+            /* Multi-line edit: merge prefix + nt + suffix, remove intermediate lines */
+            char *sl_str = state->buffer.lines[sl];
+            char *el_str = state->buffer.lines[el];
+            if (!sl_str || !el_str) continue;
+            int sl_len = (int)strlen(sl_str);
+            int el_len = (int)strlen(el_str);
+            if (sc > sl_len) sc = sl_len;
+            if (ec > el_len) ec = el_len;
+            size_t new_len = (size_t)sc + strlen(nt) + (size_t)(el_len - ec) + 1;
+            char *merged = malloc(new_len);
+            if (!merged) continue;
+            memcpy(merged, sl_str, (size_t)sc);
+            strcpy(merged + sc, nt);
+            strcat(merged, el_str + ec);
+            free(state->buffer.lines[sl]);
+            state->buffer.lines[sl] = merged;
+            /* Remove the lines from sl+1 to el (inclusive) */
+            int to_remove = el - sl;
+            for (int li = sl + 1; li <= el; li++) free(state->buffer.lines[li]);
+            int remaining = state->buffer.num_lines - el - 1;
+            memmove(&state->buffer.lines[sl + 1],
+                    &state->buffer.lines[el + 1],
+                    sizeof(char *) * (size_t)remaining);
+            state->buffer.num_lines -= to_remove;
+        }
+    }
+
+    state->buffer.modified = true;
+    state->buffer.is_dirty = true;
+    state->lsp.code_action_popup_visible = false;
+
+    /* Notify the LSP server of the changes */
+    lsp_did_change(state);
+
+    editor_set_status_msg(state, "Applied: %s", action->title);
 }

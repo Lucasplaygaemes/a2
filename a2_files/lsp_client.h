@@ -38,5 +38,11 @@ void lsp_handle_definition_response(EditorState *state, json_t *result);
 void lsp_request_document_symbols(EditorState *state);
 void lsp_check_and_process_messages(EditorState *state);
 
+/* Code Actions */
+void lsp_request_code_actions(EditorState *state);
+void lsp_handle_code_action_response(EditorState *state, json_t *result);
+void lsp_apply_code_action(EditorState *state, int index);
+void lsp_free_code_actions(EditorState *state);
+
 
 #endif // LSP_CLIENT_H
