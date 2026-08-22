@@ -956,6 +956,10 @@ void redraw_all_windows() {
                     }
                 }
             }
+            /* Draw code action selection popup (overlays everything else) */
+            if (state->lsp.code_action_popup_visible) {
+                draw_code_action_popup(active_jw->win, state);
+            }
         } else if (active_jw->type == WINDOW_TYPE_SETTINGS_PANEL && active_jw->settings_state) {
             if (active_jw->settings_state->is_assigning_key) {
                 const char *msg = (active_jw->settings_state->assigning_stage == 0) ? 

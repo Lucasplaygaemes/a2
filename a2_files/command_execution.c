@@ -451,6 +451,9 @@ void process_command(EditorState *state, bool *should_exit) {
           
     } else if (strcmp(command, "lsp-hover") == 0) {
           process_lsp_hover(state);
+
+    } else if (strcmp(command, "lsp-code-action") == 0) {
+          lsp_request_code_actions(state);
           
     } else if (strcmp(command, "lsp-symbols") == 0) {
           process_lsp_symbols(state);

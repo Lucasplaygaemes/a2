@@ -147,9 +147,10 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     // Project & Extra Tools
     [ACT_SAVE_PROJECT] = {ACT_SAVE_PROJECT, 0, 0, false, false, "SAVE_PROJECT", "Save Project", "Save session to .a2"},
     [ACT_LOAD_PROJECT] = {ACT_LOAD_PROJECT, 0, 0, false, false, "LOAD_PROJECT", "Load Project", "Load a project session"},
-    [ACT_LSP_RENAME] = {ACT_LSP_RENAME, 0, 0, false, false, "LSP_RENAME", "LSP Rename", "Rename symbol under cursor"},
-    [ACT_LSP_RESTART] = {ACT_LSP_RESTART, 0, 0, false, false, "LSP_RESTART", "LSP Restart", "Restart the LSP server"},
-    [ACT_TIMER_REPORT] = {ACT_TIMER_REPORT, 0, 0, false, false, "TIMER_REPORT", "Work Timer", "Show work time report"},
+    [ACT_LSP_RENAME]   = {ACT_LSP_RENAME,   0, 0, false, false, "LSP_RENAME",       "LSP Rename",       "Rename symbol under cursor"},
+    [ACT_LSP_RESTART]  = {ACT_LSP_RESTART,  0, 0, false, false, "LSP_RESTART",      "LSP Restart",      "Restart the LSP server"},
+    [ACT_LSP_CODE_ACTION] = {ACT_LSP_CODE_ACTION, 'd', 'a', false, false, "LSP_CODE_ACTION", "Code Actions", "Show code actions for symbol/diagnostic under cursor (Alt+d, a)"},
+    [ACT_TIMER_REPORT] = {ACT_TIMER_REPORT, 0, 0, false, false, "TIMER_REPORT",     "Work Timer",       "Show work time report"},
 
     // System
     [ACT_SETTINGS] = {ACT_SETTINGS, 0, 'S', true, false, "SETTINGS", "Configuration", "Open settings panel"},

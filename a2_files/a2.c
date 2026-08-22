@@ -86,6 +86,35 @@ void inicializar_ncurses() {
 void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     A2_LOG(LOG_DEBUG, TAG_CORE, "Input: ch=%d, mode=%d, single=%d", ch, (int)state->input.mode, state->input.single_command_mode);
 
+    // --- CODE ACTION POPUP MODE ---
+    if (state->lsp.code_action_popup_visible) {
+        switch ((int)ch) {
+            case 'j':
+            case KEY_DOWN:
+                if (state->lsp.code_action_selected < state->lsp.code_actions_count - 1)
+                    state->lsp.code_action_selected++;
+                break;
+            case 'k':
+            case KEY_UP:
+                if (state->lsp.code_action_selected > 0)
+                    state->lsp.code_action_selected--;
+                break;
+            case '\n':
+            case '\r':
+            case KEY_ENTER:
+                lsp_apply_code_action(state, state->lsp.code_action_selected);
+                break;
+            case 27: /* Esc */
+                lsp_free_code_actions(state);
+                editor_set_status_msg(state, "Code action cancelled.");
+                break;
+            default:
+                break;
+        }
+        state->buffer.is_dirty = true;
+        return; /* consume the key — do not propagate to normal editor handling */
+    }
+
     // --- FLOTING WINDOW MOVABLE MODE ---
     if (state->lsp.is_popup_movable) {
         switch(ch) {

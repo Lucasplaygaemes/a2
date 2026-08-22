@@ -454,6 +454,7 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_LOAD_PROJECT: project_load_session(NULL); break;
         case ACT_LSP_RENAME: { char nn[100] = ""; ui_ask_input("New Name:", nn, 100); process_lsp_rename(state, nn); } break;
         case ACT_LSP_RESTART: process_lsp_restart(state); break;
+        case ACT_LSP_CODE_ACTION: lsp_request_code_actions(state); break;
         case ACT_TIMER_REPORT: display_work_summary(); break;
         case ACT_SETTINGS: create_settings_panel_window(); break;
         case ACT_HELP: display_help_viewer("a2_help.txt"); break;
