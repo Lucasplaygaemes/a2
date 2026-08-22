@@ -51,6 +51,7 @@ This page details the commands available in Command Mode (activated with *:*).
 - *:lsp-rename <new_name>*: Renames the symbol under the cursor.
 - *:lsp-list*: Shows all current diagnostics in a list view.
 - *:lsp-refresh*: Forces a refresh of LSP diagnostics.
+- *:lsp-code-action*: Requests available code actions for the symbol or diagnostic under the cursor (quick-fixes, refactors, etc.) and opens an interactive selection popup. Use *j/k* or *Up/Down* to navigate the list, *Enter* to apply the selected action, and *Esc* to cancel.
 
 ## Other
 - *:! <cmd>*: Executes a shell command and shows the output.

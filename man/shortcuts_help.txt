@@ -155,6 +155,7 @@ Operators combine with motions, counts, and text objects: `[count] operator [mot
 ## Multi-key Sequences (ALT)
 Press the first key, release, then press the second.
 - *Alt+d, f* : Go to the definition of an function with lsp.
+- *Alt+d, a* : Request LSP Code Actions for the symbol or diagnostic under the cursor.
 - *Alt+d, d* : Open a new workspace and start a GDB session.
 - *Alt+d, e* : Open the Fuzzy Finder (same as *Alt+f*).
 - *Alt+g, g* : Open the directory navigator.
