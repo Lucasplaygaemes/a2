@@ -5,6 +5,7 @@
 
 // Function prototypes for screen_ui.c
 void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *message);
+void draw_code_action_popup(WINDOW *win, EditorState *state);
 void editor_redraw(WINDOW *win, EditorState *state);
 void adjust_viewport(WINDOW *win, EditorState *state);
 void get_visual_pos(WINDOW *win, EditorState *state, int *visual_y, int *visual_x);

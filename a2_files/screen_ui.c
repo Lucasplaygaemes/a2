@@ -307,6 +307,53 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
     wnoutrefresh(state->lsp.diagnostic_popup);
 }
 
+/* Draws the interactive code-action selection popup over the editor window.
+ * Navigation is handled by the input layer (j/k/Enter/Esc in a2.c /
+ * editor_actions.c); this function only renders the current state. */
+void draw_code_action_popup(WINDOW *win, EditorState *state) {
+    if (!state->lsp.code_action_popup_visible
+        || state->lsp.code_actions_count == 0) return;
+
+    int scr_h = getmaxy(win);
+    int scr_w = getmaxx(win);
+
+    /* Limit height so it fits on screen */
+    int popup_h = state->lsp.code_actions_count + 2; /* +2 for border lines */
+    if (popup_h > scr_h - 2) popup_h = scr_h - 2;
+    int popup_w = 64;
+    if (popup_w > scr_w - 2) popup_w = scr_w - 2;
+
+    int popup_y = (scr_h - popup_h) / 2;
+    int popup_x = (scr_w - popup_w) / 2;
+    if (popup_y < 0) popup_y = 0;
+    if (popup_x < 0) popup_x = 0;
+
+    WINDOW *popup = newwin(popup_h, popup_w, popup_y, popup_x);
+    if (!popup) return;
+
+    wbkgd(popup, COLOR_PAIR(8));
+    box(popup, 0, 0);
+    wattron(popup, A_BOLD);
+    mvwprintw(popup, 0, 2, " Code Actions ");
+    wattroff(popup, A_BOLD);
+
+    int visible = popup_h - 2; /* rows available inside border */
+    for (int i = 0; i < state->lsp.code_actions_count && i < visible; i++) {
+        if (i == state->lsp.code_action_selected) {
+            wattron(popup, A_REVERSE);
+        }
+        /* Truncate title so it fits inside the border */
+        char label[61];
+        snprintf(label, sizeof(label), " %-59s", state->lsp.code_actions[i].title);
+        mvwprintw(popup, i + 1, 1, "%s", label);
+        if (i == state->lsp.code_action_selected) {
+            wattroff(popup, A_REVERSE);
+        }
+    }
+
+    wnoutrefresh(popup);
+    delwin(popup);
+}
 
 void editor_redraw(WINDOW *win, EditorState *state) {
     wbkgd(win, COLOR_PAIR(PAIR_DEFAULT));
