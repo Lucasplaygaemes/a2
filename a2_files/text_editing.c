@@ -161,6 +161,8 @@ void _editor_insert_char(EditorState *state, wint_t ch) {
     char *new_line = realloc(line, line_len + char_len + 1); if (!new_line) return;
     state->buffer.lines[state->cursor.line] = new_line;
 
+    state->cursor.col = utf8_align_col(new_line, state->cursor.col);
+
     if (state->cursor.col < line_len) {
         memmove(&new_line[state->cursor.col + char_len], &new_line[state->cursor.col], line_len - state->cursor.col);
     }
@@ -199,34 +201,31 @@ void _editor_handle_enter(EditorState *state) {
         while (last_char_pos >= 0 && isspace(current_line_ptr[last_char_pos])) {
             last_char_pos--;
         }
-        if (last_char_pos >= 0 && current_line_ptr[last_char_pos] == '{') {
+        if (last_char_pos >= 0 && (current_line_ptr[last_char_pos] == '{' || current_line_ptr[last_char_pos] == '(' || current_line_ptr[last_char_pos] == '[' || current_line_ptr[last_char_pos] == ':')) {
             extra_indent = TAB_SIZE;
         }
     }
 
     int new_indent_len = base_indent_len + extra_indent;
-    if (state->input.paste_mode) new_indent_len = 0;
+    char new_indent[256];
+    if (new_indent_len >= (int)sizeof(new_indent)) new_indent_len = sizeof(new_indent) - 1;
+    memset(new_indent, ' ', new_indent_len);
+    new_indent[new_indent_len] = '\0';
 
-    int line_len = strlen(current_line_ptr);
-    int col = state->cursor.col;
-    if (col > line_len) col = line_len;
-    char *rest_of_line = &current_line_ptr[col];
+    int remaining_len = strlen(current_line_ptr + state->cursor.col);
+    char *new_line_str = malloc(new_indent_len + remaining_len + 1);
+    if (!new_line_str) return;
 
-    int rest_len = strlen(rest_of_line);
-    char *new_line_content = malloc(new_indent_len + rest_len + 1);
-    if (!new_line_content) return;
-    for (int i = 0; i < new_indent_len; i++) new_line_content[i] = ' ';
-    strcpy(new_line_content + new_indent_len, rest_of_line);
+    strcpy(new_line_str, new_indent);
+    strcat(new_line_str, current_line_ptr + state->cursor.col);
 
-    current_line_ptr[col] = '\0';
-    char* resized_line = realloc(current_line_ptr, col + 1);
-    if (resized_line) state->buffer.lines[state->cursor.line] = resized_line;
+    current_line_ptr[state->cursor.col] = '\0';
 
     for (int i = state->buffer.num_lines; i > state->cursor.line + 1; i--) {
         state->buffer.lines[i] = state->buffer.lines[i - 1];
     }
+    state->buffer.lines[state->cursor.line + 1] = new_line_str;
     state->buffer.num_lines++;
-    state->buffer.lines[state->cursor.line + 1] = new_line_content;
 
     state->cursor.line++;
     state->cursor.col = new_indent_len;
@@ -256,16 +255,14 @@ void _editor_handle_backspace(EditorState *state) {
         if (!line) return;
         int line_len = strlen(line);
 
-        int prev_char_start = state->cursor.col - 1;
-        while (prev_char_start > 0 && (line[prev_char_start] & 0xC0) == 0x80) {
-            prev_char_start--;
-        }
+        int char_start = utf8_prev_char(line, state->cursor.col);
+        int char_end = utf8_next_char(line, char_start, line_len);
 
-        memmove(&line[prev_char_start], &line[state->cursor.col], line_len - state->cursor.col + 1);
-        char* resized_line = realloc(line, line_len - (state->cursor.col - prev_char_start) + 1);
+        memmove(&line[char_start], &line[char_end], line_len - char_end + 1);
+        char* resized_line = realloc(line, line_len - (char_end - char_start) + 1);
         if (resized_line) state->buffer.lines[state->cursor.line] = resized_line;
         
-        state->cursor.col = prev_char_start;
+        state->cursor.col = char_start;
         state->cursor.ideal_col = state->cursor.col;
         mark_line_as_dirty(state, state->cursor.line);
     } else { 

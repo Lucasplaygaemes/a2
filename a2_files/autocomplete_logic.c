@@ -312,8 +312,8 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
             } else if (state->cursor.line < state->buffer.num_lines - 1) state->cursor.line++;
             state->buffer.is_dirty = true; break;
         }
-        case KEY_LEFT: if (state->cursor.col > 0) state->cursor.col--; state->cursor.ideal_col = state->cursor.col; state->buffer.is_dirty = true; break;
-        case KEY_RIGHT: { char* line = state->buffer.lines[state->cursor.line]; if (line && state->cursor.col < (int)strlen(line)) state->cursor.col++; state->cursor.ideal_col = state->cursor.col; } state->buffer.is_dirty = true; break;
+        case KEY_LEFT: { char* line = state->buffer.lines[state->cursor.line]; if (line && state->cursor.col > 0) state->cursor.col = utf8_prev_char(line, state->cursor.col); state->cursor.ideal_col = state->cursor.col; state->buffer.is_dirty = true; break; }
+        case KEY_RIGHT: { char* line = state->buffer.lines[state->cursor.line]; if (line && state->cursor.col < (int)strlen(line)) state->cursor.col = utf8_next_char(line, state->cursor.col, strlen(line)); state->cursor.ideal_col = state->cursor.col; state->buffer.is_dirty = true; break; }
         case KEY_PPAGE: case KEY_SR: for (int i = 0; i < PAGE_JUMP; i++) if (state->cursor.line > 0) state->cursor.line--; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true; break;
         case KEY_NPAGE: case KEY_SF: for (int i = 0; i < PAGE_JUMP; i++) if (state->cursor.line < state->buffer.num_lines - 1) state->cursor.line++; state->cursor.col = state->cursor.ideal_col; state->buffer.is_dirty = true; break;
         case KEY_HOME: state->cursor.col = 0; state->cursor.ideal_col = 0; state->buffer.is_dirty = true; break;
@@ -321,7 +321,10 @@ void handle_insert_mode_key(EditorState *state, wint_t ch) {
         case KEY_SDC: editor_delete_line(state); break;
         case '(': case '[': case '{': case '"': case '\'': { 
             char cl = (ch == '(') ? ')' : (ch == '[') ? ']' : (ch == '{') ? '}' : ch;
-            editor_insert_char(state, ch); editor_insert_char(state, cl); state->cursor.col--; state->cursor.ideal_col = state->cursor.col; break;
+            editor_insert_char(state, ch); editor_insert_char(state, cl);
+            char *line = state->buffer.lines[state->cursor.line];
+            if (line) state->cursor.col = utf8_prev_char(line, state->cursor.col);
+            state->cursor.ideal_col = state->cursor.col; break;
         }      
         default: if (iswprint(ch)) editor_insert_char(state, ch); break;
     }

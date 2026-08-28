@@ -561,11 +561,15 @@ void handle_normal_mode_key(EditorState *state, wint_t ch) {
             int count = state->input.prefix_count > 0 ? state->input.prefix_count : 1;
             state->input.prefix_count = 0;
             push_undo(state); clear_redo_stack(state);
-            int end = state->cursor.col + count;
-            if (end > len) end = len;
-            memmove(line + state->cursor.col, line + end, len - end + 1);
+            int start = utf8_align_col(line, state->cursor.col);
+            int end = start;
+            for (int i = 0; i < count && end < len; i++) {
+                end = utf8_next_char(line, end, len);
+            }
+            memmove(line + start, line + end, len - end + 1);
             len = strlen(line);
-            if (state->cursor.col > 0 && state->cursor.col >= len) state->cursor.col = len > 0 ? len - 1 : 0;
+            if (start >= len) start = len > 0 ? utf8_prev_char(line, len) : 0;
+            state->cursor.col = start;
             state->cursor.ideal_col = state->cursor.col;
             state->buffer.modified = true; state->buffer.is_dirty = true;
             mark_line_as_dirty(state, state->cursor.line);
@@ -577,10 +581,14 @@ void handle_normal_mode_key(EditorState *state, wint_t ch) {
             state->input.prefix_count = 0;
             push_undo(state); clear_redo_stack(state);
             int len = strlen(line);
-            int start = state->cursor.col - count;
-            if (start < 0) start = 0;
-            memmove(line + start, line + state->cursor.col, len - state->cursor.col + 1);
-            state->cursor.col = start; state->cursor.ideal_col = start;
+            int end = utf8_align_col(line, state->cursor.col);
+            int start = end;
+            for (int i = 0; i < count && start > 0; i++) {
+                start = utf8_prev_char(line, start);
+            }
+            memmove(line + start, line + end, len - end + 1);
+            state->cursor.col = start;
+            state->cursor.ideal_col = state->cursor.col;
             state->buffer.modified = true; state->buffer.is_dirty = true;
             mark_line_as_dirty(state, state->cursor.line);
             break; }
