@@ -212,6 +212,63 @@ char* trim_whitespace(char *str) {
     return str;
 }
 
+int utf8_next_char(const char *line, int col, int line_len) {
+    if (!line || col >= line_len) return line_len;
+    col++;
+    while (col < line_len && (line[col] & 0xC0) == 0x80) {
+        col++;
+    }
+    return col;
+}
+
+int utf8_prev_char(const char *line, int col) {
+    if (!line || col <= 0) return 0;
+    col--;
+    while (col > 0 && (line[col] & 0xC0) == 0x80) {
+        col--;
+    }
+    return col;
+}
+
+int utf8_align_col(const char *line, int col) {
+    if (!line || col <= 0) return 0;
+    int len = strlen(line);
+    if (col > len) col = len;
+    while (col > 0 && (line[col] & 0xC0) == 0x80) {
+        col--;
+    }
+    return col;
+}
+
+int get_byte_col(const char *line, int visual_col) {
+    if (!line || visual_col <= 0) return 0;
+    int cur_visual = 0;
+    int byte_i = 0;
+    int len = strlen(line);
+    while (byte_i < len && cur_visual < visual_col) {
+        if (line[byte_i] == '\t') {
+            int tab_w = TAB_SIZE - (cur_visual % TAB_SIZE);
+            if (cur_visual + tab_w > visual_col) break;
+            cur_visual += tab_w;
+            byte_i++;
+        } else {
+            wchar_t wc;
+            int bytes_consumed = mbtowc(&wc, &line[byte_i], MB_CUR_MAX);
+            if (bytes_consumed <= 0) {
+                cur_visual++;
+                byte_i++;
+            } else {
+                int char_w = wcwidth(wc);
+                if (char_w < 0) char_w = 1;
+                if (cur_visual + char_w > visual_col) break;
+                cur_visual += char_w;
+                byte_i += bytes_consumed;
+            }
+        }
+    }
+    return byte_i;
+}
+
 void ensure_cursor_in_bounds(EditorState *state) {
     if (state->buffer.num_lines == 0) { state->cursor.line = 0; state->cursor.col = 0; return; }
     if (state->cursor.line >= state->buffer.num_lines) state->cursor.line = state->buffer.num_lines - 1;
@@ -220,21 +277,24 @@ void ensure_cursor_in_bounds(EditorState *state) {
     int line_len = line ? strlen(line) : 0;
     if (state->cursor.col > line_len) state->cursor.col = line_len;
     if (state->cursor.col < 0) state->cursor.col = 0;
+    if (line && line_len > 0) {
+        state->cursor.col = utf8_align_col(line, state->cursor.col);
+    }
 }
 
 void editor_move_to_next_word(EditorState *state) {
     if (!state) return;
     char *line = state->buffer.lines[state->cursor.line]; if (!line) return;
     int len = strlen(line);
-    while (state->cursor.col < len && isspace(line[state->cursor.col])) state->cursor.col++;
-    while (state->cursor.col < len && !isspace(line[state->cursor.col])) state->cursor.col++;
+    while (state->cursor.col < len && isspace((unsigned char)line[state->cursor.col])) state->cursor.col = utf8_next_char(line, state->cursor.col, len);
+    while (state->cursor.col < len && !isspace((unsigned char)line[state->cursor.col])) state->cursor.col = utf8_next_char(line, state->cursor.col, len);
     state->cursor.ideal_col = state->cursor.col;
 }
 
 void editor_move_to_previous_word(EditorState *state) {
     char *line = state->buffer.lines[state->cursor.line]; if (!line || state->cursor.col == 0) return;
-    while (state->cursor.col > 0 && isspace(line[state->cursor.col - 1])) state->cursor.col--;
-    while (state->cursor.col > 0 && !isspace(line[state->cursor.col - 1])) state->cursor.col--;
+    while (state->cursor.col > 0 && isspace((unsigned char)line[utf8_prev_char(line, state->cursor.col)])) state->cursor.col = utf8_prev_char(line, state->cursor.col);
+    while (state->cursor.col > 0 && !isspace((unsigned char)line[utf8_prev_char(line, state->cursor.col)])) state->cursor.col = utf8_prev_char(line, state->cursor.col);
     state->cursor.ideal_col = state->cursor.col;
 }
 

@@ -16,6 +16,11 @@ void mark_all_lines_dirty(EditorState *state);
 char* trim_whitespace(char *str);
 
 // Cursor Bounds & Word Navigation
+int utf8_next_char(const char *line, int col, int line_len);
+int utf8_prev_char(const char *line, int col);
+int utf8_align_col(const char *line, int col);
+int get_byte_col(const char *line, int visual_col);
+
 void ensure_cursor_in_bounds(EditorState *state);
 void editor_move_to_next_word(EditorState *state);
 void editor_move_to_previous_word(EditorState *state);
