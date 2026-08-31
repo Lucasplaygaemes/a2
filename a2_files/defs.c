@@ -96,6 +96,15 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     
     // Additional Sequences
     [ACT_GDB_DEBUG] = {ACT_GDB_DEBUG, 'd', 'd', false, false, "GDB_DEBUG", "GDB Debug", "Start a GDB session"},
+    [ACT_GDB_BREAK] = {ACT_GDB_BREAK, 'd', 'b', false, false, "GDB_BREAK", "GDB Breakpoint", "Set breakpoint at current line"},
+    [ACT_GDB_RUN] = {ACT_GDB_RUN, 'd', 'r', false, false, "GDB_RUN", "GDB Run", "Send run to GDB"},
+    [ACT_GDB_NEXT] = {ACT_GDB_NEXT, 'd', 'n', false, false, "GDB_NEXT", "GDB Next", "Send next to GDB"},
+    [ACT_GDB_STEP] = {ACT_GDB_STEP, 'd', 's', false, false, "GDB_STEP", "GDB Step", "Send step to GDB"},
+    [ACT_GDB_CONTINUE] = {ACT_GDB_CONTINUE, 'd', 'c', false, false, "GDB_CONTINUE", "GDB Continue", "Send continue to GDB"},
+    [ACT_GDB_PRINT] = {ACT_GDB_PRINT, 'd', 'p', false, false, "GDB_PRINT", "GDB Print", "Print variable under cursor"},
+    [ACT_GDB_WATCH] = {ACT_GDB_WATCH, 'd', 'w', false, false, "GDB_WATCH", "GDB Watch", "Watch variable under cursor"},
+    [ACT_GDB_TUI] = {ACT_GDB_TUI, 'd', 't', false, false, "GDB_TUI", "GDB TUI", "Start GDB in TUI mode"},
+    [ACT_GDB_QUIT] = {ACT_GDB_QUIT, 'd', 'k', false, false, "GDB_QUIT", "GDB Quit", "Quit GDB session"},
     [ACT_ASM_CONVERT] = {ACT_ASM_CONVERT, 'd', 'l', false, false, "ASM_CONVERT", "ASM Convert", "Convert current file to .s"},
     [ACT_GIT_ADD_U] = {ACT_GIT_ADD_U, 'g', 'a', false, false, "GIT_ADD_U", "Git Add -u", "Stage modified files"},
     [ACT_DIR_NAVIGATOR] = {ACT_DIR_NAVIGATOR, 0, 'd', true, false, "DIR_NAVIGATOR", "Dir Navigator", "Open directory navigator"},

@@ -654,6 +654,15 @@ typedef enum {
     
     // Additional Actions
     ACT_GDB_DEBUG,         // Alt+d, d
+    ACT_GDB_BREAK,         // Alt+d, b
+    ACT_GDB_RUN,           // Alt+d, r
+    ACT_GDB_NEXT,          // Alt+d, n
+    ACT_GDB_STEP,          // Alt+d, s
+    ACT_GDB_CONTINUE,      // Alt+d, c
+    ACT_GDB_PRINT,         // Alt+d, p
+    ACT_GDB_WATCH,         // Alt+d, w
+    ACT_GDB_TUI,           // Alt+d, t
+    ACT_GDB_QUIT,          // Alt+d, k
     ACT_ASM_CONVERT,       // Alt+d, l
     ACT_GIT_ADD_U,         // Alt+g, a
     ACT_DIR_NAVIGATOR,     // Alt+g, g
