@@ -24,6 +24,20 @@ This page details the commands available in Command Mode (activated with *:*).
 - *:grep <term>*: Searches for `term` across all project files (runs in the background).
 - *:showgrep*: Shows the results of the last grep search.
 
+## Debugging (GDB Integration)
+- *:gdb [target]*: Opens GDB in an interactive side split (compiles automatically if omitted).
+- *:gdb-tui [target]*: Opens GDB in TUI mode (Text User Interface).
+- *:gdb-break [spec]* / *:gdb-b*: Sets a breakpoint at `spec` or at current file and line.
+- *:gdb-run [args]* / *:gdb-r*: Sends `run` to active GDB session.
+- *:gdb-next* / *:gdb-n*: Sends `next` (step over).
+- *:gdb-step* / *:gdb-s*: Sends `step` (step into).
+- *:gdb-continue* / *:gdb-c*: Sends `continue`.
+- *:gdb-print [var]* / *:gdb-p*: Prints value of `var` or variable under cursor.
+- *:gdb-watch [var]* / *:gdb-w*: Sets a watchpoint on `var` or variable under cursor.
+- *:gdb-backtrace* / *:gdb-bt*: Displays the execution stack backtrace.
+- *:gdb-reload*: Recompiles current source with `gcc -g` and reloads it in GDB.
+- *:gdb-eval <cmd>*: Sends raw command to active GDB session.
+
 ## Windows & Workspaces
 - *:term [cmd]*: Opens a command in a new terminal split (e.g., `:term ls -l`).
 - *:termside [cmd]*: Opens a command in a new terminal side split.

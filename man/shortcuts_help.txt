@@ -154,9 +154,18 @@ Operators combine with motions, counts, and text objects: `[count] operator [mot
 
 ## Multi-key Sequences (ALT)
 Press the first key, release, then press the second.
-- *Alt+d, f* : Go to the definition of an function with lsp.
+- *Alt+d, f* : Go to the definition of a function with LSP.
 - *Alt+d, a* : Request LSP Code Actions for the symbol or diagnostic under the cursor.
-- *Alt+d, d* : Open a new workspace and start a GDB session.
+- *Alt+d, d* : Start an interactive GDB debugging session in side-split.
+- *Alt+d, b* : Insert GDB breakpoint at the current line (`break file.c:line`).
+- *Alt+d, r* : Send `run` to active GDB session.
+- *Alt+d, n* : Send `next` (step over) to active GDB session.
+- *Alt+d, s* : Send `step` (step into) to active GDB session.
+- *Alt+d, c* : Send `continue` to active GDB session.
+- *Alt+d, p* : Print value of variable under cursor (`print var`).
+- *Alt+d, w* : Set watchpoint on variable under cursor (`watch var`).
+- *Alt+d, t* : Start GDB in TUI mode (Text User Interface).
+- *Alt+d, k* : Send `quit` to active GDB session.
 - *Alt+d, e* : Open the Fuzzy Finder (same as *Alt+f*).
 - *Alt+g, g* : Open the directory navigator.
 - *Alt+g, a* : Run `git add -u` in a new terminal window.
