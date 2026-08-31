@@ -26,7 +26,9 @@
 #include <stdlib.h>
 
 const char *editor_commands[] = {
-    "q", "q!", "w", "wq", "help", "about", "gcc", "rc", "rc!", "open", "new", "timer", "diff", "set",
+    "q", "q!", "w", "wq", "help", "about", "gcc", "gdb", "gdb-tui", "gdb-break", "gdb-run",
+    "gdb-next", "gdb-step", "gdb-continue", "gdb-print", "gdb-watch", "gdb-backtrace",
+    "gdb-reload", "gdb-eval", "rc", "rc!", "open", "new", "timer", "diff", "set",
     "lsp-restart", "lsp-diag", "lsp-definition", "lsp-references", "lsp-rename",
     "lsp-status", "lsp-hover", "lsp-symbols", "lsp-refresh", "lsp-check", "lsp-debug",
     "lsp-list", "toggle_auto_indent", "llvm", "logs"
