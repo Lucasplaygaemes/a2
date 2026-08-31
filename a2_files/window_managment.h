@@ -43,6 +43,7 @@ void execute_command_in_split(const char *comando_str);
 void execute_command_in_terminal(const char *comando_str);
 void create_generic_terminal_window(char *const argv[]);
 void toggle_floating_terminal();
+bool send_cmd_to_terminal_window(const char *cmd_str);
 
 
 void gf2_starter();

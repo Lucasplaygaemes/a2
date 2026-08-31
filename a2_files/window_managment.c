@@ -835,6 +835,25 @@ void execute_command_in_split(const char *comando_str) {
     recalculate_window_layout();
 }
 
+bool send_cmd_to_terminal_window(const char *cmd_str) {
+    Workspace *ws = ACTIVE_WS;
+    if (!ws) return false;
+    for (int i = 0; i < ws->num_windows; i++) {
+        EditorWindow *jw = ws->windows[i];
+        if (jw && jw->type == WINDOW_TYPE_TERMINAL && jw->term.pty_fd > 0) {
+            write(jw->term.pty_fd, cmd_str, strlen(cmd_str));
+            write(jw->term.pty_fd, "\n", 1);
+            return true;
+        }
+    }
+    if (ws->floating_term && ws->floating_term->term.pty_fd > 0) {
+        write(ws->floating_term->term.pty_fd, cmd_str, strlen(cmd_str));
+        write(ws->floating_term->term.pty_fd, "\n", 1);
+        return true;
+    }
+    return false;
+}
+
 void free_workspace(Workspace *ws) {
     if (!ws) return;
     for (int i = 0; i < ws->num_windows; i++) {
