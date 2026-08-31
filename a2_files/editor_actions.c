@@ -322,7 +322,105 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_DIFF_INTERACTIVE: start_interactive_diff(state); break;
         case ACT_GIT_STATUS: { char *const cmd[] = {"git", "status", NULL}; create_generic_terminal_window(cmd); } break;
         case ACT_EXPAND_SNIPPET: editor_expand_snippet(state); break;
-        case ACT_GDB_DEBUG: prompt_and_create_gdb_workspace(); break;
+        case ACT_GDB_DEBUG: {
+            bool exit_flag = false;
+            char orig_buf[256];
+            strncpy(orig_buf, state->input.command_buffer, sizeof(orig_buf) - 1);
+            strncpy(state->input.command_buffer, "gdb", sizeof(state->input.command_buffer) - 1);
+            process_command(state, &exit_flag);
+            strncpy(state->input.command_buffer, orig_buf, sizeof(state->input.command_buffer) - 1);
+            break;
+        }
+        case ACT_GDB_BREAK: {
+            if (state->buffer.filename[0] != '\0') {
+                char bk_cmd[512];
+                // Extract filename basename for gdb breakpoint
+                const char *fn = strrchr(state->buffer.filename, '/');
+                fn = fn ? fn + 1 : state->buffer.filename;
+                snprintf(bk_cmd, sizeof(bk_cmd), "break %s:%d", fn, state->cursor.line + 1);
+                if (send_cmd_to_terminal_window(bk_cmd)) {
+                    editor_set_status_msg(state, "GDB: %s", bk_cmd);
+                } else {
+                    editor_set_status_msg(state, "GDB not active. Run :gdb first.");
+                }
+            }
+            break;
+        }
+        case ACT_GDB_RUN: {
+            if (send_cmd_to_terminal_window("run")) {
+                editor_set_status_msg(state, "GDB: sent 'run'");
+            } else {
+                editor_set_status_msg(state, "GDB terminal split not found. Run :gdb first.");
+            }
+            break;
+        }
+        case ACT_GDB_NEXT: {
+            if (send_cmd_to_terminal_window("next")) {
+                editor_set_status_msg(state, "GDB: sent 'next'");
+            } else {
+                editor_set_status_msg(state, "GDB terminal split not found.");
+            }
+            break;
+        }
+        case ACT_GDB_STEP: {
+            if (send_cmd_to_terminal_window("step")) {
+                editor_set_status_msg(state, "GDB: sent 'step'");
+            } else {
+                editor_set_status_msg(state, "GDB terminal split not found.");
+            }
+            break;
+        }
+        case ACT_GDB_CONTINUE: {
+            if (send_cmd_to_terminal_window("continue")) {
+                editor_set_status_msg(state, "GDB: sent 'continue'");
+            } else {
+                editor_set_status_msg(state, "GDB terminal split not found.");
+            }
+            break;
+        }
+        case ACT_GDB_PRINT: {
+            char word[100] = {0};
+            get_word_at_cursor(state, word, sizeof(word));
+            if (word[0]) {
+                char p_cmd[256];
+                snprintf(p_cmd, sizeof(p_cmd), "print %s", word);
+                if (send_cmd_to_terminal_window(p_cmd)) editor_set_status_msg(state, "GDB: %s", p_cmd);
+                else editor_set_status_msg(state, "GDB terminal split not found.");
+            } else {
+                editor_set_status_msg(state, "No variable under cursor to print.");
+            }
+            break;
+        }
+        case ACT_GDB_WATCH: {
+            char word[100] = {0};
+            get_word_at_cursor(state, word, sizeof(word));
+            if (word[0]) {
+                char w_cmd[256];
+                snprintf(w_cmd, sizeof(w_cmd), "watch %s", word);
+                if (send_cmd_to_terminal_window(w_cmd)) editor_set_status_msg(state, "GDB: %s", w_cmd);
+                else editor_set_status_msg(state, "GDB terminal split not found.");
+            } else {
+                editor_set_status_msg(state, "No variable under cursor to watch.");
+            }
+            break;
+        }
+        case ACT_GDB_TUI: {
+            bool exit_flag = false;
+            char orig_buf[256];
+            strncpy(orig_buf, state->input.command_buffer, sizeof(orig_buf) - 1);
+            strncpy(state->input.command_buffer, "gdb-tui", sizeof(state->input.command_buffer) - 1);
+            process_command(state, &exit_flag);
+            strncpy(state->input.command_buffer, orig_buf, sizeof(state->input.command_buffer) - 1);
+            break;
+        }
+        case ACT_GDB_QUIT: {
+            if (send_cmd_to_terminal_window("quit")) {
+                editor_set_status_msg(state, "GDB: sent 'quit'");
+            } else {
+                editor_set_status_msg(state, "GDB terminal split not found.");
+            }
+            break;
+        }
         case ACT_ASM_CONVERT: asm_convert_file(state, state->buffer.filename); break;
         case ACT_GIT_ADD_U: { char *const cmd[] = {"git", "add", "-u", NULL}; create_generic_terminal_window(cmd); } break;
         case ACT_DIR_NAVIGATOR: display_directory_navigator(state); break;

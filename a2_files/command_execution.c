@@ -21,9 +21,46 @@
 
 void load_global_config();
 
-// ===================================================================
-// 6. Command Execution & Processing
-// ===================================================================
+static void process_gdb_command(EditorState *state, const char *args, bool tui_mode) {
+    char gdb_cmd[1024];
+    const char *flag = tui_mode ? "-tui" : "-q";
+    if (args && strlen(args) > 0) {
+        snprintf(gdb_cmd, sizeof(gdb_cmd), "gdb %s %s", flag, args);
+    } else {
+        const char *fn = state->buffer.filename;
+        if (fn && strlen(fn) > 0) {
+            char target[512];
+            strncpy(target, fn, sizeof(target) - 1);
+            target[sizeof(target) - 1] = '\0';
+            
+            char *dot = strrchr(target, '.');
+            if (dot && (strcmp(dot, ".c") == 0 || strcmp(dot, ".cpp") == 0)) {
+                *dot = '\0';
+            }
+            
+            if (access(target, X_OK) == 0) {
+                snprintf(gdb_cmd, sizeof(gdb_cmd), "gdb %s \"%s\"", flag, target);
+            } else if (access("./a.out", X_OK) == 0) {
+                snprintf(gdb_cmd, sizeof(gdb_cmd), "gdb %s ./a.out", flag);
+            } else {
+                editor_set_status_msg(state, "Compiling %s for debugging...", fn);
+                char compile_cmd[1024];
+                snprintf(compile_cmd, sizeof(compile_cmd), "gcc -g \"%s\" -o \"%s\"", fn, target);
+                int res = system(compile_cmd);
+                if (res == 0 && access(target, X_OK) == 0) {
+                    snprintf(gdb_cmd, sizeof(gdb_cmd), "gdb %s \"%s\"", flag, target);
+                } else {
+                    snprintf(gdb_cmd, sizeof(gdb_cmd), "gdb %s", flag);
+                }
+            }
+        } else {
+            snprintf(gdb_cmd, sizeof(gdb_cmd), "gdb %s", flag);
+        }
+    }
+    
+    execute_command_in_split(gdb_cmd);
+    editor_set_status_msg(state, "GDB started (%s)", gdb_cmd);
+}
 
 void process_command(EditorState *state, bool *should_exit) {
     A2_LOG(LOG_INFO, TAG_CORE, "Command: %s", state->input.command_buffer);
@@ -424,9 +461,86 @@ void process_command(EditorState *state, bool *should_exit) {
                 execute_command_in_new_workspace(args);
             } else if (strcmp(command, "termside") == 0) {
                 execute_command_in_split(args);
-            
+            } else if (strcmp(command, "gdb") == 0) {
+                process_gdb_command(state, args, false);
+            } else if (strcmp(command, "gdb-tui") == 0) {
+                process_gdb_command(state, args, true);
+            } else if (strcmp(command, "gdb-break") == 0 || strcmp(command, "gdb-b") == 0) {
+                if (strlen(args) > 0) {
+                    char bk[256];
+                    snprintf(bk, sizeof(bk), "break %s", args);
+                    if (send_cmd_to_terminal_window(bk)) editor_set_status_msg(state, "GDB: %s", bk);
+                    else editor_set_status_msg(state, "No active GDB terminal split found.");
+                } else {
+                    execute_action(ACT_GDB_BREAK, state, NULL);
+                }
+            } else if (strcmp(command, "gdb-run") == 0 || strcmp(command, "gdb-r") == 0) {
+                char run_cmd[512] = "run";
+                if (strlen(args) > 0) snprintf(run_cmd, sizeof(run_cmd), "run %s", args);
+                if (send_cmd_to_terminal_window(run_cmd)) editor_set_status_msg(state, "GDB: %s", run_cmd);
+                else editor_set_status_msg(state, "No active GDB terminal split found.");
+            } else if (strcmp(command, "gdb-next") == 0 || strcmp(command, "gdb-n") == 0) {
+                execute_action(ACT_GDB_NEXT, state, NULL);
+            } else if (strcmp(command, "gdb-step") == 0 || strcmp(command, "gdb-s") == 0) {
+                execute_action(ACT_GDB_STEP, state, NULL);
+            } else if (strcmp(command, "gdb-continue") == 0 || strcmp(command, "gdb-c") == 0) {
+                execute_action(ACT_GDB_CONTINUE, state, NULL);
+            } else if (strcmp(command, "gdb-print") == 0 || strcmp(command, "gdb-p") == 0) {
+                char p_cmd[512];
+                if (strlen(args) > 0) {
+                    snprintf(p_cmd, sizeof(p_cmd), "print %s", args);
+                } else {
+                    char word[100] = {0};
+                    get_word_at_cursor(state, word, sizeof(word));
+                    if (word[0]) snprintf(p_cmd, sizeof(p_cmd), "print %s", word);
+                    else snprintf(p_cmd, sizeof(p_cmd), "print");
+                }
+                if (send_cmd_to_terminal_window(p_cmd)) editor_set_status_msg(state, "GDB: %s", p_cmd);
+                else editor_set_status_msg(state, "No active GDB terminal split found.");
+            } else if (strcmp(command, "gdb-watch") == 0 || strcmp(command, "gdb-w") == 0) {
+                char w_cmd[512];
+                if (strlen(args) > 0) {
+                    snprintf(w_cmd, sizeof(w_cmd), "watch %s", args);
+                } else {
+                    char word[100] = {0};
+                    get_word_at_cursor(state, word, sizeof(word));
+                    if (word[0]) snprintf(w_cmd, sizeof(w_cmd), "watch %s", word);
+                    else snprintf(w_cmd, sizeof(w_cmd), "watch");
+                }
+                if (send_cmd_to_terminal_window(w_cmd)) editor_set_status_msg(state, "GDB: %s", w_cmd);
+                else editor_set_status_msg(state, "No active GDB terminal split found.");
+            } else if (strcmp(command, "gdb-backtrace") == 0 || strcmp(command, "gdb-bt") == 0) {
+                if (send_cmd_to_terminal_window("backtrace")) editor_set_status_msg(state, "GDB: sent 'backtrace'");
+                else editor_set_status_msg(state, "No active GDB terminal split found.");
+            } else if (strcmp(command, "gdb-reload") == 0) {
+                if (state->buffer.filename[0]) {
+                    char target[512];
+                    strncpy(target, state->buffer.filename, sizeof(target) - 1);
+                    target[sizeof(target) - 1] = '\0';
+                    char *dot = strrchr(target, '.');
+                    if (dot && (strcmp(dot, ".c") == 0 || strcmp(dot, ".cpp") == 0)) *dot = '\0';
+                    char compile_cmd[1024];
+                    snprintf(compile_cmd, sizeof(compile_cmd), "gcc -g \"%s\" -o \"%s\"", state->buffer.filename, target);
+                    int r = system(compile_cmd);
+                    if (r == 0) {
+                        char reload_cmd[512];
+                        snprintf(reload_cmd, sizeof(reload_cmd), "file %s", target);
+                        send_cmd_to_terminal_window(reload_cmd);
+                        send_cmd_to_terminal_window("run");
+                        editor_set_status_msg(state, "GDB: recompiled & reloaded %s", target);
+                    } else {
+                        editor_set_status_msg(state, "GDB: compilation failed!");
+                    }
+                }
+            } else if (strcmp(command, "gdb-eval") == 0 || strcmp(command, "gdb-exec") == 0) {
+                if (strlen(args) > 0) {
+                    if (send_cmd_to_terminal_window(args)) editor_set_status_msg(state, "GDB: %s", args);
+                    else editor_set_status_msg(state, "No active GDB terminal split found.");
+                }
+            }
+
       // LSP Commands
-    } else if (strncmp(command, "lsp-restart", 11) == 0) {
+    else if (strncmp(command, "lsp-restart", 11) == 0) {
           process_lsp_restart(state);
       
     } else if (strncmp(command, "lsp-diag", 8) == 0) {
