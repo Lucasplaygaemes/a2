@@ -597,6 +597,28 @@ void process_command(EditorState *state, bool *should_exit) {
           }
     } else if (strcmp(command, "lsp-list") == 0) {
         display_diagnostics_list(state); 
+    } else if (strncmp(command, "repeat", 6) == 0 || strncmp(command, "rep", 3) == 0) {
+        char *space = strchr(command, ' ');
+        if (!space && strlen(args) > 0) space = args - 1;
+        int count = 0;
+        char text[512] = {0};
+        if (space && sscanf(space + 1, "%d %[^\n]", &count, text) == 2 && count > 0) {
+            push_undo(state);
+            clear_redo_stack(state);
+            for (int r = 0; r < count; r++) {
+                for (int i = 0; text[i] != '\0'; i++) {
+                    if (text[i] == '\\' && text[i+1] == 'n') {
+                        editor_handle_enter(state);
+                        i++;
+                    } else {
+                        editor_insert_char(state, (wint_t)(unsigned char)text[i]);
+                    }
+                }
+            }
+            editor_set_status_msg(state, "Repeated %d times", count);
+        } else {
+            editor_set_status_msg(state, "Usage: :repeat <count> <text>");
+        }
     } else if (strcmp(command, "shortcuts-reset") == 0) {
         load_ds_keybindings();
     } else if (strcmp(command, "shortcuts-save") == 0) {

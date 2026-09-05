@@ -257,7 +257,31 @@ void editor_start_spell_completion(EditorState *state) {
     }
 }
 
+static void record_insert_repeat_char(EditorState *state, wint_t ch) {
+    if (state->input.insert_repeat_count <= 1) return;
+    int len = strlen(state->input.insert_repeat_buf);
+    if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
+        if (len > 0) {
+            int prev = utf8_prev_char(state->input.insert_repeat_buf, len);
+            state->input.insert_repeat_buf[prev] = '\0';
+        }
+    } else if (ch == KEY_ENTER || ch == '\n' || ch == '\r') {
+        if (len < (int)sizeof(state->input.insert_repeat_buf) - 1) {
+            state->input.insert_repeat_buf[len] = '\n';
+            state->input.insert_repeat_buf[len + 1] = '\0';
+        }
+    } else if (iswprint(ch) || ch == '\t') {
+        char utf8_bytes[MB_CUR_MAX + 1];
+        int wlen = wctomb(utf8_bytes, ch);
+        if (wlen > 0 && len + wlen < (int)sizeof(state->input.insert_repeat_buf) - 1) {
+            utf8_bytes[wlen] = '\0';
+            strcat(state->input.insert_repeat_buf, utf8_bytes);
+        }
+    }
+}
+
 void handle_insert_mode_key(EditorState *state, wint_t ch) {
+    record_insert_repeat_char(state, ch);
     WINDOW *win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win;
     switch (ch) {
         case 22: editor_paste(state); break;

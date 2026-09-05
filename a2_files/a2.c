@@ -323,21 +323,56 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         nodelay(active_win, FALSE);
 
         if (get_result == ERR) { // Pure ESC
+            bool action_taken = false;
+
+            if (state->lsp.is_popup_pinned || state->lsp.is_popup_visible) {
+                state->lsp.is_popup_pinned = false;
+                state->lsp.is_popup_visible = false;
+                if (state->lsp.diagnostic_popup) {
+                    delwin(state->lsp.diagnostic_popup);
+                    state->lsp.diagnostic_popup = NULL;
+                }
+                state->buffer.is_dirty = true;
+                action_taken = true;
+            }
+
             if (state->input.pending_sequence_key != 0) {
                 state->input.pending_sequence_key = 0;
                 editor_set_status_msg(state, "");
+                action_taken = true;
             } else if (state->input.mode == INSERT || state->input.mode == VISUAL) {
+                if (state->input.mode == INSERT && state->input.insert_repeat_count > 1 && state->input.insert_repeat_buf[0] != '\0') {
+                    int count = state->input.insert_repeat_count - 1;
+                    state->input.insert_repeat_count = 0;
+                    char rep_buf[1024];
+                    strncpy(rep_buf, state->input.insert_repeat_buf, sizeof(rep_buf) - 1);
+                    rep_buf[sizeof(rep_buf) - 1] = '\0';
+                    state->input.insert_repeat_buf[0] = '\0';
+
+                    for (int r = 0; r < count; r++) {
+                        for (int i = 0; rep_buf[i] != '\0'; i++) {
+                            if (rep_buf[i] == '\n') {
+                                editor_handle_enter(state);
+                            } else {
+                                editor_insert_char(state, (wint_t)(unsigned char)rep_buf[i]);
+                            }
+                        }
+                    }
+                }
                 state->input.mode = NORMAL;
                 state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
+                action_taken = true;
             } else if (state->input.mode == NORMAL) {
                 // Clear search highlight and any pending count on ESC in normal mode
                 if (state->search.last_term[0] != '\0') {
                     state->search.last_term[0] = '\0';
                     state->buffer.is_dirty = true;
+                    action_taken = true;
                 }
                 if (state->input.prefix_count != 0) {
                     state->input.prefix_count = 0;
                     editor_set_status_msg(state, "");
+                    action_taken = true;
                 }
             }
 
@@ -346,6 +381,12 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                 free(state->cursor.move_register);
                 state->cursor.move_register = NULL;
                 editor_set_status_msg(state, "Move cancelled.");
+                action_taken = true;
+            }
+
+            if (!action_taken && state->num_extra_cursors > 0) {
+                state->num_extra_cursors = 0;
+                state->buffer.is_dirty = true;
             }
         } else { 
             // 1. If we have a pending leader, try to resolve it

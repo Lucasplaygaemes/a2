@@ -80,6 +80,13 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_OPEN_TERMSIDE: execute_command_in_split(""); break;
         case ACT_INSERT_MODE: 
             if (!state->buffer.is_image) {
+                if (state->input.prefix_count > 1) {
+                    state->input.insert_repeat_count = state->input.prefix_count;
+                    state->input.prefix_count = 0;
+                } else {
+                    state->input.insert_repeat_count = 0;
+                }
+                state->input.insert_repeat_buf[0] = '\0';
                 state->input.mode = INSERT; 
                 state->buffer.is_dirty = true; 
             }
@@ -107,9 +114,11 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
             state->buffer.is_dirty = true;
             break;
         case ACT_NORMAL_MODE: 
+            if (state->input.mode == NORMAL) {
+                state->num_extra_cursors = 0;
+            }
             state->input.mode = NORMAL; 
             state->cursor.visual_selection_mode = VISUAL_MODE_NONE; 
-            state->num_extra_cursors = 0;
             state->buffer.is_dirty = true; 
             break;
         case ACT_VISUAL_MODE: 
@@ -430,6 +439,30 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_PASTE_BELOW: { state->cursor.col = strlen(state->buffer.lines[state->cursor.line]); editor_handle_enter(state); editor_paste(state); } break;
         case ACT_PASTE_GLOBAL_BELOW: { state->cursor.col = strlen(state->buffer.lines[state->cursor.line]); editor_handle_enter(state); editor_global_paste(state); } break;
         case ACT_GENERIC_INPUT: { char mb[256] = ""; ui_ask_input("Generic Input:", mb, 256); } break;
+        case ACT_REPEAT_TEXT: {
+            char input_buf[256] = "";
+            if (ui_ask_input("Repeat (count text, e.g. 10 hello):", input_buf, sizeof(input_buf))) {
+                int count = 0;
+                char text[256] = {0};
+                if (sscanf(input_buf, "%d %[^\n]", &count, text) == 2 && count > 0) {
+                    push_undo(state);
+                    clear_redo_stack(state);
+                    for (int r = 0; r < count; r++) {
+                        for (int i = 0; text[i] != '\0'; i++) {
+                            if (text[i] == '\\' && text[i+1] == 'n') {
+                                editor_handle_enter(state);
+                                i++;
+                            } else {
+                                editor_insert_char(state, (wint_t)(unsigned char)text[i]);
+                            }
+                        }
+                    }
+                    editor_set_status_msg(state, "Repeated %d times", count);
+                } else {
+                    editor_set_status_msg(state, "Invalid input. Format: <count> <text>");
+                }
+            }
+        } break;
         case ACT_YANK_LOCAL: {
             if (state->input.mode == VISUAL) {
                 editor_yank_selection(state);
@@ -740,7 +773,17 @@ void handle_normal_mode_key(EditorState *state, wint_t ch) {
         case 'G': state->buffer.is_dirty = true; state->cursor.line = state->buffer.num_lines - 1; state->cursor.col = 0; state->cursor.ideal_col = 0; break;
         case 'g': state->buffer.is_dirty = true; state->cursor.line = 0; state->cursor.col = 0; state->cursor.ideal_col = 0; break;
         case 'v': state->input.mode = VISUAL; state->buffer.is_dirty = true; break;
-        case 'i': state->input.mode = INSERT; state->buffer.is_dirty = true; break;
+        case 'i': 
+            if (state->input.prefix_count > 1) {
+                state->input.insert_repeat_count = state->input.prefix_count;
+                state->input.prefix_count = 0;
+            } else {
+                state->input.insert_repeat_count = 0;
+            }
+            state->input.insert_repeat_buf[0] = '\0';
+            state->input.mode = INSERT; 
+            state->buffer.is_dirty = true; 
+            break;
         case ':': state->input.mode = COMMAND; state->input.history_pos = state->input.history_count; state->input.command_buffer[0] = '\0'; state->input.command_pos = 0; state->buffer.is_dirty = true; break;
         case KEY_CTRL_RIGHT_BRACKET: next_window(); state->buffer.is_dirty = true; break;
         case KEY_CTRL_LEFT_BRACKET: previous_window(); state->buffer.is_dirty = true; break;
