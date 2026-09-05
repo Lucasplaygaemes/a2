@@ -171,6 +171,7 @@ Press the first key, release, then press the second.
 - *Alt+g, a* : Run `git add -u` in a new terminal window.
 - *Alt+g, s* : Run `git status` in a new terminal window.
 - *Alt+p, c* : Paste from the system clipboard.
+- *Alt+p, r* : Open interactive prompt to repeat text N times.
 - *Alt+p, a* / *Alt+p, u* : Paste the editor's local buffer above/below the current line.
 - *Alt+p, P* / *Alt+p, U* : Paste the editor's global buffer above/below the current line.
 - *Alt+y, p* : Yank (copy) the current paragraph.
