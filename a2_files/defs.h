@@ -464,6 +464,8 @@ typedef struct {
     // Char-find state (f/F/t/T/;/,)
     char find_char_last;  // last char searched with f/F/t/T
     char find_char_type;  // 'f'=forward, 'F'=backward, 't'=till-fwd, 'T'=till-bwd
+    int insert_repeat_count;
+    char insert_repeat_buf[1024];
 } EditorInput;
 
 typedef struct {
@@ -672,6 +674,7 @@ typedef enum {
     ACT_PASTE_BELOW,       // Alt+p, u
     ACT_PASTE_GLOBAL_BELOW,// Alt+p, U
     ACT_GENERIC_INPUT,     // Alt+p, t
+    ACT_REPEAT_TEXT,       // Alt+p, r
     ACT_YANK_LOCAL,        // y
     ACT_YANK_GLOBAL,       // Ctrl+y
     ACT_YANK_CLIPBOARD,    // Alt+y, c

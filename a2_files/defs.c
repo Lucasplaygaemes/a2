@@ -114,6 +114,7 @@ const KeyBinding default_bindings[ACT_COUNT] = {
     [ACT_PASTE_BELOW] = {ACT_PASTE_BELOW, 'p', 'u', false, false, "PASTE_BELOW", "Paste Below", "Paste local buffer below"},
     [ACT_PASTE_GLOBAL_BELOW] = {ACT_PASTE_GLOBAL_BELOW, 'p', 'U', false, false, "PASTE_G_BELOW", "Paste G Below", "Paste global buffer below"},
     [ACT_GENERIC_INPUT] = {ACT_GENERIC_INPUT, 'p', 't', false, false, "GENERIC_INPUT", "Generic Input", "Prompt for generic input"},
+    [ACT_REPEAT_TEXT] = {ACT_REPEAT_TEXT, 'p', 'r', false, false, "REPEAT_TEXT", "Repeat Text", "Repeat text N times"},
     [ACT_YANK_LOCAL] = {ACT_YANK_LOCAL, 0, 'y', false, false, "YANK_LOCAL", "Yank Local", "Copy selection to local buffer"},
     [ACT_YANK_GLOBAL] = {ACT_YANK_GLOBAL, 0, 25, false, true, "YANK_GLOBAL", "Yank Global", "Copy selection to global buffer (Ctrl+Y)"},
     [ACT_YANK_CLIPBOARD] = {ACT_YANK_CLIPBOARD, 'y', 'c', false, false, "YANK_CLIPBOARD", "Yank Clipboard", "Copy selection to system clipboard"},
