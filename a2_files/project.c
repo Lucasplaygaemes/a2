@@ -174,7 +174,9 @@ void project_startup_check() {
         return;
     }
 
-    if (ui_confirm("Project session found. Load it?")) {
+    if (global_config.auto_load_project) {
+        project_load_session("session");
+    } else if (ui_confirm("Project session found. Load it?")) {
         project_load_session("session");
     }
 }

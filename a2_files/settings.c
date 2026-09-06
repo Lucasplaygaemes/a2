@@ -63,7 +63,8 @@ BoolSetting editor_bool_settings[] = {
     {"Abbreviate Filename", &global_config.abbreviate_filename},
     {"Smart Merge Save", &global_config.smart_save_enabled},
     {"Image Previews", &global_config.image_preview_enabled},
-    {"Git Diff Gutter", &global_config.git_gutter_enabled}
+    {"Git Diff Gutter", &global_config.git_gutter_enabled},
+    {"Auto Load Project", &global_config.auto_load_project}
     };
 
 const int num_bool_settings = sizeof(editor_bool_settings) / sizeof(BoolSetting);
@@ -366,6 +367,7 @@ void save_global_config() {
         fprintf(f, "abbreviate_filename=%d\n", global_config.abbreviate_filename);
         fprintf(f, "smart_save_enabled=%d\n", global_config.smart_save_enabled);
         fprintf(f, "git_gutter_enabled=%d\n", global_config.git_gutter_enabled);
+        fprintf(f, "auto_load_project=%d\n", global_config.auto_load_project);
         fprintf(f, "debug_enabled=%d\n", global_config.debug_enabled);
         fprintf(f, "log_level_filter=%d\n", global_config.log_level_filter);
         fprintf(f, "icon_mode=%d\n", global_config.icon_mode);
@@ -408,6 +410,7 @@ void load_global_config() {
         else if (sscanf(line, "abbreviate_filename=%d", &val) == 1) global_config.abbreviate_filename = val;
         else if (sscanf(line, "smart_save_enabled=%d", &val) == 1) global_config.smart_save_enabled = val;
         else if (sscanf(line, "git_gutter_enabled=%d", &val) == 1) global_config.git_gutter_enabled = val;
+        else if (sscanf(line, "auto_load_project=%d", &val) == 1) global_config.auto_load_project = val;
         else if (sscanf(line, "debug_enabled=%d", &val) == 1) global_config.debug_enabled = val;
         else if (sscanf(line, "log_level_filter=%d", &val) == 1) global_config.log_level_filter = val;
         else if (sscanf(line, "icon_mode=%d", &val) == 1) global_config.icon_mode = val;

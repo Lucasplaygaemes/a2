@@ -352,6 +352,7 @@ typedef struct {
     
     bool smart_save_enabled;
     bool git_gutter_enabled;
+    bool auto_load_project;
     bool debug_enabled;
     int log_level_filter;
     int icon_mode;

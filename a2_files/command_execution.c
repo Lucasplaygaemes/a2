@@ -170,6 +170,8 @@ void process_command(EditorState *state, bool *should_exit) {
         }
     } else if (strcmp(command, "help") == 0) {
         display_help_viewer("a2_help.txt");
+    } else if (strcmp(command, "guia") == 0 || strcmp(command, "guide") == 0) {
+        display_help_viewer("guia.txt");
     } else if (strcmp(command, "about") == 0) {
         display_help_viewer("about.txt");
     } else if (strcmp(command, "ksc") == 0) {
@@ -397,7 +399,7 @@ void process_command(EditorState *state, bool *should_exit) {
             } else if (strcmp(command, "loadmacros") == 0) {
                 load_macros(state);
                 editor_set_status_msg(state, "Macros loaded.");
-            } else if (strcmp(command, "listmacros") == 0) {
+            } else if (strcmp(command, "listmacros") == 0 || strcmp(command, "macros") == 0) {
                 display_macros_list(state);
             } else if (strcmp(command, "marks") == 0) {
                 char marks_buf[1024] = "Active marks:\n";
