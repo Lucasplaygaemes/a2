@@ -69,6 +69,7 @@ This page details the commands available in Command Mode (activated with *:*).
 
 ## Other
 - *:! <cmd>*: Executes a shell command and shows the output.
+- *:guia* / *:guide*: Opens the interactive starter tutorial guide.
 - *:help*: Shows the main help screen.
 - *:ksc*: Shows the keyboard shortcuts screen.
 - *:task*: Opens the Custom Tasks menu to create and edit tasks.

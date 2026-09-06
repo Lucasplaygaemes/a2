@@ -3,6 +3,7 @@
 Welcome to `a2`, a lightweight, fast, and configurable text editor inspired by Vim.
 
 ## Quick Navigation
+- For a beginner tutorial guide, see the starter guide: [*Guia*](guia.txt)
 - For help with *commands* (the ':' mode), see the commands manual: [*Commands*](commands_help.txt)
 - For help with *keyboard shortcuts*, see the shortcuts manual: [*Shortcuts*](shortcuts_help.txt)
 
