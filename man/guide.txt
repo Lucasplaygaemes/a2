@@ -1,0 +1,205 @@
+                       a2 EDITOR - STARTER & USER GUIDE
+
+Welcome to `a2`! This text editor was built in C to deliver a lightweight, fast, 
+and reliable experience directly in your terminal.
+
+Inspired by Vim and Emacs, a2 combines modal editing efficiency with IDE-like 
+capabilities (LSP, GDB debugger, Multi-cursor, Terminal splits, and 
+Assembly View).
+
+This guide is designed to explain the editor's core logic clearly, showing what 
+a2 has to offer and how it can be used, but not forgetting that you can use it 
+the way u feel more comfortable!
+
+1. CORE CONCEPTS: THE MODAL PHILOSOPHY
+
+Unlike traditional text editors (where every keystroke inserts text), a2 
+operates through MODES (like Vim!):
+
+1. NORMAL Mode (Default):
+   - Used for navigation, deleting, copying, pasting, and executing shortcuts.
+   - Keys execute navigation commands or operators instead of writing text.
+
+2. INSERT Mode (Enter with 'i' or 'a'):
+   - Standard writing mode. Everything you type will be inserted into the file.
+
+3. VISUAL Mode (Enter with 'v', 'V' for Lines, or 'Ctrl+V' for Blocks):
+   - Used to highlight text selections and perform actions on them.
+
+4. COMMAND Mode (Enter with ':'):
+   - Opens the bottom command bar to run command-line style commands.
+
+>>> THE GOT LOST RULE OF A2 <<<
+If you ever get confused, press the wrong key, or want to cancel an action:
+Press [ ESC ]. It ALWAYS returns you to Normal Mode, clears pending counts,
+and closes active popups!
+
+2. GETTING STARTED: BASIC NAVIGATION & EDITING
+• Moving in Normal Mode:
+  - Arrow keys or h (left), j (down), k (up), l (right).
+  - w : Jump forward to the start of the next word.
+  - b : Jump backward to the start of the previous word.
+  - e : Jump to the end of the current/next word.
+  - { / } : Jump across paragraphs (blank lines).
+  - g : Jump to the VERY FIRST line of the file.
+  - G : Jump to the VERY LAST line of the file.
+
+• Saving & Exiting:
+  - :w          -> Writes (saves) the current file (uses safe atomic save).
+  - Alt+W       -> Quick shortcut to save the file.
+  - :q          -> Closes the active window or exits the editor.
+  - :q!         -> Forces quit without saving changes.
+  - :wq         -> Saves and quits.
+
+3. DEMYSTIFYING VIM'S "KEY GRAMMAR"
+The power of a modal editor lies in combining keys like sentences!
+The core formula is:
+
+      [ Count ]  +  [ Action / Operator ]  +  [ Target / Motion ]
+
+• Main Operators:
+  - d : Delete
+  - c : Change (deletes text and enters Insert Mode)
+  - y : Yank (copy)
+  - > / < : Indent / Un-indent
+
+• Text Objects:
+  - iw : Inner word
+  - i" : Text INSIDE double quotes ("...")
+  - a" : Text INCLUDING double quotes
+  - i( : Text INSIDE parentheses (...)
+  - i{ : Text INSIDE curly braces {...}
+
+• Practical Everyday Examples:
+  - 3w       -> Jump 3 words forward.
+  - 5j       -> Move 5 lines down.
+  - 5dd      -> Delete 5 full lines.
+  - 3yy      -> Copy 3 full lines.
+  - dw       -> Delete from cursor to the start of the next word.
+  - di"      -> Delete text inside quotes (e.g. "text").
+  - ci"      -> Delete text inside quotes AND enter Insert Mode to type new text!
+  - df,      -> Delete from cursor up to the next comma ','.
+  - 10iX<ESC> -> Type the letter 'X' 10 times upon pressing ESC.
+
+4. TERMINAL & SYSTEM COMMANDS (:! and :term)
+You never need to leave a2 to interact with the Linux shell!
+
+• Quick Shell Command Execution (:!):
+  Syntax: :! <command>
+  Examples:
+    - :! gcc main.c -o program
+    - :! make test
+    - :! ls -la
+  PRACTICAL TIP: The :! command runs your shell instruction and displays the 
+  output without losing your editor context. Perfect for quick checks!
+
+• Interactive Terminal Splits (:term and :termside):
+  Syntax: :term [command]  or  :termside [command]  (or shortcut Alt+Space)
+  Examples:
+    - :term             -> Opens a fully functional interactive terminal split.
+    - :term htop        -> Opens the htop system monitor in a split.
+    - :termside         -> Opens a side-split terminal.
+  PRACTICAL TIP: Great for keeping local dev servers, test suites, or bash 
+  sessions running continuously while you edit files!
+  To switch focus between split windows, press Ctrl+] and Ctrl+[.
+
+5. MULTI-CURSOR
+Edit multiple lines or locations simultaneously using multi-cursor mode!
+
+• Creating extra cursors:
+  - Alt+Shift+Up   : Adds a cursor on the line above.
+  - Alt+Shift+Down : Adds a cursor on the line below.
+  - MIDDLE Mouse Click : Adds a cursor wherever you click.
+
+• How it works:
+  When multiple cursors are active, any character typed or Normal mode command 
+  executed (e.g., dw, x, ci", i) applies to ALL cursors at once!
+
+• Clearing extra cursors:
+  Simply press [ ESC ] in Normal Mode to revert to a single cursor.
+
+6. C/C++ DEBUGGING WITH INTEGRATED GDB
+a2 features built-in GDB debugger integration for C/C++ developers.
+
+• How to open:
+  - Type :gdb to compile and start a side-split GDB session.
+  - Type :gdb-tui to launch GDB in text-based graphical TUI mode.
+
+• GDB Family Quick Shortcuts (Alt+d, ...):
+  - Alt+d, d : Starts the GDB session.
+  - Alt+d, b : Inserts a Breakpoint at current file and line.
+  - Alt+d, r : Sends 'run' to execute the program.
+  - Alt+d, n : Sends 'next' (step over).
+  - Alt+d, s : Sends 'step' (step into).
+  - Alt+d, c : Sends 'continue'.
+  - Alt+d, p : Prints the value of the variable under cursor.
+  - Alt+d, w : Sets a Watchpoint on the variable under cursor.
+  - Alt+d, k : Quits the GDB session.
+
+PRACTICAL TIP: Catch memory leaks, inspect null pointers, and debug SegFaults 
+directly inside your editor without leaving your workflow!
+
+7. SYNCHRONIZED ASSEMBLY VIEW
+For C developers interested in compiler code generation and Machine Code:
+
+• Shortcut: Alt+A
+  a2 compiles your current C file and displays the generated Assembly code 
+  side-by-side with your C source!
+
+PRACTICAL TIP: Essential for learning computer architecture, analyzing GCC/Clang 
+compiler optimizations, and inspecting machine instructions.
+
+8. LSP & INTELLIGENT FEATURES
+• LSP (Language Server Protocol):
+  - Trigger completion or suggestions: [ Tab ] key.
+  - Go to Symbol Definition: :lsp-definition or Alt+d, f.
+  - List Symbol References: :lsp-references.
+  - Code Actions / Quick-Fixes: :lsp-code-action or Alt+d, a.
+  - Movable Floating Diagnostics: Use Ctrl+Shift+M to drag warning/error popups 
+    across the screen using arrow keys. Press Enter to pin, or ESC to close.
+
+• Real-Time Wiktionary Lookup in Normal Mode:
+  - Hover over any word in Normal Mode and press 'D'.
+  - a2 fetches and displays the dictionary definition online via libcurl!
+
+• Real-time Spell Checking (Hunspell):
+  - Misspelled words are highlighted. Press [ Tab ] over a misspelled word 
+    to see real-time spelling correction suggestions.
+
+9. PRODUCTIVITY: MACROS, SESSIONS & ALT SHORTCUTS
+• Macros (Automate repetitive sequences):
+  - Start recording: Type q<letter> (e.g., qa to record into register 'a').
+  - Perform your editing steps.
+  - Stop recording: Press 'q'.
+  - Playback: Type @<letter> (e.g., @a). Repeat last macro: @@.
+
+• Custom Text Repeat (:repeat):
+  - Type :repeat <count> <text>  (e.g., :repeat 10 hello)
+  - Shortcut: Alt+p, r
+
+• Global Search & Project Navigation:
+  - Alt+F : Fuzzy Finder (Find project files by name).
+  - Alt+B : List of recent files.
+  - Alt+S : Project-wide search (Grep in background).
+  - Alt+T : Unified Command Palette (search commands and symbols).
+
+• Project & Session Management:
+  - :save-project <name> : Saves current layout, open files, and buffers.
+  - :load-project <name> : Reloads a saved project session.
+  - :list-projects       : Lists all saved project sessions.
+
+10. AND MUCH MORE!
+These are just the core pillars of a2. The editor hides many more features 
+waiting for you to discover:
+  - Custom themes (.theme) via :theme <name>
+  - Deep Git integration (:gstatus, :gadd, :gcommit, :gpush)
+  - Custom Tasks menu via :task
+  - Interactive file diff via :diff
+  - Work time tracking reports via :timer
+
+To explore all commands and shortcuts at any time:
+  - Type :help to open the main help screen.
+  - Type :ksc to see the dynamic shortcut list.
+  - Type :about for project credits and license info.
+
+Nice coding!
