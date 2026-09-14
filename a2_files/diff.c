@@ -43,3 +43,9 @@ void start_interactive_diff(EditorState *state) {
     
     run_and_display_command(diff_cmd_str, "--- DIFF RESULT ---");
 }
+
+void show_diff_between_files(const char *file1, const char *file2) {
+    char diff_cmd_str[2048];
+    snprintf(diff_cmd_str, sizeof(diff_cmd_str), "git diff --no-index -- \"%s\" \"%s\"", file1, file2);
+    run_and_display_command(diff_cmd_str, "--- LOCAL HISTORY DIFF ---");
+}
