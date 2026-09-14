@@ -11,6 +11,7 @@
 #include "settings.h"
 #include "base64.h"
 #include "logger.h"
+#include "local_history.h"
 
 
 #include <limits.h> // For PATH_MAX
@@ -435,6 +436,7 @@ void load_file(EditorState *state, const char *filename) {
 	load_file_core(state, filename);
     const char * syntax_file = get_syntax_file_from_extension(filename);
     load_syntax_file(state, syntax_file);
+    local_history_take_snapshot(state, "File Opened");
 }
 
 void save_file(EditorState *state) {
@@ -574,6 +576,8 @@ void save_file(EditorState *state) {
         if (state->buffer.shadow_copy) free(state->buffer.shadow_copy);
         state->buffer.shadow_copy = editor_buffer_to_string(state);
         editor_update_git_gutter(state);
+
+        local_history_take_snapshot(state, "Manual Save");
 
         if (state->lsp.enabled) lsp_did_save(state);
     } else { 

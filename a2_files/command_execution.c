@@ -12,6 +12,7 @@
 #include "diff.h"
 #include "settings.h"
 #include "logger.h"
+#include "local_history.h"
 
 #include <sys/stat.h>
 #include <ctype.h> // For isspace
@@ -621,6 +622,14 @@ void process_command(EditorState *state, bool *should_exit) {
         } else {
             editor_set_status_msg(state, "Usage: :repeat <count> <text>");
         }
+    } else if (strcmp(command, "history") == 0 || strcmp(command, "local-history") == 0 || strcmp(command, "his") == 0) {
+        display_local_history(state);
+    } else if (strcmp(command, "history-restore") == 0 || strcmp(command, "his-restore") == 0) {
+        int idx = atoi(args);
+        restore_local_history_entry(state, idx);
+    } else if (strcmp(command, "history-diff") == 0 || strcmp(command, "his-diff") == 0) {
+        int idx = atoi(args);
+        diff_local_history_entry(state, idx);
     } else if (strcmp(command, "shortcuts-reset") == 0) {
         load_ds_keybindings();
     } else if (strcmp(command, "shortcuts-save") == 0) {

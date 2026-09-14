@@ -33,6 +33,7 @@
 #include <ctype.h>
 
 #include "project.h"
+#include "local_history.h"
 
 void create_new_empty_workspace();
 void load_global_config();
@@ -84,6 +85,7 @@ void inicializar_ncurses() {
 
 
 void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
+    local_history_check_idle_snapshot(state);
     A2_LOG(LOG_DEBUG, TAG_CORE, "Input: ch=%d, mode=%d, single=%d", ch, (int)state->input.mode, state->input.single_command_mode);
 
     // --- CODE ACTION POPUP MODE ---
