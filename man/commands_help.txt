@@ -67,6 +67,29 @@ This page details the commands available in Command Mode (activated with *:*).
 - *:lsp-refresh*: Forces a refresh of LSP diagnostics.
 - *:lsp-code-action*: Requests available code actions for the symbol or diagnostic under the cursor (quick-fixes, refactors, etc.) and opens an interactive selection popup. Use *j/k* or *Up/Down* to navigate the list, *Enter* to apply the selected action, and *Esc* to cancel.
 
+## Plugin System
+- *:plugins* / *:plugin-list*: Displays a list of all active dynamic `.so` plugins loaded from `~/.a2/plugins/` and their registered commands.
+
+## Reverse Engineering Suite Plugin (`plugin_re_suite.so`)
+- *:disasm [file] [func]*: Disassembles the machine code of `file` (or current buffer). Disassembles a specific function if `func` is provided. Opens in a new window split.
+- *:elf [file]*: Displays ELF file header and program headers (segments) in a new split.
+- *:sections [file]*: Displays ELF section headers list (`readelf -S`) in a new split.
+- *:symbols [file]* / *:nm [file]*: Displays the demangled symbol table (`nm -C` / `readelf -s`) in a new split.
+- *:imports [file]* / *:deps [file]*: Displays shared library dependencies (`ldd`) and dynamic section in a new split.
+- *:relocs [file]*: Displays relocation tables and GOT/PLT entries in a new split.
+- *:checksec [file]*: Analyzes binary security mitigations (RELRO, Stack Canaries, NX bit, PIE) and opens a report split.
+- *:strings [file] [min_len]*: Extracts printable ASCII/Unicode strings (default min length: 4) into a new split.
+- *:hex [file]*: Displays a canonical hexadecimal dump (`hexdump -C`) in a new split.
+- *:re-suite*: Displays summary and help for all Reverse Engineering commands.
+
+## Dictionary & Spell Checker Plugin (`plugin_spell_dict.so`)
+- *:dict <word>* / *:wiktionary <word>*: Fetches definition from Wiktionary in real-time and opens it in a new window split.
+- *:spell [lang]* / *:spellcheck [lang]*: Loads/switches Hunspell dictionary language (e.g. `:spell en_US` or `:spell pt_BR`).
+## Local History & Time Machine
+- *:history* / *:his* / *:local-history*: Displays a list of all local snapshots recorded for the current file.
+- *:history-diff <N>* / *:his-diff <N>*: Displays side-by-side diff between the active buffer and snapshot #N.
+- *:history-restore <N>* / *:his-restore <N>*: Restores the file content to the exact state of snapshot #N.
+
 ## Other
 - *:! <cmd>*: Executes a shell command and shows the output.
 - *:guia* / *:guide*: Opens the interactive starter tutorial guide.
