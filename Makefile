@@ -4,8 +4,8 @@
 CC = gcc
 
 # Base CFLAGS and LDFLAGS
-CFLAGS = -g -Wall -Wextra -I. -I./a2_files $(shell pkg-config --cflags hunspell) $(shell pkg-config --cflags ncursesw 2>/dev/null)
-LDFLAGS = -lncursesw -ljansson -lcurl -lpthread -ldl -lssl -lcrypto -lvterm $(shell pkg-config --libs hunspell) -lm -Wl,-rpath=/usr/local/lib
+CFLAGS = -g -Wall -Wextra -I. -I./a2_files $(shell pkg-config --cflags ncursesw 2>/dev/null)
+LDFLAGS = -rdynamic -lncursesw -ljansson -lpthread -ldl -lssl -lcrypto -lvterm -lm -Wl,-rpath=/usr/local/lib
 
 # Enable ASan if ASAN=1 is passed: make ASAN=1
 ifeq ($(ASAN), 1)
@@ -20,8 +20,8 @@ TARGET = a2
 # --- Directories ---
 A2_DIR = a2_files
 
-# The default 'all' target builds the executable
-all: $(TARGET)
+# The default 'all' target builds the executable and plugins
+all: $(TARGET) plugins
 
 
 # --- Compilation Rules for the 'a2' Editor ---
@@ -29,7 +29,7 @@ all: $(TARGET)
 # Source files for a2
 A2_SOURCES = a2.c command_execution.c defs.c direct_navigation.c fileio.c lsp_client.c \
              editor_utils.c text_editing.c undo_redo.c search_local.c autocomplete_logic.c editor_actions.c \
-             screen_ui.c window_managment.c project.c timer.c cache.c explorer.c diff.c themes.c spell.c settings.c logger.c lsp_watchdog.c base64.c dictionary.c
+             screen_ui.c window_managment.c project.c timer.c cache.c explorer.c diff.c themes.c spell.c settings.c logger.c lsp_watchdog.c base64.c dictionary.c local_history.c plugin_engine.c
 # Adds the directory prefix to source and object files
 A2_SRCS = $(addprefix $(A2_DIR)/, $(A2_SOURCES))
 A2_OBJS = $(A2_SRCS:.c=.o)
@@ -92,4 +92,20 @@ install: all
 # Target to force clean, compile, and install in a single command
 rebuild: clean install
 
-.PHONY: all clean compile_commands install rebuild assem
+USER_PLUGINS_DIR = $(HOME)/.a2/plugins
+
+plugins:
+	@mkdir -p $(USER_PLUGINS_DIR)
+	@for f in plugins/*.c; do \
+		if [ -f "$$f" ]; then \
+			plugin_name=$$(basename "$$f" .c).so; \
+			echo "Building plugin $$plugin_name..."; \
+			extra_libs=""; \
+			if [ "$$f" = "plugins/plugin_spell_dict.c" ]; then \
+				extra_libs="-lcurl $$(pkg-config --libs hunspell 2>/dev/null || echo '-lhunspell-1.7')"; \
+			fi; \
+			$(CC) -shared -fPIC $(CFLAGS) -I./a2_files "$$f" $$extra_libs -o $(USER_PLUGINS_DIR)/"$$plugin_name"; \
+		fi \
+	done
+
+.PHONY: all clean compile_commands install rebuild assem plugins
