@@ -43,6 +43,28 @@ typedef struct {
     void (*display_output_screen)(const char *title, const char *filepath);
 } A2PluginAPI;
 
+typedef struct {
+    const char *name;         // Friendly plugin name
+    const char *author;       // Plugin author
+    const char *version;      // Plugin version (SemVer, e.g. "1.0.0")
+    const char *description;  // Brief plugin description
+    uint32_t target_api_ver;  // Target a2 API version for which the plugin was built
+} A2PluginInfo;
+
 typedef bool (*A2PluginInitFunc)(const A2PluginAPI *api);
+typedef const A2PluginInfo* (*A2PluginGetInfoFunc)(void);
+
+// Helper macro to easily define plugin metadata in C plugins
+#define A2_PLUGIN_DEFINE_INFO(plugin_name, plugin_author, plugin_version, plugin_desc) \
+    const A2PluginInfo* a2_plugin_get_info(void) { \
+        static const A2PluginInfo info = { \
+            .name = (plugin_name), \
+            .author = (plugin_author), \
+            .version = (plugin_version), \
+            .description = (plugin_desc), \
+            .target_api_ver = A2_PLUGIN_API_VERSION \
+        }; \
+        return &info; \
+    }
 
 #endif // A2_PLUGIN_API_H

@@ -29,7 +29,12 @@ typedef struct {
 } RegisteredEventHook;
 
 typedef struct {
-    char name[128];
+    char filename[128];
+    char name[64];
+    char author[64];
+    char version[32];
+    char description[128];
+    uint32_t target_api_ver;
     void *handle;
 } LoadedPlugin;
 
@@ -151,6 +156,20 @@ void plugin_engine_init(EditorState *state) {
                     continue;
                 }
 
+                // 1. Version & Metadata Handshake via a2_plugin_get_info
+                A2PluginGetInfoFunc get_info_fn = (A2PluginGetInfoFunc)dlsym(handle, "a2_plugin_get_info");
+                const A2PluginInfo *info = get_info_fn ? get_info_fn() : NULL;
+
+                if (info) {
+                    if (info->target_api_ver != A2_PLUGIN_API_VERSION) {
+                        A2_LOG(LOG_ERROR, TAG_CORE, "Plugin %s target API version %u is incompatible with editor API version %u. Skipping.",
+                               entry->d_name, info->target_api_ver, A2_PLUGIN_API_VERSION);
+                        dlclose(handle);
+                        continue;
+                    }
+                }
+
+                // 2. Initialization via a2_plugin_init
                 A2PluginInitFunc init_fn = (A2PluginInitFunc)dlsym(handle, "a2_plugin_init");
                 if (!init_fn) {
                     A2_LOG(LOG_ERROR, TAG_CORE, "Plugin %s missing symbol 'a2_plugin_init'", entry->d_name);
@@ -159,12 +178,24 @@ void plugin_engine_init(EditorState *state) {
                 }
 
                 bool success = init_fn(&g_plugin_api);
-                (void)success;
+                if (!success) {
+                    A2_LOG(LOG_WARN, TAG_CORE, "Plugin %s init function returned false. Skipping.", entry->d_name);
+                    dlclose(handle);
+                    continue;
+                }
+
                 if (g_num_plugins < MAX_PLUGINS) {
-                    strncpy(g_loaded_plugins[g_num_plugins].name, entry->d_name, sizeof(g_loaded_plugins[g_num_plugins].name) - 1);
-                    g_loaded_plugins[g_num_plugins].handle = handle;
+                    LoadedPlugin *p = &g_loaded_plugins[g_num_plugins];
+                    strncpy(p->filename, entry->d_name, sizeof(p->filename) - 1);
+                    strncpy(p->name, info && info->name ? info->name : entry->d_name, sizeof(p->name) - 1);
+                    strncpy(p->author, info && info->author ? info->author : "Unknown", sizeof(p->author) - 1);
+                    strncpy(p->version, info && info->version ? info->version : "1.0.0", sizeof(p->version) - 1);
+                    strncpy(p->description, info && info->description ? info->description : "", sizeof(p->description) - 1);
+                    p->target_api_ver = info ? info->target_api_ver : A2_PLUGIN_API_VERSION;
+                    p->handle = handle;
                     g_num_plugins++;
-                    A2_LOG(LOG_INFO, TAG_CORE, "Successfully loaded plugin: %s", entry->d_name);
+                    A2_LOG(LOG_INFO, TAG_CORE, "Successfully loaded plugin: %s [%s v%s by %s] (API v%u)",
+                           entry->d_name, p->name, p->version, p->author, p->target_api_ver);
                 }
             }
         }
@@ -211,10 +242,15 @@ void plugin_engine_trigger_event(EditorState *state, A2EventType event_type, voi
 }
 
 void plugin_engine_list_plugins(EditorState *state) {
-    char buf[1024];
+    char buf[2048];
     int offset = snprintf(buf, sizeof(buf), "Loaded Plugins (%d):\n", g_num_plugins);
     for (int i = 0; i < g_num_plugins; i++) {
-        offset += snprintf(buf + offset, sizeof(buf) - offset, "  - %s\n", g_loaded_plugins[i].name);
+        LoadedPlugin *p = &g_loaded_plugins[i];
+        offset += snprintf(buf + offset, sizeof(buf) - offset, "  - %s v%s by %s (API v%u) [%s]\n",
+                           p->name, p->version, p->author, p->target_api_ver, p->filename);
+        if (p->description[0] != '\0') {
+            offset += snprintf(buf + offset, sizeof(buf) - offset, "    Desc: %s\n", p->description);
+        }
     }
     offset += snprintf(buf + offset, sizeof(buf) - offset, "\nRegistered Commands (%d):\n", g_num_commands);
     for (int i = 0; i < g_num_commands; i++) {
