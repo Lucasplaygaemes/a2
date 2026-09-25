@@ -267,6 +267,13 @@ static void cmd_hex(EditorState *state, const char *args) {
     run_re_tool_and_display(state, title, cmd);
 }
 
+A2_PLUGIN_DEFINE_INFO(
+    "Reverse Engineering Suite",
+    "lucasplaygaemes",
+    "1.0.0",
+    "Tool for reverse engineering binarys (disasm, elf, sections, symbols, checksec, strings, hex)"
+);
+
 static void cmd_re_suite_info(EditorState *state, const char *args) {
     (void)args;
     g_api->set_status_msg(state, "RE Suite Active! Commands: :disasm, :elf, :sections, :symbols, :imports, :relocs, :checksec, :strings, :hex");

@@ -294,6 +294,13 @@ static void cmd_spell_suggest(EditorState *state, const char *args) {
     }
 }
 
+A2_PLUGIN_DEFINE_INFO(
+    "Spell & Dictionary",
+    "lucasplaygaemes",
+    "1.0.0",
+    "Orthography corrector with Hunspell and Wiktionary queries via Libcurl"
+);
+
 bool a2_plugin_init(const A2PluginAPI *api) {
     if (!api || api->api_version != A2_PLUGIN_API_VERSION) {
         return false;
