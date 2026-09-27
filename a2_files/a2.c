@@ -748,7 +748,7 @@ int main(int argc, char *argv[]) {
     a2_log_init();
     
     int file_arg_index = 1;
-    if (argc > 1 && strcmp(argv[1], "--safe") == 0) {
+    if (argc > 1 && (strcmp(argv[1], "--safe") == 0 || strcmp(argv[1], "--safe-mode") == 0 || strcmp(argv[1], "-s") == 0)) {
         g_safe_mode = true;
         file_arg_index = 2;
         A2_LOG(LOG_INFO, TAG_CORE, "--- A2 Editor Started (SAFE MODE) ---");
