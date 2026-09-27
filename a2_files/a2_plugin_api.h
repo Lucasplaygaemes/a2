@@ -41,6 +41,9 @@ typedef struct {
 
     // 5. Output / Display Helper
     void (*display_output_screen)(const char *title, const char *filepath);
+
+    // 6. Buffer Operations
+    void (*reload_file)(EditorState *state);
 } A2PluginAPI;
 
 typedef struct {
