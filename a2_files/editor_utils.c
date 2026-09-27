@@ -31,7 +31,11 @@ const char *editor_commands[] = {
     "gdb-reload", "gdb-eval", "rc", "rc!", "open", "new", "timer", "diff", "set",
     "lsp-restart", "lsp-diag", "lsp-definition", "lsp-references", "lsp-rename",
     "lsp-status", "lsp-hover", "lsp-symbols", "lsp-refresh", "lsp-check", "lsp-debug",
-    "lsp-list", "toggle_auto_indent", "llvm", "logs"
+    "lsp-list", "toggle_auto_indent", "llvm", "logs", "plugins", "plugin-list",
+    "disasm", "elf", "sections", "symbols", "nm", "imports", "deps", "relocs",
+    "checksec", "strings", "hex", "re-suite", "dict", "wiktionary", "spell",
+    "spellcheck", "spell-suggest", "history", "history-restore", "history-diff",
+    "his", "his-restore", "his-diff"
 };
 const int num_editor_commands = sizeof(editor_commands) / sizeof(char*);
 

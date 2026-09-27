@@ -188,6 +188,11 @@ compiler optimizations, and inspecting machine instructions.
   - :load-project <name> : Reloads a saved project session.
   - :list-projects       : Lists all saved project sessions.
 
+• Local History & Time Machine (Automatic Snapshots):
+  - :history             : Lists all local history snapshots saved for the active file.
+  - :history-diff <N>    : Shows side-by-side diff between current file and snapshot #N.
+  - :history-restore <N> : Restores the current file to the exact content of snapshot #N.
+
 10. AND MUCH MORE!
 These are just the core pillars of a2. The editor hides many more features 
 waiting for you to discover:

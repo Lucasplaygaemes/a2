@@ -13,6 +13,7 @@
 #include "settings.h"
 #include "logger.h"
 #include "local_history.h"
+#include "plugin_engine.h"
 
 #include <sys/stat.h>
 #include <ctype.h> // For isspace
@@ -61,6 +62,38 @@ static void process_gdb_command(EditorState *state, const char *args, bool tui_m
     
     execute_command_in_split(gdb_cmd);
     editor_set_status_msg(state, "GDB started (%s)", gdb_cmd);
+}
+
+static void resolve_filename_for_save(const char *input_path, char *out_abs_path, size_t max_len) {
+    if (!input_path || input_path[0] == '\0') {
+        out_abs_path[0] = '\0';
+        return;
+    }
+    while (isspace((unsigned char)*input_path)) input_path++;
+    if (*input_path == '\0') {
+        out_abs_path[0] = '\0';
+        return;
+    }
+
+    char abs_path[PATH_MAX];
+    if (realpath(input_path, abs_path) != NULL) {
+        strncpy(out_abs_path, abs_path, max_len - 1);
+        out_abs_path[max_len - 1] = '\0';
+        return;
+    }
+
+    if (input_path[0] == '/') {
+        strncpy(out_abs_path, input_path, max_len - 1);
+        out_abs_path[max_len - 1] = '\0';
+    } else {
+        char cwd[PATH_MAX];
+        if (getcwd(cwd, sizeof(cwd)) != NULL) {
+            snprintf(out_abs_path, max_len, "%s/%s", cwd, input_path);
+        } else {
+            strncpy(out_abs_path, input_path, max_len - 1);
+            out_abs_path[max_len - 1] = '\0';
+        }
+    }
 }
 
 void process_command(EditorState *state, bool *should_exit) {
@@ -115,21 +148,20 @@ void process_command(EditorState *state, bool *should_exit) {
         return;
     } else if (strcmp(command, "wq") == 0) {
         // If buffer has no name, prompt for one before saving
-        if (strcmp(state->buffer.filename, "[No Name]") == 0) {
+        if (strcmp(state->buffer.filename, "[No Name]") == 0 || state->buffer.filename[0] == '\0') {
             char new_name[PATH_MAX] = "";
-            if (!ui_ask_input("Save as:", new_name, sizeof(new_name))) {
+            if (!ui_ask_input("Save as:", new_name, sizeof(new_name)) || new_name[0] == '\0') {
                 editor_set_status_msg(state, "Save cancelled.");
                 return;
             }
             char abs_path[PATH_MAX];
-            if (realpath(new_name, abs_path) == NULL) {
-                strncpy(state->buffer.filename, new_name, sizeof(state->buffer.filename) - 1);
-            } else {
+            resolve_filename_for_save(new_name, abs_path, sizeof(abs_path));
+            if (abs_path[0] != '\0') {
                 strncpy(state->buffer.filename, abs_path, sizeof(state->buffer.filename) - 1);
+                state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
+                const char *syntax_file = get_syntax_file_from_extension(state->buffer.filename);
+                load_syntax_file(state, syntax_file);
             }
-            state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
-            const char *syntax_file = get_syntax_file_from_extension(state->buffer.filename);
-            load_syntax_file(state, syntax_file);
         }
         save_file(state);
         if (!state->buffer.modified) { // Only close if save was successful
@@ -139,31 +171,28 @@ void process_command(EditorState *state, bool *should_exit) {
     } else if (strcmp(command, "w") == 0) {
         if (strlen(args) > 0) {
             char abs_path[PATH_MAX];
-            if (realpath(args, abs_path) == NULL) {
-                // File might not exist yet, so realpath fails. 
-                // We use the args as is, but we should ideally resolve the directory.
-                strncpy(state->buffer.filename, args, sizeof(state->buffer.filename) - 1);
-            } else {
+            resolve_filename_for_save(args, abs_path, sizeof(abs_path));
+            if (abs_path[0] != '\0') {
                 strncpy(state->buffer.filename, abs_path, sizeof(state->buffer.filename) - 1);
+                state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
+                const char *syntax_file = get_syntax_file_from_extension(state->buffer.filename);
+                load_syntax_file(state, syntax_file);
             }
-            const char * syntax_file =  get_syntax_file_from_extension(state->buffer.filename);
-            load_syntax_file(state, syntax_file);
-        } else if (strcmp(state->buffer.filename, "[No Name]") == 0) {
+        } else if (strcmp(state->buffer.filename, "[No Name]") == 0 || state->buffer.filename[0] == '\0') {
             // No args and no filename: prompt the user
             char new_name[PATH_MAX] = "";
-            if (!ui_ask_input("Save as:", new_name, sizeof(new_name))) {
+            if (!ui_ask_input("Save as:", new_name, sizeof(new_name)) || new_name[0] == '\0') {
                 editor_set_status_msg(state, "Save cancelled.");
                 return;
             }
             char abs_path[PATH_MAX];
-            if (realpath(new_name, abs_path) == NULL) {
-                strncpy(state->buffer.filename, new_name, sizeof(state->buffer.filename) - 1);
-            } else {
+            resolve_filename_for_save(new_name, abs_path, sizeof(abs_path));
+            if (abs_path[0] != '\0') {
                 strncpy(state->buffer.filename, abs_path, sizeof(state->buffer.filename) - 1);
+                state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
+                const char *syntax_file = get_syntax_file_from_extension(state->buffer.filename);
+                load_syntax_file(state, syntax_file);
             }
-            state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
-            const char *syntax_file = get_syntax_file_from_extension(state->buffer.filename);
-            load_syntax_file(state, syntax_file);
         }
         save_file(state);
         if (state->lsp.enabled) {
@@ -674,8 +703,12 @@ void process_command(EditorState *state, bool *should_exit) {
         } else {
             editor_set_status_msg(state, "Usage: :s/find/replace/[flags]");
         }
+    } else if (strcmp(command, "plugins") == 0 || strcmp(command, "plugin-list") == 0) {
+        plugin_engine_list_plugins(state);
     } else {
-        editor_set_status_msg(state, "Unknown command: %s", command);
+        if (!plugin_engine_dispatch_command(state, command, args)) {
+            editor_set_status_msg(state, "Unknown command: %s", command);
+        }
     }
     state->input.mode = NORMAL;
 }

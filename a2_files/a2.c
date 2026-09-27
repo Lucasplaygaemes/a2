@@ -18,6 +18,7 @@
 #include "a2_files/settings.h" // Corrected path
 #include "logger.h"
 #include "lsp_watchdog.h"
+#include "plugin_engine.h"
 
 
 #include <locale.h>
@@ -747,7 +748,7 @@ int main(int argc, char *argv[]) {
     a2_log_init();
     
     int file_arg_index = 1;
-    if (argc > 1 && strcmp(argv[1], "--safe") == 0) {
+    if (argc > 1 && (strcmp(argv[1], "--safe") == 0 || strcmp(argv[1], "--safe-mode") == 0 || strcmp(argv[1], "-s") == 0)) {
         g_safe_mode = true;
         file_arg_index = 2;
         A2_LOG(LOG_INFO, TAG_CORE, "--- A2 Editor Started (SAFE MODE) ---");
@@ -782,6 +783,10 @@ int main(int argc, char *argv[]) {
     }
     pthread_mutex_init(&global_grep_state.mutex, NULL);
     initialize_workspaces();
+
+    if (!g_safe_mode && workspace_manager.num_workspaces > 0 && ACTIVE_WS->num_windows > 0) {
+        plugin_engine_init(ACTIVE_WS->windows[0]->state);
+    }
 
     project_startup_check();
 
@@ -1305,6 +1310,7 @@ int main(int argc, char *argv[]) {
     }
     free(workspace_manager.workspaces);
         
+    plugin_engine_cleanup();
     pthread_mutex_destroy(&global_grep_state.mutex);
     printf("\033_Ga=d,d=a;\033\\"); // Clear all Kitty images
     fflush(stdout);
