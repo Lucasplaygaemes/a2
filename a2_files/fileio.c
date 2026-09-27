@@ -12,6 +12,7 @@
 #include "base64.h"
 #include "logger.h"
 #include "local_history.h"
+#include "plugin_engine.h"
 
 
 #include <limits.h> // For PATH_MAX
@@ -580,6 +581,8 @@ void save_file(EditorState *state) {
         local_history_take_snapshot(state, "Manual Save");
 
         if (state->lsp.enabled) lsp_did_save(state);
+
+        plugin_engine_trigger_event(state, A2_EVENT_BUFFER_SAVED, (void*)state->buffer.filename);
     } else { 
         // --- SUDO SAVE FALLBACK ---
         if (errno == EACCES) {
