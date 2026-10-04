@@ -230,6 +230,11 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         state->input.single_command_mode = false;
     }
 
+    // Force readonly buffers to stay in NORMAL mode (never allow INSERT)
+    if (state->buffer.is_readonly && state->input.mode == INSERT) {
+        state->input.mode = NORMAL;
+    }
+
     // Manipulação especial para Ctrl+O para evitar reversão imediata.
     if (state->input.mode == INSERT && ch == 15) { // 15 é Ctrl+O
         state->input.mode = NORMAL;

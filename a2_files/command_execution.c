@@ -168,7 +168,12 @@ void process_command(EditorState *state, bool *should_exit) {
             close_active_window(should_exit);
         }
         return;
-    } else if (strcmp(command, "w") == 0) {
+    } else if (strcmp(command, "w") == 0 || strcmp(command, "w!") == 0) {
+        bool forced = (strcmp(command, "w!") == 0);
+        if (state->buffer.is_readonly && !forced) {
+            editor_set_status_msg(state, "Buffer is read-only. Use :w! to force write or :set noreadonly.");
+            return;
+        }
         if (strlen(args) > 0) {
             char abs_path[PATH_MAX];
             resolve_filename_for_save(args, abs_path, sizeof(abs_path));
@@ -401,6 +406,15 @@ void process_command(EditorState *state, bool *should_exit) {
                 } else {
                     editor_set_status_msg(state, "Invalid bar style. Use 0 or 1.");
                 }
+            } else if (strcmp(set_cmd, "readonly") == 0 || strcmp(set_cmd, "ro") == 0) {
+                state->buffer.is_readonly = true;
+                editor_set_status_msg(state, "Buffer is now Read-Only.");
+            } else if (strcmp(set_cmd, "noreadonly") == 0 || strcmp(set_cmd, "noro") == 0) {
+                state->buffer.is_readonly = false;
+                editor_set_status_msg(state, "Buffer is now Editable.");
+            } else if (strcmp(set_cmd, "readonly!") == 0 || strcmp(set_cmd, "ro!") == 0) {
+                state->buffer.is_readonly = !state->buffer.is_readonly;
+                editor_set_status_msg(state, state->buffer.is_readonly ? "Buffer is now Read-Only." : "Buffer is now Editable.");
             } else if (strcmp(set_cmd, "themedir") == 0 && items == 2) {
                 char abs_path[PATH_MAX];
                 if (realpath(set_val, abs_path) == NULL) {
