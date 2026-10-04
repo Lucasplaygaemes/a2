@@ -68,7 +68,7 @@ This page details the commands available in Command Mode (activated with *:*).
 - *:lsp-code-action*: Requests available code actions for the symbol or diagnostic under the cursor (quick-fixes, refactors, etc.) and opens an interactive selection popup. Use *j/k* or *Up/Down* to navigate the list, *Enter* to apply the selected action, and *Esc* to cancel.
 
 ## Plugin System
-- *:plugins* / *:plugin-list*: Displays a list of all active dynamic `.so` plugins loaded from `~/.a2/plugins/` and their registered commands.
+- *:plugins* / *:plugin-list*: Displays a list of all active dynamic `.so` plugins loaded from `~/.a2/plugins/` and their registered commands. Plugins can also be toggled ON/OFF and configured via `:settings` > *Plugins*. Selecting a plugin in the Settings menu opens a detail sub-menu for toggling plugin-registered options. Disabled plugin choices are persisted across restarts in `~/.a2/disabled_plugins.txt`.
 
 ## Reverse Engineering Suite Plugin (`plugin_re_suite.so`)
 - *:disasm [file] [func]*: Disassembles the machine code of `file` (or current buffer). Disassembles a specific function if `func` is provided. Opens in a new window split.
@@ -100,7 +100,8 @@ This page details the commands available in Command Mode (activated with *:*).
 - *:gcc [libs]*: Compiles the current C/C++ file.
 - *:diff [f1] [f2]*: Shows file differences. Runs interactively if args omitted. Can be triggered from explorer with 'D'.
 - *:timer*: Shows the work time report.
-- *:set <option>*: Changes a setting. Options: `paste`, `nopaste`, `wrap`, `nowrap`, `bar <0|1>`, `themedir <path>`, `spelllang <lang>` (sets default, downloads if needed, but won't re-download if already present), `nospell`.
+- *:set <option>*: Changes a setting. Options: `paste`, `nopaste`, `wrap`, `nowrap`, `bar <0|1>`, `themedir <path>`, `spelllang <lang>`, `nospell`, `readonly` (`ro`), `noreadonly` (`noro`), `readonly!` (`ro!`).
+- *:w!*: Forces writing to a file (bypasses read-only protection).
 - *:shortcuts-reset*: Reloads default shortcuts from `ds.a2`.
 - *:shortcuts-save*: Saves current shortcut configuration to `~/.a2/sc.a2`.
 - *:toggle_auto_indent*: Toggles auto-indent on new lines.
