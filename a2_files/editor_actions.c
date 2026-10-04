@@ -174,6 +174,10 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_DELETE_LINE: { int r=state->input.prefix_count>0?state->input.prefix_count:1; for(int i=0;i<r;i++) editor_delete_line(state); state->input.prefix_count=0; } break;
         case ACT_JUMP_BRACKET: editor_jump_to_matching_bracket(state); break;
         case ACT_MACRO_RECORD:
+            if (state->buffer.is_scratch || state->buffer.is_readonly) {
+                close_active_window(should_exit);
+                return;
+            }
             state->buffer.is_dirty = true;
             if (state->input.is_recording_macro) { state->input.is_recording_macro = false; editor_set_status_msg(state, "Recording stopped"); }
             else {
@@ -618,6 +622,19 @@ void display_dynamic_ksc() {
 }
 
 void handle_normal_mode_key(EditorState *state, wint_t ch) {
+    if (state->buffer.is_readonly) {
+        if (ch == 'i' || ch == 'a' || ch == 'o' || ch == 'I' || ch == 'A' || ch == 'O' ||
+            ch == 'c' || ch == 'C' || ch == 's' || ch == 'S' || ch == 'r' || ch == 'R' ||
+            ch == 'x' || ch == 'X' || ch == 'd' || ch == 'D' || ch == 'p' || ch == 'P' ||
+            ch == '>' || ch == '<' || ch == 'u') {
+            editor_set_status_msg(state, "[Read-Only Buffer] Use ':set noro' or ':set readonly!' to edit.");
+            return;
+        }
+    }
+    if (ch == 'q' && (state->buffer.is_scratch || state->buffer.is_readonly)) {
+        close_active_window(NULL);
+        return;
+    }
     char *line = state->buffer.lines[state->cursor.line];
     bool is_conflict_line = (line && (strncmp(line, "<<<<<<<", 7) == 0 || strncmp(line, "=======", 7) == 0 || strncmp(line, ">>>>>>>", 7) == 0));
     

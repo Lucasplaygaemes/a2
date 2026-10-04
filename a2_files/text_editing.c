@@ -139,6 +139,10 @@ static void execute_multi_cursor(EditorState *state, EditorFunc func) {
 
 
 void _editor_insert_char(EditorState *state, wint_t ch) {
+    if (state->buffer.is_readonly) {
+        editor_set_status_msg(state, "[Read-Only Buffer] Use ':set noro' or ':set readonly!' to edit.");
+        return;
+    }
     if (state->cursor.line >= state->buffer.num_lines) state->cursor.line = state->buffer.num_lines - 1;
     if (state->cursor.line < 0) state->cursor.line = 0;
     char *l = state->buffer.lines[state->cursor.line];
@@ -177,6 +181,10 @@ void _editor_insert_char(EditorState *state, wint_t ch) {
 }
 
 void _editor_handle_enter(EditorState *state) {
+    if (state->buffer.is_readonly) {
+        editor_set_status_msg(state, "[Read-Only Buffer] Use ':set noro' or ':set readonly!' to edit.");
+        return;
+    }
     if (state->cursor.line >= state->buffer.num_lines) state->cursor.line = state->buffer.num_lines - 1;
     if (state->cursor.line < 0) state->cursor.line = 0;
     char *l = state->buffer.lines[state->cursor.line];
@@ -240,6 +248,10 @@ void _editor_handle_enter(EditorState *state) {
 }
 
 void _editor_handle_backspace(EditorState *state) {
+    if (state->buffer.is_readonly) {
+        editor_set_status_msg(state, "[Read-Only Buffer] Use ':set noro' or ':set readonly!' to edit.");
+        return;
+    }
     if (state->cursor.line >= state->buffer.num_lines) state->cursor.line = state->buffer.num_lines - 1;
     if (state->cursor.line < 0) state->cursor.line = 0;
     char *l = state->buffer.lines[state->cursor.line];
@@ -311,6 +323,10 @@ void editor_delete_specific_line(EditorState *state, int line_num) {
 }
 
 void _editor_delete_line(EditorState *state) {
+    if (state->buffer.is_readonly) {
+        editor_set_status_msg(state, "[Read-Only Buffer] Use ':set noro' or ':set readonly!' to edit.");
+        return;
+    }
     state->buffer.modified = true;
     push_undo(state);
     clear_redo_stack(state);
@@ -347,6 +363,10 @@ void _editor_delete_line(EditorState *state) {
 }
 
 void editor_delete_selection(EditorState *state) {
+    if (state->buffer.is_readonly) {
+        editor_set_status_msg(state, "[Read-Only Buffer] Use ':set noro' or ':set readonly!' to edit.");
+        return;
+    }
     state->buffer.modified = true;
     push_undo(state);
     clear_redo_stack(state);

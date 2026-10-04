@@ -96,6 +96,8 @@ typedef enum {
     SETTINGS_VIEW_MAIN,
     SETTINGS_VIEW_EDITOR,
     SETTINGS_VIEW_THEME,
+    SETTINGS_VIEW_PLUGINS,
+    SETTINGS_VIEW_PLUGIN_DETAIL,
     SETTINGS_VIEW_SPELL,
     SETTINGS_VIEW_LSP,
     SETTINGS_VIEW_KEYBINDINGS,
@@ -119,6 +121,7 @@ typedef struct {
     int assigning_stage; // 0: firts key, 1: wating for the second key
     char search_term[64]; // search term 
     bool search_mode;     // if its typing in the search
+    char selected_plugin_name[64]; // name of selected plugin for detail view
 } SettingsPanelState;
 
 
@@ -424,6 +427,8 @@ typedef struct {
     // Last position before the last jump with mark, to ''
     int mark_prev_line;
     int mark_prev_col;
+    bool is_readonly;
+    bool is_scratch;
 } EditorBuffer;
 
 typedef struct {

@@ -6,6 +6,7 @@
 #include "window_managment.h"
 #include "cache.h"
 #include "spell.h"
+#include "fileio.h"
 #include <ctype.h>
 #include <unistd.h>
 #include <wctype.h>
@@ -1351,59 +1352,23 @@ bool is_selected(EditorState *state, int line_idx, int col_idx) {
 }
 
 void display_output_screen(const char *title, const char *filename) {
-    FileViewer *viewer = create_file_viewer(filename);
-    if (!viewer) { return; }
-    
-    int rows, cols;
-    getmaxyx(stdscr, rows, cols);
-    WINDOW *output_win = newwin(rows, cols, 0, 0);
-    keypad(output_win, TRUE);
-    wbkgd(output_win, COLOR_PAIR(8));
+    if (!filename || !*filename) return;
+    create_new_window(filename);
+    Workspace *ws = ACTIVE_WS;
+    if (!ws || ws->num_windows == 0) return;
+    EditorWindow *win = ws->windows[ws->active_window_idx];
+    if (!win || !win->state) return;
 
-    int top_line = 0;
-    wint_t ch;
-    while (1) {
-        getmaxyx(output_win, rows, cols);
-        werase(output_win);
-
-        wattron(output_win, A_BOLD); mvwprintw(output_win, 1, 2, "%s", title); wattroff(output_win, A_BOLD);
-        int viewable_lines = rows - 4;
-        for (int i = 0; i < viewable_lines; i++) {
-            int line_idx = top_line + i;
-            if (line_idx < viewer->num_lines) {
-                char *line = viewer->lines[line_idx];
-                int color_pair = 8;
-                if (line[0] == '+') color_pair = 10;
-                else if (line[0] == '-') color_pair = 11;
-                else if (line[0] == '@' && line[1] == '@') color_pair = 6;
-                wattron(output_win, COLOR_PAIR(color_pair));
-                mvwprintw(output_win, 3 + i, 2, "%.*s", cols - 2, line);
-                wattroff(output_win, COLOR_PAIR(color_pair));
-            }
-        }
-        wattron(output_win, A_REVERSE); mvwprintw(output_win, rows - 2, 2, " Use ARROWS or PAGE UP/DOWN to scroll | Press 'q' or ESC to exit "); wattroff(output_win, A_REVERSE);
-        wrefresh(output_win);
-        
-        wget_wch(output_win, &ch);
-        switch(ch) {
-            case KEY_UP: if (top_line > 0) top_line--; break;
-            case KEY_DOWN: if (top_line < viewer->num_lines - viewable_lines) top_line++; break;
-            case KEY_PPAGE: top_line -= viewable_lines; if (top_line < 0) top_line = 0; break;
-            case KEY_NPAGE: top_line += viewable_lines; if (top_line >= viewer->num_lines) top_line = viewer->num_lines - 1; break;
-            case KEY_SR: top_line -= PAGE_JUMP; if (top_line < 0) top_line = 0; break;
-            case KEY_SF: if (top_line < viewer->num_lines - viewable_lines) { top_line += PAGE_JUMP; if (top_line > viewer->num_lines - viewable_lines) top_line = viewer->num_lines - viewable_lines; } break;
-            case 'q': case 27: goto end_viewer;
-        }
+    win->state->buffer.is_readonly = true;
+    win->state->buffer.is_scratch = true;
+    if (title && *title) {
+        strncpy(win->state->buffer.filename, title, sizeof(win->state->buffer.filename) - 1);
+        win->state->buffer.filename[sizeof(win->state->buffer.filename) - 1] = '\0';
     }
-    end_viewer:
-    for (int i = 0; i < ACTIVE_WS->num_windows; i++) {
-        EditorWindow *jw = ACTIVE_WS->windows[i];
-        if (jw->type == WINDOW_TYPE_EDITOR && jw->state) jw->state->buffer.is_dirty = true;
-        else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) jw->explorer_state->is_dirty = true;
-        else if (jw->type == WINDOW_TYPE_HELP && jw->help_state) jw->help_state->is_dirty = true;
-    }
-    delwin(output_win);
-    destroy_file_viewer(viewer);
+    win->state->cursor.line = 0;
+    win->state->cursor.col = 0;
+    win->state->view.top_line = 0;
+    editor_set_status_msg(win->state, "[Read-Only Output] Press 'q' or :q to close | ':set noro' to edit | '/' to search");
 }
 
 FileViewer* create_file_viewer(const char* filename) {

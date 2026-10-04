@@ -373,8 +373,9 @@ void close_active_window(bool *should_exit) {
 
     int idx = ws->active_window_idx;
     
-    // Check for unsaved changes only if it's an editor window
-    if (ws->windows[idx]->type == WINDOW_TYPE_EDITOR && ws->windows[idx]->state && ws->windows[idx]->state->buffer.modified) {
+    // Check for unsaved changes only if it's an editor window and not a scratch buffer
+    if (ws->windows[idx]->type == WINDOW_TYPE_EDITOR && ws->windows[idx]->state && 
+        ws->windows[idx]->state->buffer.modified && !ws->windows[idx]->state->buffer.is_scratch) {
         editor_set_status_msg(ws->windows[idx]->state, "Warning: Unsaved changes! Use :q! to force quit.");
         return;
     }

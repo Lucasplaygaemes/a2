@@ -18,6 +18,7 @@
 #include "others.h"
 #include "lsp_client.h"
 #include "logger.h"
+#include "plugin_engine.h"
 
 A2Config global_config = {
     .word_wrap = true,
@@ -86,6 +87,7 @@ const int num_int_settings = sizeof(editor_int_settings) / sizeof(IntSetting);
 const char *main_menu_items[] = {
     "Editor",
     "Theme",
+    "Plugins",
     "Spell Checker",
     "LSP (Language Server)",
     "Keybindings",
@@ -516,6 +518,7 @@ void draw_main_menu(EditorWindow *jw) {
     const char *icons[] = { 
         "  (E) Editor Configuration", 
         "  (T) Themes & Appearance", 
+        "  (P) Plugins",
         "  (S) Spell Checker", 
         "  (L) LSP (Language Server)", 
         "  (K) Keybindings",
@@ -532,6 +535,118 @@ void draw_main_menu(EditorWindow *jw) {
         } else {
             mvwprintw(jw->win, 3 + i*2, 4, "   %-30s ", icons[i]);
         }
+    }
+}
+
+void draw_plugin_settings(EditorWindow *jw) {
+    SettingsPanelState *state = jw->settings_state;
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
+    (void)rows;
+    
+    draw_settings_header(jw->win, "SETTINGS > PLUGINS", cols);
+
+    int count = plugin_engine_get_loaded_count();
+    if (count == 0) {
+        mvwprintw(jw->win, 4, 4, "No plugins found in ~/.a2/plugins/");
+        return;
+    }
+
+    for (int i = 0; i < count; i++) {
+        char name[128];
+        bool is_enabled = false;
+        plugin_engine_get_plugin_info(i, name, sizeof(name), &is_enabled);
+
+        if (i == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
+        
+        mvwprintw(jw->win, 3 + i, 4, " %-30s ", name);
+        
+        if (is_enabled) {
+            wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
+            wprintw(jw->win, "[ ON ]");
+            wattroff(jw->win, PAIR_DIFF_ADD | A_BOLD);
+        } else {
+            wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+            wprintw(jw->win, "[OFF]");
+            wattroff(jw->win, PAIR_ERROR | A_BOLD);
+        }
+
+        if (i == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
+    }
+}
+
+void draw_plugin_detail(EditorWindow *jw) {
+    SettingsPanelState *state = jw->settings_state;
+    int rows, cols;
+    getmaxyx(jw->win, rows, cols);
+    (void)rows;
+
+    char title[128];
+    snprintf(title, sizeof(title), "SETTINGS > PLUGINS > %s", state->selected_plugin_name);
+    draw_settings_header(jw->win, title, cols);
+
+    // Find plugin index by name to show enabled status
+    int count = plugin_engine_get_loaded_count();
+    bool is_enabled = false;
+    int plugin_idx = -1;
+    for (int i = 0; i < count; i++) {
+        char name[128];
+        plugin_engine_get_plugin_info(i, name, sizeof(name), &is_enabled);
+        if (strcmp(name, state->selected_plugin_name) == 0) {
+            plugin_idx = i;
+            break;
+        }
+    }
+
+    // Row 0: enable/disable toggle
+    if (state->current_selection == 0) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
+    mvwprintw(jw->win, 3, 4, " %-30s ", "Enable Plugin");
+    if (is_enabled) {
+        wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
+        wprintw(jw->win, "[ ON ]");
+        wattroff(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
+    } else {
+        wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+        wprintw(jw->win, "[OFF]");
+        wattroff(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+    }
+    if (state->current_selection == 0) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
+    (void)plugin_idx;
+
+    // Remaining rows: bool settings
+    int setting_count = plugin_engine_get_settings_count_for(state->selected_plugin_name);
+    if (setting_count == 0) {
+        mvwprintw(jw->win, 5, 4, "No configurable settings for this plugin.");
+        return;
+    }
+
+    for (int i = 0; i < setting_count; i++) {
+        char sname[64], sdesc[128];
+        bool sval = false;
+        if (!plugin_engine_get_setting_bool(state->selected_plugin_name, i, sname, sizeof(sname), sdesc, sizeof(sdesc), &sval))
+            continue;
+
+        int row_idx = i + 1; // +1 because row 0 is the enable toggle
+        if (row_idx == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
+
+        mvwprintw(jw->win, 5 + i, 4, " %-30s ", sname);
+        if (sval) {
+            wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
+            wprintw(jw->win, "[ ON ]");
+            wattroff(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
+        } else {
+            wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+            wprintw(jw->win, "[OFF]");
+            wattroff(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
+        }
+
+        if (sdesc[0]) {
+            wattron(jw->win, COLOR_PAIR(PAIR_COMMENT));
+            wprintw(jw->win, "  %s", sdesc);
+            wattroff(jw->win, COLOR_PAIR(PAIR_COMMENT));
+        }
+
+        if (row_idx == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
 }
 
@@ -864,6 +979,12 @@ void settings_panel_redraw(EditorWindow *jw) {
         case SETTINGS_VIEW_THEME:
             draw_theme_settings(jw);
             break;
+        case SETTINGS_VIEW_PLUGINS:
+            draw_plugin_settings(jw);
+            break;
+        case SETTINGS_VIEW_PLUGIN_DETAIL:
+            draw_plugin_detail(jw);
+            break;
         case SETTINGS_VIEW_SPELL:
             draw_spell_settings(jw);
             break;
@@ -949,6 +1070,77 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                     break;
             }
             break;
+        case SETTINGS_VIEW_PLUGINS:
+            switch(ch) {
+                case 'q':
+                case 27:
+                    state->current_view = SETTINGS_VIEW_MAIN;
+                    state->current_selection = 2; // Plugins index in main menu
+                    state->scroll_top = 0;
+                    break;
+                case 'j':
+                case KEY_DOWN: {
+                    int count = plugin_engine_get_loaded_count();
+                    if (state->current_selection < count - 1) state->current_selection++;
+                    break;
+                }
+                case 'k':
+                case KEY_UP:
+                    if (state->current_selection > 0) state->current_selection--;
+                    break;
+                case ' ':
+                case KEY_ENTER:
+                case '\n': {
+                    char name[128];
+                    bool enabled;
+                    if (plugin_engine_get_plugin_info(state->current_selection, name, sizeof(name), &enabled)) {
+                        strncpy(state->selected_plugin_name, name, sizeof(state->selected_plugin_name) - 1);
+                        state->selected_plugin_name[sizeof(state->selected_plugin_name) - 1] = '\0';
+                        state->current_view = SETTINGS_VIEW_PLUGIN_DETAIL;
+                        state->current_selection = 0;
+                        state->scroll_top = 0;
+                    }
+                    break;
+                }
+            }
+            break;
+        case SETTINGS_VIEW_PLUGIN_DETAIL: {
+            int count = plugin_engine_get_loaded_count();
+            int plugin_idx = -1;
+            for (int i = 0; i < count; i++) {
+                char name[128]; bool enabled;
+                plugin_engine_get_plugin_info(i, name, sizeof(name), &enabled);
+                if (strcmp(name, state->selected_plugin_name) == 0) { plugin_idx = i; break; }
+            }
+            int setting_count = plugin_engine_get_settings_count_for(state->selected_plugin_name);
+            int total_items = 1 + setting_count;
+            switch(ch) {
+                case 'q':
+                case 27:
+                    state->current_view = SETTINGS_VIEW_PLUGINS;
+                    state->current_selection = (plugin_idx >= 0) ? plugin_idx : 0;
+                    state->scroll_top = 0;
+                    break;
+                case 'j':
+                case KEY_DOWN:
+                    if (state->current_selection < total_items - 1) state->current_selection++;
+                    break;
+                case 'k':
+                case KEY_UP:
+                    if (state->current_selection > 0) state->current_selection--;
+                    break;
+                case ' ':
+                case KEY_ENTER:
+                case '\n':
+                    if (state->current_selection == 0) {
+                        if (plugin_idx >= 0) plugin_engine_toggle_plugin(plugin_idx);
+                    } else {
+                        plugin_engine_toggle_setting_bool(state->selected_plugin_name, state->current_selection - 1);
+                    }
+                    break;
+            }
+            break;
+        }
         case SETTINGS_VIEW_KEYBINDINGS:
             if (state->is_assigning_key) {
                 // Find correct index based on filtered view
