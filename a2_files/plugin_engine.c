@@ -21,15 +21,25 @@
 #define MAX_PLUGINS 64
 #define MAX_COMMANDS 128
 #define MAX_HOOKS_PER_EVENT 32
+#define MAX_PLUGIN_SETTINGS 256
 
 typedef struct {
     char name[64];
     void (*cb)(EditorState *state, const char *args);
+    int plugin_idx; // index into g_loaded_plugins, -1 if built-in
 } RegisteredCommand;
 
 typedef struct {
     void (*cb)(EditorState *state, void *event_data);
+    int plugin_idx; // index into g_loaded_plugins, -1 if built-in
 } RegisteredEventHook;
+
+typedef struct {
+    char plugin_name[64];   // Which plugin owns this setting
+    char setting_name[64];  // Display name for the setting
+    char description[128];  // Short description
+    bool *value_ptr;        // Pointer to the actual bool variable (owned by plugin)
+} PluginSettingBool;
 
 typedef struct {
     char filename[128];
@@ -57,6 +67,13 @@ static int g_num_commands = 0;
 
 static RegisteredEventHook g_event_hooks[A2_EVENT_MAX][MAX_HOOKS_PER_EVENT];
 static int g_event_hook_counts[A2_EVENT_MAX];
+
+// Global registry of plugin-registered bool settings
+static PluginSettingBool g_plugin_settings[MAX_PLUGIN_SETTINGS];
+static int g_num_plugin_settings = 0;
+
+// Index of the plugin currently being initialized (for callback ownership tracking)
+static int g_current_initializing_plugin_idx = -1;
 
 static EditorState *g_current_editor_state = NULL;
 
@@ -87,6 +104,7 @@ static void api_register_command(const char *name, void (*cb)(EditorState *state
     }
     strncpy(g_commands[g_num_commands].name, name, sizeof(g_commands[g_num_commands].name) - 1);
     g_commands[g_num_commands].cb = cb;
+    g_commands[g_num_commands].plugin_idx = g_current_initializing_plugin_idx;
     g_num_commands++;
     A2_LOG(LOG_INFO, TAG_CORE, "Plugin API: Registered command ':%s'", name);
 }
@@ -104,6 +122,7 @@ static void api_register_event_hook(A2EventType event_type, void (*cb)(EditorSta
         return;
     }
     g_event_hooks[event_type][count].cb = cb;
+    g_event_hooks[event_type][count].plugin_idx = g_current_initializing_plugin_idx;
     g_event_hook_counts[event_type]++;
     A2_LOG(LOG_INFO, TAG_CORE, "Plugin API: Registered event hook for event %d", event_type);
 }
@@ -144,6 +163,21 @@ static void api_reload_file(EditorState *state) {
     }
 }
 
+static void api_register_plugin_setting_bool(const char *plugin_name, const char *setting_name, bool *value_ptr, const char *description) {
+    if (!plugin_name || !setting_name || !value_ptr) return;
+    if (g_num_plugin_settings >= MAX_PLUGIN_SETTINGS) {
+        A2_LOG(LOG_WARN, TAG_CORE, "Plugin API: Max plugin settings reached (%d)", MAX_PLUGIN_SETTINGS);
+        return;
+    }
+    PluginSettingBool *s = &g_plugin_settings[g_num_plugin_settings];
+    strncpy(s->plugin_name, plugin_name, sizeof(s->plugin_name) - 1);
+    strncpy(s->setting_name, setting_name, sizeof(s->setting_name) - 1);
+    strncpy(s->description, description ? description : "", sizeof(s->description) - 1);
+    s->value_ptr = value_ptr;
+    g_num_plugin_settings++;
+    A2_LOG(LOG_INFO, TAG_CORE, "Plugin API: Registered setting '%s' for plugin '%s'", setting_name, plugin_name);
+}
+
 static A2PluginAPI g_plugin_api = {
     .api_version = A2_PLUGIN_API_VERSION,
     .register_command = api_register_command,
@@ -154,8 +188,50 @@ static A2PluginAPI g_plugin_api = {
     .ui_ask_input = api_ui_ask_input,
     .ui_confirm = api_ui_confirm,
     .display_output_screen = api_display_output_screen,
-    .reload_file = api_reload_file
+    .reload_file = api_reload_file,
+    .register_plugin_setting_bool = api_register_plugin_setting_bool
 };
+
+// Persist the list of user-disabled plugin filenames to disk
+static void save_disabled_plugins_list(void) {
+    const char *home = getenv("HOME");
+    if (!home) return;
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "%s/.a2/disabled_plugins.txt", home);
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+    for (int i = 0; i < g_num_plugins; i++) {
+        if (!g_loaded_plugins[i].handle) {
+            fprintf(f, "%s\n", g_loaded_plugins[i].filename);
+        }
+    }
+    fclose(f);
+}
+
+// Load the list and disable any matching plugins at startup
+static void load_disabled_plugins_list(void) {
+    const char *home = getenv("HOME");
+    if (!home) return;
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "%s/.a2/disabled_plugins.txt", home);
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    char line[128];
+    while (fgets(line, sizeof(line), f)) {
+        line[strcspn(line, "\n")] = '\0';
+        if (!line[0]) continue;
+        for (int i = 0; i < g_num_plugins; i++) {
+            if (strcmp(g_loaded_plugins[i].filename, line) == 0 && g_loaded_plugins[i].handle) {
+                // Disable without calling cleanup (was disabled by user choice)
+                dlclose(g_loaded_plugins[i].handle);
+                g_loaded_plugins[i].handle = NULL;
+                A2_LOG(LOG_INFO, TAG_CORE, "Startup: Plugin %s is user-disabled, skipping.", line);
+                break;
+            }
+        }
+    }
+    fclose(f);
+}
 
 void plugin_engine_init(EditorState *state) {
     g_current_editor_state = state;
@@ -250,7 +326,10 @@ void plugin_engine_init(EditorState *state) {
                         continue;
                     }
 
+                    // Set the current plugin index so api_register_* can tag callbacks
+                    g_current_initializing_plugin_idx = g_num_plugins;
                     bool success = init_fn(&g_plugin_api);
+                    g_current_initializing_plugin_idx = -1;
                     if (!success) {
                         char err_msg[128] = "a2_plugin_init returned false";
                         A2_LOG(LOG_WARN, TAG_CORE, "Plugin %s %s", entry->d_name, err_msg);
@@ -297,6 +376,7 @@ void plugin_engine_init(EditorState *state) {
         }
     }
     closedir(dir);
+    load_disabled_plugins_list();
 }
 
 void plugin_engine_cleanup(void) {
@@ -475,4 +555,173 @@ void plugin_engine_list_plugins(EditorState *state) {
     fclose(f);
 
     display_output_screen("--- A2 Plugin Manager ---", tmp_file);
+}
+
+int plugin_engine_get_loaded_count(void) {
+    return g_num_plugins;
+}
+
+bool plugin_engine_get_plugin_info(int idx, char *name_out, size_t name_size, bool *is_enabled) {
+    if (idx < 0 || idx >= g_num_plugins) return false;
+    if (name_out && name_size > 0) {
+        const char *display_name = g_loaded_plugins[idx].name[0] ? g_loaded_plugins[idx].name : g_loaded_plugins[idx].filename;
+        strncpy(name_out, display_name, name_size - 1);
+        name_out[name_size - 1] = '\0';
+    }
+    if (is_enabled) {
+        *is_enabled = (g_loaded_plugins[idx].handle != NULL);
+    }
+    return true;
+}
+
+
+
+
+// Null-out all commands and hooks registered by this plugin index to prevent
+// use-after-free crashes after dlclose.
+static void plugin_engine_unregister_callbacks(int plugin_idx) {
+    // Commands: compact the array, removing entries owned by this plugin
+    int write = 0;
+    for (int i = 0; i < g_num_commands; i++) {
+        if (g_commands[i].plugin_idx != plugin_idx) {
+            if (write != i) g_commands[write] = g_commands[i];
+            write++;
+        }
+    }
+    g_num_commands = write;
+
+    // Event hooks: null-out entries owned by this plugin
+    for (int e = 0; e < A2_EVENT_MAX; e++) {
+        int w = 0;
+        for (int i = 0; i < g_event_hook_counts[e]; i++) {
+            if (g_event_hooks[e][i].plugin_idx != plugin_idx) {
+                if (w != i) g_event_hooks[e][w] = g_event_hooks[e][i];
+                w++;
+            }
+        }
+        g_event_hook_counts[e] = w;
+    }
+
+    // Plugin settings: remove entries owned by this plugin
+    int sw = 0;
+    for (int i = 0; i < g_num_plugin_settings; i++) {
+        // Match by plugin name since settings use the name string
+        char pname[64];
+        if (plugin_idx >= 0 && plugin_idx < g_num_plugins) {
+            strncpy(pname, g_loaded_plugins[plugin_idx].name[0] ?
+                    g_loaded_plugins[plugin_idx].name :
+                    g_loaded_plugins[plugin_idx].filename, sizeof(pname) - 1);
+            pname[sizeof(pname)-1] = '\0';
+        } else {
+            break;
+        }
+        if (strcmp(g_plugin_settings[i].plugin_name, pname) != 0) {
+            if (sw != i) g_plugin_settings[sw] = g_plugin_settings[i];
+            sw++;
+        }
+    }
+    g_num_plugin_settings = sw;
+
+    A2_LOG(LOG_INFO, TAG_CORE, "Unregistered all callbacks for plugin idx %d", plugin_idx);
+}
+
+void plugin_engine_toggle_plugin(int idx) {
+    if (idx < 0 || idx >= g_num_plugins) return;
+    if (g_loaded_plugins[idx].handle) {
+        // Disabling: unregister callbacks FIRST (before dlclose!), then call cleanup, then close
+        plugin_engine_unregister_callbacks(idx);
+        void (*cleanup_fn)(void) = (void (*)(void))dlsym(g_loaded_plugins[idx].handle, "a2_plugin_cleanup");
+        if (cleanup_fn) cleanup_fn();
+        dlclose(g_loaded_plugins[idx].handle);
+        g_loaded_plugins[idx].handle = NULL;
+        save_disabled_plugins_list();
+    } else {
+        // Re-enabling: reload and re-initialize the plugin
+        char path[256];
+        const char *home = getenv("HOME");
+        if (!home) {
+            struct passwd *pw = getpwuid(getuid());
+            if (pw) home = pw->pw_dir;
+        }
+        if (!home) return;
+        snprintf(path, sizeof(path), "%s/.a2/plugins/%s", home, g_loaded_plugins[idx].filename);
+        void *handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+        if (!handle) {
+            A2_LOG(LOG_ERROR, TAG_CORE, "Toggle: Failed to reload plugin %s: %s", g_loaded_plugins[idx].filename, dlerror());
+            return;
+        }
+        // Check API version
+        A2PluginGetInfoFunc get_info_fn = (A2PluginGetInfoFunc)dlsym(handle, "a2_plugin_get_info");
+        const A2PluginInfo *info = get_info_fn ? get_info_fn() : NULL;
+        if (info && info->target_api_ver != A2_PLUGIN_API_VERSION) {
+            A2_LOG(LOG_ERROR, TAG_CORE, "Toggle: Plugin %s API mismatch (v%u vs v%u)", g_loaded_plugins[idx].filename, info->target_api_ver, A2_PLUGIN_API_VERSION);
+            dlclose(handle);
+            return;
+        }
+        // Re-initialize
+        A2PluginInitFunc init_fn = (A2PluginInitFunc)dlsym(handle, "a2_plugin_init");
+        if (!init_fn || !init_fn(&g_plugin_api)) {
+            A2_LOG(LOG_ERROR, TAG_CORE, "Toggle: Plugin %s init failed on re-enable", g_loaded_plugins[idx].filename);
+            dlclose(handle);
+            return;
+        }
+        g_loaded_plugins[idx].handle = handle;
+        A2_LOG(LOG_INFO, TAG_CORE, "Toggle: Plugin %s re-enabled successfully", g_loaded_plugins[idx].filename);
+        save_disabled_plugins_list();
+    }
+}
+
+// --- Plugin Settings Accessors ---
+
+int plugin_engine_get_settings_count_for(const char *plugin_name) {
+    if (!plugin_name) return 0;
+    int count = 0;
+    for (int i = 0; i < g_num_plugin_settings; i++) {
+        if (strcmp(g_plugin_settings[i].plugin_name, plugin_name) == 0) count++;
+    }
+    return count;
+}
+
+bool plugin_engine_get_setting_bool(const char *plugin_name, int setting_idx,
+    char *name_out, size_t name_size,
+    char *desc_out, size_t desc_size,
+    bool *value_out) {
+    if (!plugin_name) return false;
+    int count = 0;
+    for (int i = 0; i < g_num_plugin_settings; i++) {
+        if (strcmp(g_plugin_settings[i].plugin_name, plugin_name) == 0) {
+            if (count == setting_idx) {
+                if (name_out && name_size > 0) {
+                    strncpy(name_out, g_plugin_settings[i].setting_name, name_size - 1);
+                    name_out[name_size - 1] = '\0';
+                }
+                if (desc_out && desc_size > 0) {
+                    strncpy(desc_out, g_plugin_settings[i].description, desc_size - 1);
+                    desc_out[desc_size - 1] = '\0';
+                }
+                if (value_out && g_plugin_settings[i].value_ptr) {
+                    *value_out = *g_plugin_settings[i].value_ptr;
+                }
+                return true;
+            }
+            count++;
+        }
+    }
+    return false;
+}
+
+void plugin_engine_toggle_setting_bool(const char *plugin_name, int setting_idx) {
+    if (!plugin_name) return;
+    int count = 0;
+    for (int i = 0; i < g_num_plugin_settings; i++) {
+        if (strcmp(g_plugin_settings[i].plugin_name, plugin_name) == 0) {
+            if (count == setting_idx) {
+                if (g_plugin_settings[i].value_ptr) {
+                    *g_plugin_settings[i].value_ptr = !*g_plugin_settings[i].value_ptr;
+                }
+                return;
+            }
+            count++;
+        }
+    }
 }
