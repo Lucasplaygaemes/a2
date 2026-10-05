@@ -55,7 +55,8 @@ This page lists the keyboard shortcuts for the `a2` editor.
 - *yy* / *[N]yy* : Yank (copy) N lines to the local register (default: 1).
 - *p* / *P* : Paste from local / global register after the cursor.
 - *m* : Paste from the "move" register (used after cutting in Visual Mode).
-- *q[a-z]* : Start or stop recording a macro.
+- *q* : Close active window (on Read-Only or Scratch output buffers like help/reports).
+- *q[a-z]* : Start or stop recording a macro into register [a-z] (on normal buffers).
 - *@[a-z]* : Play back a macro. *@@* repeats the last one.
 - *Ctrl+f* / */* : Unified interactive search. Opens the command bar with */*. Use *Arrows* to move the cursor and *Up*/*Down* to navigate search history.
 - *Ctrl+d* / *Ctrl+a* : Find next / previous occurrence of the last search.

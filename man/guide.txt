@@ -46,10 +46,12 @@ and closes active popups!
 
 • Saving & Exiting:
   - :w          -> Writes (saves) the current file (uses safe atomic save).
+  - :w!         -> Forces write to a read-only buffer.
   - Alt+W       -> Quick shortcut to save the file.
-  - :q          -> Closes the active window or exits the editor.
+  - :q          -> Closes active window or exits editor (or press 'q' in read-only/scratch output windows).
   - :q!         -> Forces quit without saving changes.
   - :wq         -> Saves and quits.
+  - :set noro   -> Disables read-only protection on the current buffer to allow editing.
 
 3. DEMYSTIFYING VIM'S "KEY GRAMMAR"
 The power of a modal editor lies in combining keys like sentences!
@@ -197,6 +199,7 @@ compiler optimizations, and inspecting machine instructions.
 These are just the core pillars of a2. The editor hides many more features 
 waiting for you to discover:
   - Custom themes (.theme) via :theme <name>
+  - Plugin Manager in :settings > Plugins (toggle plugins and configure options)
   - Deep Git integration (:gstatus, :gadd, :gcommit, :gpush)
   - Custom Tasks menu via :task
   - Interactive file diff via :diff
