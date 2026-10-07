@@ -49,6 +49,12 @@ typedef struct {
     // Call during a2_plugin_init to register a configurable boolean setting.
     // The setting will appear as a toggle in the Plugins > [PluginName] sub-menu.
     void (*register_plugin_setting_bool)(const char *plugin_name, const char *setting_name, bool *value_ptr, const char *description);
+
+    // 8. Interactive Terminal Window
+    void (*create_terminal_window)(char *const argv[]);
+
+    // 9. Save Plugin Settings
+    void (*save_plugin_settings)(void);
 } A2PluginAPI;
 
 typedef struct {
