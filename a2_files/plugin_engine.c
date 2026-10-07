@@ -178,6 +178,23 @@ static void api_register_plugin_setting_bool(const char *plugin_name, const char
     A2_LOG(LOG_INFO, TAG_CORE, "Plugin API: Registered setting '%s' for plugin '%s'", setting_name, plugin_name);
 }
 
+static void api_create_terminal_window(char *const argv[]) {
+    create_generic_terminal_window(argv);
+}
+
+static void api_save_plugin_settings(void) {
+    const char *home = getenv("HOME");
+    if (!home) return;
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "%s/.a2/plugin_settings.txt", home);
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+    for (int i = 0; i < g_num_plugin_settings; i++) {
+        fprintf(f, "%s|%s|%d\n", g_plugin_settings[i].plugin_name, g_plugin_settings[i].setting_name, *(g_plugin_settings[i].value_ptr) ? 1 : 0);
+    }
+    fclose(f);
+}
+
 static A2PluginAPI g_plugin_api = {
     .api_version = A2_PLUGIN_API_VERSION,
     .register_command = api_register_command,
@@ -189,7 +206,9 @@ static A2PluginAPI g_plugin_api = {
     .ui_confirm = api_ui_confirm,
     .display_output_screen = api_display_output_screen,
     .reload_file = api_reload_file,
-    .register_plugin_setting_bool = api_register_plugin_setting_bool
+    .register_plugin_setting_bool = api_register_plugin_setting_bool,
+    .create_terminal_window = api_create_terminal_window,
+    .save_plugin_settings = api_save_plugin_settings
 };
 
 // Persist the list of user-disabled plugin filenames to disk
@@ -227,6 +246,33 @@ static void load_disabled_plugins_list(void) {
                 g_loaded_plugins[i].handle = NULL;
                 A2_LOG(LOG_INFO, TAG_CORE, "Startup: Plugin %s is user-disabled, skipping.", line);
                 break;
+            }
+        }
+    }
+    fclose(f);
+}
+
+static void load_plugin_settings(void) {
+    const char *home = getenv("HOME");
+    if (!home) return;
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "%s/.a2/plugin_settings.txt", home);
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        line[strcspn(line, "\n")] = '\0';
+        char *plugin = strtok(line, "|");
+        char *setting = strtok(NULL, "|");
+        char *val_str = strtok(NULL, "|");
+        if (plugin && setting && val_str) {
+            int val = atoi(val_str);
+            for (int i = 0; i < g_num_plugin_settings; i++) {
+                if (strcmp(g_plugin_settings[i].plugin_name, plugin) == 0 &&
+                    strcmp(g_plugin_settings[i].setting_name, setting) == 0) {
+                    *(g_plugin_settings[i].value_ptr) = (val != 0);
+                    break;
+                }
             }
         }
     }
@@ -377,6 +423,7 @@ void plugin_engine_init(EditorState *state) {
     }
     closedir(dir);
     load_disabled_plugins_list();
+    load_plugin_settings();
 }
 
 void plugin_engine_cleanup(void) {
@@ -718,6 +765,7 @@ void plugin_engine_toggle_setting_bool(const char *plugin_name, int setting_idx)
             if (count == setting_idx) {
                 if (g_plugin_settings[i].value_ptr) {
                     *g_plugin_settings[i].value_ptr = !*g_plugin_settings[i].value_ptr;
+                    api_save_plugin_settings();
                 }
                 return;
             }
