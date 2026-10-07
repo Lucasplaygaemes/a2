@@ -374,3 +374,13 @@ https://curl.se/libcurl/
 Copyright (c) 2017 Sean Barrett
 License: MIT License / Public Domain
 https://github.com/nothings/stb
+
+### Radare2
+Copyright (c) 2006-2024 pancake and contributors
+License: LGPL-3.0
+https://rada.re/
+
+### Ghidra
+Copyright (c) 2019-2024 National Security Agency
+License: Apache License 2.0
+https://ghidra-sre.org/
