@@ -46,12 +46,10 @@ A2Config global_config = {
     .image_preview_enabled = true,
     .dictionary_lang = "auto"
 };
-
 typedef struct {
     const char *name;
     bool *config_ptr;
 } BoolSetting;
-
 BoolSetting editor_bool_settings[] = {
     {"Word Wrap", &global_config.word_wrap},
     {"Auto Indent", &global_config.auto_indent},
@@ -66,7 +64,7 @@ BoolSetting editor_bool_settings[] = {
     {"Image Previews", &global_config.image_preview_enabled},
     {"Git Diff Gutter", &global_config.git_gutter_enabled},
     {"Auto Load Project", &global_config.auto_load_project}
-    };
+};
 
 const int num_bool_settings = sizeof(editor_bool_settings) / sizeof(BoolSetting);
 
@@ -74,7 +72,6 @@ typedef struct {
     const char *name;
     int *config_ptr;
 } IntSetting;
-
 IntSetting editor_int_settings[] = {
     {"Tab Size", &global_config.tab_size},
     {"Status Bar Style", &global_config.status_bar_mode},
@@ -83,6 +80,30 @@ IntSetting editor_int_settings[] = {
 
 const int num_int_settings = sizeof(editor_int_settings) / sizeof(IntSetting);
 
+typedef enum {
+    MAIN_MENU_EDITOR = 0,
+    MAIN_MENU_THEME,
+    MAIN_MENU_PLUGINS,
+    MAIN_MENU_SPELL,
+    MAIN_MENU_LSP,
+    MAIN_MENU_KEYBINDINGS,
+    MAIN_MENU_TASKS,
+    MAIN_MENU_DEBUG,
+    MAIN_MENU_DICTIONARY,
+    MAIN_MENU_COUNT
+} MainMenuItemIndex;
+
+static const int menu_to_view_map[] = {
+    [MAIN_MENU_EDITOR]      = SETTINGS_VIEW_EDITOR,
+    [MAIN_MENU_THEME]       = SETTINGS_VIEW_THEME,
+    [MAIN_MENU_PLUGINS]     = SETTINGS_VIEW_PLUGINS,
+    [MAIN_MENU_SPELL]       = SETTINGS_VIEW_SPELL,
+    [MAIN_MENU_LSP]         = SETTINGS_VIEW_LSP,
+    [MAIN_MENU_KEYBINDINGS] = SETTINGS_VIEW_KEYBINDINGS,
+    [MAIN_MENU_TASKS]       = SETTINGS_VIEW_TASKS,
+    [MAIN_MENU_DEBUG]       = SETTINGS_VIEW_DEBUG,
+    [MAIN_MENU_DICTIONARY]  = SETTINGS_VIEW_DICTIONARY
+};
 
 const char *main_menu_items[] = {
     "Editor",
@@ -95,6 +116,7 @@ const char *main_menu_items[] = {
     "Debug",
     "Dictionary"
 };
+
 const int num_main_menu_items = sizeof(main_menu_items) / sizeof(char*);
 
 typedef struct {
@@ -112,6 +134,7 @@ const LangOption spell_languages[] = {
     {"German", "de_DE"},
     {"Italian", "it_IT"}
 };
+
 const int num_spell_languages = sizeof(spell_languages) / sizeof(LangOption);
 
 static EditorState* get_any_editor_state();
@@ -131,9 +154,7 @@ void key_to_string(KeyBinding *kb, char *buf, size_t size) {
     else if (kb->key < 32 && kb->key > 0) snprintf(key_name, sizeof(key_name), "Ctrl+%c", kb->key + 64);
     else if (kb->key > 0) snprintf(key_name, sizeof(key_name), "%c", (char)kb->key);
     else strcpy(key_name, "?");
-
     if (kb->leader > 0) {
-        // If there's a leader, assume it's an Alt+Key sequence
         snprintf(buf, size, "Alt+%c, %s", (char)kb->leader, key_name);
     } else {
         snprintf(buf, size, "%s%s", kb->alt ? "Alt+" : "", key_name);
@@ -158,21 +179,16 @@ void get_sc_path(char *buffer, size_t size) {
 
 void get_ds_path(char *buffer, size_t size) {
     char dir[PATH_MAX];
-    // 1. Try User's home override first (~/.a2/ds.a2)
     ensure_a2_config_dir(dir, sizeof(dir));
     snprintf(buffer, size, "%s/ds.a2", dir);
     if (access(buffer, F_OK) == 0) return;
-
-    // 2. Try next to executable
     if (executable_dir[0] != '\0') {
         snprintf(buffer, size, "%s/ds.a2", executable_dir);
         if (access(buffer, F_OK) == 0) return;
     }
-    // 3. Try system-wide
     snprintf(buffer, size, "/usr/local/share/a2/ds.a2");
     if (access(buffer, F_OK) == 0) return;
     
-    // 4. Fallback to current dir
     snprintf(buffer, size, "ds.a2");
 }
 
@@ -181,10 +197,8 @@ void save_keybindings() {
     get_sc_path(path, sizeof(path));
     FILE *f = fopen(path, "w");
     if (!f) return;
-
     for (int i = 1; i < ACT_COUNT; i++) {
         if (global_bindings[i].action == ACT_NONE) continue;
-        // Format: SLUG:TECLA:ALT:CTRL:LEADER
         fprintf(f, "%s:%d:%d:%d:%d\n", 
                 global_bindings[i].slug, 
                 global_bindings[i].key, 
@@ -198,13 +212,11 @@ void save_keybindings() {
 static bool load_bindings_from_file(const char* path) {
     FILE *f = fopen(path, "r");
     if (!f) return false;
-
     char line[256];
     while (fgets(line, sizeof(line), f)) {
         char slug[32];
         int key, alt, ctrl, leader;
         if (sscanf(line, "%31[^:]:%d:%d:%d:%d\n", slug, &key, &alt, &ctrl, &leader) == 5) {
-            // Find action by slug
             for (int i = 1; i < ACT_COUNT; i++) {
                 if (strcmp(global_bindings[i].slug, slug) == 0) {
                     global_bindings[i].key = key;
@@ -222,22 +234,18 @@ static bool load_bindings_from_file(const char* path) {
 
 void load_keybindings() {
     char path[PATH_MAX];
-    
-    // 1. Try User Shortcuts (sc.a2)
     get_sc_path(path, sizeof(path));
     if (load_bindings_from_file(path)) {
         A2_LOG(LOG_INFO, TAG_CORE, "Loaded user keybindings from %s", path);
         return;
     }
     
-    // 2. Try Default Shortcuts (ds.a2)
     get_ds_path(path, sizeof(path));
     if (load_bindings_from_file(path)) {
         A2_LOG(LOG_INFO, TAG_CORE, "Loaded default keybindings from %s", path);
         return;
     }
     
-    // 3. Fallback to hardcoded defaults
     A2_LOG(LOG_WARN, TAG_CORE, "Failed to load any keybindings file. Falling back to hardcoded defaults.");
     reset_bindings_to_default();
 }
@@ -261,7 +269,6 @@ void save_ds_keybindings() {
         editor_set_status_msg(get_any_editor_state(), "Error: Could not open %s for writing", path);
         return;
     }
-
     for (int i = 1; i < ACT_COUNT; i++) {
         if (global_bindings[i].action == ACT_NONE) continue;
         fprintf(f, "%s:%d:%d:%d:%d\n", 
@@ -275,7 +282,6 @@ void save_ds_keybindings() {
     editor_set_status_msg(get_any_editor_state(), "Default shortcuts saved to %s", path);
 }
 
-
 bool is_key_duplicate(int idx) {
     KeyBinding *current = &global_bindings[idx];
     if (current->key == 0) return false;
@@ -287,7 +293,7 @@ bool is_key_duplicate(int idx) {
             global_bindings[i].alt == current->alt &&
             global_bindings[i].ctrl == current->ctrl) {
             return true;
-            }
+        }
     }
     return false;
 }
@@ -297,7 +303,7 @@ void draw_keybinding_settings(EditorWindow *jw) {
     int rows, cols;
     getmaxyx(jw->win, rows, cols);
     
-    char title[128];
+    char title[256];
     if (state->search_mode) snprintf(title, sizeof(title), "SEARCH: %s_", state->search_term);
     else snprintf(title, sizeof(title), "SETTINGS > KEYBINDINGS ('/' to Search)");
     
@@ -307,7 +313,6 @@ void draw_keybinding_settings(EditorWindow *jw) {
     int printed_count = 0;
     
     for (int i = 1; i < ACT_COUNT; i++) {
-        // filter logic
         if (strlen(state->search_term) > 0) {
             if (strcasestr(global_bindings[i].name, state->search_term) == NULL && 
                 strcasestr(global_bindings[i].desc, state->search_term) == NULL) {
@@ -320,13 +325,11 @@ void draw_keybinding_settings(EditorWindow *jw) {
             
             if (printed_count == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
             
-            // highlight the duplicate
             bool duplicate = is_key_duplicate(i);
             if (duplicate) wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
             
             char key_text[64];
             key_to_string(&global_bindings[i], key_text, sizeof(key_text));
-
             mvwprintw(jw->win, y_pos, 4, " %-20s : %-15s ", global_bindings[i].name, key_text);
             
             if (duplicate) wattroff(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
@@ -334,7 +337,6 @@ void draw_keybinding_settings(EditorWindow *jw) {
         }
         printed_count++;
     }
-
     int footer_y = rows - 3;
     int reset_btn_idx = printed_count; 
     if (state->current_selection == reset_btn_idx) wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD | A_REVERSE);
@@ -359,7 +361,6 @@ void save_global_config() {
         fprintf(f, "show_line_numbers=%d\n", global_config.show_line_numbers);
         fprintf(f, "show_scrollbar=%d\n", global_config.show_scrollbar);
         fprintf(f, "relative_line_numbers=%d\n", global_config.relative_line_numbers);
-        fprintf(f, "paste_mode=%d\n", global_config.paste_mode);
         fprintf(f, "lsp_diagnostics=%d\n", global_config.lsp_diagnostics);
         fprintf(f, "lsp_inline_diagnostics=%d\n", global_config.lsp_inline_diagnostics);
         fprintf(f, "lsp_highlight=%d\n", global_config.lsp_highlight);
@@ -384,7 +385,7 @@ void load_global_config() {
     get_config_filepath(path, sizeof(path));
     FILE *f = fopen(path, "r");
     
-    if (!f) return; // 
+    if (!f) return;
     
     char line[256];
     
@@ -402,7 +403,6 @@ void load_global_config() {
         else if (sscanf(line, "show_line_numbers=%d", &val) == 1) global_config.show_line_numbers = val;
         else if (sscanf(line, "show_scrollbar=%d", &val) == 1) global_config.show_scrollbar = val;
         else if (sscanf(line, "relative_line_numbers=%d", &val) == 1) global_config.relative_line_numbers = val;
-        else if (sscanf(line, "paste_mode=%d", &val) == 1) global_config.paste_mode = val;
         else if (sscanf(line, "lsp_diagnostics=%d", &val) == 1) global_config.lsp_diagnostics = val;
         else if (sscanf(line, "lsp_inline_diagnostics=%d", &val) == 1) global_config.lsp_inline_diagnostics = val;
         else if (sscanf(line, "lsp_highlight=%d", &val) == 1) global_config.lsp_highlight = val;
@@ -429,8 +429,6 @@ void load_global_config() {
     fclose(f);
 }
 
-// --- Helper Functions ---
-
 void apply_settings_globally() {
     for (int i = 0; i < workspace_manager.num_workspaces; i++) {
         Workspace *ws = workspace_manager.workspaces[i];
@@ -446,26 +444,20 @@ void apply_settings_globally() {
                 state->view.show_line_numbers = global_config.show_line_numbers;
                 state->view.show_scrollbar = global_config.show_scrollbar;
                 
-                // Refresh Git Gutter state
                 editor_update_git_gutter(state);
-
-                // LSP Global Toggle
                 if (!global_config.lsp_enabled) {
                     if (state->lsp.client) {
                         lsp_shutdown(state);
                     }
                 } else if (global_config.lsp_enabled && !state->lsp.client) {
-                    // Re-initialize might start LSP if supported
                     lsp_initialize(state);
                 }
                 
-                // Spell Checker Global Toggle
                 if (!global_config.spell_checker_enabled) {
                     if (state->spell.checker.enabled) {
                         spell_checker_unload_dict(&state->spell.checker);
                     }
                 } else if (global_config.spell_checker_enabled && !state->spell.checker.enabled) {
-                    // Logic similar to lsp_initialize spell check policy
                     const char *ext = strrchr(state->buffer.filename, '.');
                     bool lsp_will_be_enabled = false;
                     if (ext) {
@@ -491,7 +483,6 @@ void apply_settings_globally() {
     }
 }
 
-// Find the first available editor state to read current settings from
 static EditorState* get_any_editor_state() {
     for (int i = 0; i < workspace_manager.num_workspaces; i++) {
         for (int j = 0; j < workspace_manager.workspaces[i]->num_windows; j++) {
@@ -504,9 +495,6 @@ static EditorState* get_any_editor_state() {
     return NULL;
 }
 
-
-// --- Drawing functions for each view ---
-
 void draw_main_menu(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     int rows, cols;
@@ -514,7 +502,6 @@ void draw_main_menu(EditorWindow *jw) {
     (void)rows;
     
     draw_settings_header(jw->win, "A2 SETTINGS", cols);
-
     const char *icons[] = { 
         "  (E) Editor Configuration", 
         "  (T) Themes & Appearance", 
@@ -526,7 +513,6 @@ void draw_main_menu(EditorWindow *jw) {
         "  (D) Debug",
         "  (W) Dictionary"
     };
-
     for (int i = 0; i < num_main_menu_items; i++) {
         if (i == state->current_selection) {
             wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
@@ -545,18 +531,15 @@ void draw_plugin_settings(EditorWindow *jw) {
     (void)rows;
     
     draw_settings_header(jw->win, "SETTINGS > PLUGINS", cols);
-
     int count = plugin_engine_get_loaded_count();
     if (count == 0) {
         mvwprintw(jw->win, 4, 4, "No plugins found in ~/.a2/plugins/");
         return;
     }
-
     for (int i = 0; i < count; i++) {
         char name[128];
         bool is_enabled = false;
         plugin_engine_get_plugin_info(i, name, sizeof(name), &is_enabled);
-
         if (i == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
         
         mvwprintw(jw->win, 3 + i, 4, " %-30s ", name);
@@ -570,7 +553,6 @@ void draw_plugin_settings(EditorWindow *jw) {
             wprintw(jw->win, "[OFF]");
             wattroff(jw->win, PAIR_ERROR | A_BOLD);
         }
-
         if (i == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
 }
@@ -580,12 +562,9 @@ void draw_plugin_detail(EditorWindow *jw) {
     int rows, cols;
     getmaxyx(jw->win, rows, cols);
     (void)rows;
-
     char title[128];
     snprintf(title, sizeof(title), "SETTINGS > PLUGINS > %s", state->selected_plugin_name);
     draw_settings_header(jw->win, title, cols);
-
-    // Find plugin index by name to show enabled status
     int count = plugin_engine_get_loaded_count();
     bool is_enabled = false;
     int plugin_idx = -1;
@@ -597,8 +576,6 @@ void draw_plugin_detail(EditorWindow *jw) {
             break;
         }
     }
-
-    // Row 0: enable/disable toggle
     if (state->current_selection == 0) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
     mvwprintw(jw->win, 3, 4, " %-30s ", "Enable Plugin");
     if (is_enabled) {
@@ -612,23 +589,18 @@ void draw_plugin_detail(EditorWindow *jw) {
     }
     if (state->current_selection == 0) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     (void)plugin_idx;
-
-    // Remaining rows: bool settings
     int setting_count = plugin_engine_get_settings_count_for(state->selected_plugin_name);
     if (setting_count == 0) {
         mvwprintw(jw->win, 5, 4, "No configurable settings for this plugin.");
         return;
     }
-
     for (int i = 0; i < setting_count; i++) {
         char sname[64], sdesc[128];
         bool sval = false;
         if (!plugin_engine_get_setting_bool(state->selected_plugin_name, i, sname, sizeof(sname), sdesc, sizeof(sdesc), &sval))
             continue;
-
-        int row_idx = i + 1; // +1 because row 0 is the enable toggle
+        int row_idx = i + 1;
         if (row_idx == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
-
         mvwprintw(jw->win, 5 + i, 4, " %-30s ", sname);
         if (sval) {
             wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
@@ -639,13 +611,11 @@ void draw_plugin_detail(EditorWindow *jw) {
             wprintw(jw->win, "[OFF]");
             wattroff(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
         }
-
         if (sdesc[0]) {
             wattron(jw->win, COLOR_PAIR(PAIR_COMMENT));
             wprintw(jw->win, "  %s", sdesc);
             wattroff(jw->win, COLOR_PAIR(PAIR_COMMENT));
         }
-
         if (row_idx == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
 }
@@ -657,7 +627,6 @@ void draw_editor_settings(EditorWindow *jw) {
     (void)rows;
     
     draw_settings_header(jw->win, "SETTINGS > EDITOR", cols);
-
     for (int i = 0; i < num_bool_settings; i++) {
         bool val = *editor_bool_settings[i].config_ptr;
         if (i == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
@@ -673,10 +642,8 @@ void draw_editor_settings(EditorWindow *jw) {
             wprintw(jw->win, "[OFF]");
             wattroff(jw->win, PAIR_ERROR | A_BOLD);
         }
-
         if (i == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
-
     for (int i = 0; i < num_int_settings; i++) {
         int display_idx = num_bool_settings + i;
         if (display_idx == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
@@ -685,13 +652,12 @@ void draw_editor_settings(EditorWindow *jw) {
         
         if (display_idx == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
-}
-
+    }
 void populate_theme_list(SettingsPanelState *state) {
     if (state->theme_list) return;
     
     state->num_themes = 0;
-    state->theme_list = malloc(sizeof(char*) * 200); // Increased space
+    state->theme_list = malloc(sizeof(char*) * 200);
     
     char custom_theme_dir[PATH_MAX] = {0};
     char config_path[PATH_MAX];
@@ -703,18 +669,15 @@ void populate_theme_list(SettingsPanelState *state) {
         }
         fclose(config_file);
     }
-
     char global_theme_dir[PATH_MAX] = {0};
     const char* home = getenv("HOME");
     if (home) {
         snprintf(global_theme_dir, sizeof(global_theme_dir), "%s/.a2/themes", home);
     }
-
     char exec_theme_path[PATH_MAX] = {0};
     if (executable_dir[0] != '\0') {
         snprintf(exec_theme_path, sizeof(exec_theme_path), "%s/themes", executable_dir);
     }
-
     const char* dirs_to_check[] = { 
         custom_theme_dir, 
         global_theme_dir, 
@@ -722,7 +685,6 @@ void populate_theme_list(SettingsPanelState *state) {
         "/usr/local/share/a2/themes",
         exec_theme_path
     };
-
     for (int i = 0; i < 5; i++) {
         if (dirs_to_check[i][0] == '\0') continue;
         
@@ -731,7 +693,6 @@ void populate_theme_list(SettingsPanelState *state) {
             struct dirent *dir;
             while ((dir = readdir(d)) != NULL && state->num_themes < 200) {
                 if (strstr(dir->d_name, ".theme")) {
-                    // Avoid duplicates
                     bool exists = false;
                     for(int j=0; j<state->num_themes; j++) {
                         if(strcmp(state->theme_list[j], dir->d_name) == 0) {
@@ -745,7 +706,6 @@ void populate_theme_list(SettingsPanelState *state) {
         }
     }
 }
-
 void draw_theme_settings(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     populate_theme_list(state);
@@ -773,7 +733,6 @@ void draw_theme_settings(EditorWindow *jw) {
         }
     }
 }
-
 void draw_spell_settings(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     int rows, cols;
@@ -782,7 +741,6 @@ void draw_spell_settings(EditorWindow *jw) {
     
     draw_settings_header(jw->win, "SETTINGS > SPELL CHECKER", cols);
     
-    // Toggle global enable
     if (state->current_selection == 0) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
     mvwprintw(jw->win, 2, 4, " Spell Checker : ");
     if (global_config.spell_checker_enabled) {
@@ -795,9 +753,7 @@ void draw_spell_settings(EditorWindow *jw) {
         wattroff(jw->win, PAIR_ERROR | A_BOLD);
     }
     if (state->current_selection == 0) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
-
     mvwprintw(jw->win, 4, 4, "Default Language:");
-
     for (int i = 0; i < num_spell_languages; i++) {
         int display_idx = i + 1;
         bool is_default = (strcmp(global_config.default_spell_lang, spell_languages[i].lang_code) == 0);
@@ -818,11 +774,9 @@ void draw_spell_settings(EditorWindow *jw) {
             wprintw(jw->win, " (Local) ");
             wattroff(jw->win, PAIR_COMMENT);
         }
-
         if (display_idx == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
 }
-
 void draw_lsp_settings(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     int rows, cols;
@@ -870,7 +824,6 @@ void draw_lsp_settings(EditorWindow *jw) {
         if (i == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
 }
-
 void draw_debug_settings(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     int rows, cols;
@@ -878,16 +831,13 @@ void draw_debug_settings(EditorWindow *jw) {
     (void)rows;
     
     draw_settings_header(jw->win, "SETTINGS > DEBUG", cols);
-
     const char *debug_opts[] = {
         "Logging Enabled",
         "Logging Level",
         "OPEN LOG FILE",
         "CLEAR LOG FILE"
     };
-
     extern const char *level_strings[];
-
     for (int i = 0; i < 4; i++) {
         if (i == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
         
@@ -910,7 +860,6 @@ void draw_debug_settings(EditorWindow *jw) {
         if (i == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
 }
-
 void draw_dictionary_settings(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     int rows, cols;
@@ -919,7 +868,6 @@ void draw_dictionary_settings(EditorWindow *jw) {
     (void)state;
     
     draw_settings_header(jw->win, "SETTINGS > DICTIONARY", cols);
-
     wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
     mvwprintw(jw->win, 4, 4, "  Current Language     : %s ", global_config.dictionary_lang);
     wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
@@ -927,7 +875,6 @@ void draw_dictionary_settings(EditorWindow *jw) {
     mvwprintw(jw->win, 6, 4, "[ENTER] to change language (e.g. 'en', 'pt').");
     mvwprintw(jw->win, 7, 4, "Type 'auto' to use Spell Checker language.");
 }
-
 void draw_tasks_settings(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     int rows, cols;
@@ -941,7 +888,7 @@ void draw_tasks_settings(EditorWindow *jw) {
     int max_display = rows - 6;
     if (max_display < 1) return;
     
-    int num_items = global_task_manager.num_tasks + 1; // +1 for "Create new..."
+    int num_items = global_task_manager.num_tasks + 1;
     if (state->current_selection >= num_items) state->current_selection = num_items - 1;
     
     if (state->current_selection < state->scroll_top) state->scroll_top = state->current_selection;
@@ -963,7 +910,6 @@ void draw_tasks_settings(EditorWindow *jw) {
         if (idx == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
 }
-
 void settings_panel_redraw(EditorWindow *jw) {
     SettingsPanelState *state = jw->settings_state;
     werase(jw->win);
@@ -1018,11 +964,9 @@ void settings_panel_redraw(EditorWindow *jw) {
     
     wnoutrefresh(jw->win);
 }
-
 void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
     SettingsPanelState *state = jw->settings_state;
     state->is_dirty = true;
-
     if (state->search_mode) {
         if (ch == 27 || ch == '\n' || ch == KEY_ENTER) {
             state->search_mode = false;
@@ -1039,12 +983,11 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
         }
         return;
     }
-
     switch (state->current_view) {
         case SETTINGS_VIEW_MAIN:
             switch(ch) {
                 case 'q':
-                case 27: // ESC / Ctrl+[
+                case 27:
                     close_active_window(should_exit);
                     break;
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
@@ -1062,9 +1005,10 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                     break;
                 case KEY_ENTER:
                 case '\n':
-                    // Switch to the selected view
-                    state->current_view = state->current_selection + 1; // relies on enum order
-                    state->current_selection = 0; // Reset selection for the new view
+                    if (state->current_selection >= 0 && state->current_selection < num_main_menu_items) {
+                        state->current_view = menu_to_view_map[state->current_selection];
+                    }
+                    state->current_selection = 0;
                     state->scroll_top = 0;
                     state->search_term[0] = '\0';
                     break;
@@ -1075,7 +1019,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                 case 'q':
                 case 27:
                     state->current_view = SETTINGS_VIEW_MAIN;
-                    state->current_selection = 2; // Plugins index in main menu
+                    state->current_selection = MAIN_MENU_PLUGINS;
                     state->scroll_top = 0;
                     break;
                 case 'j':
@@ -1143,7 +1087,6 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
         }
         case SETTINGS_VIEW_KEYBINDINGS:
             if (state->is_assigning_key) {
-                // Find correct index based on filtered view
                 int target_idx = -1;
                 int count = 0;
                 for(int i=1; i<ACT_COUNT; i++) {
@@ -1152,14 +1095,12 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                         count++;
                     }
                 }
-
                 if (target_idx == -1) {
                     state->is_assigning_key = false;
                     state->assigning_stage = 0;
                     return;
                 }
-
-                if (ch == 27 && state->assigning_stage == 0) { // ESC sequence (Alt)
+                if (ch == 27 && state->assigning_stage == 0) {
                     nodelay(jw->win, TRUE);
                     int next = wgetch(jw->win);
                     nodelay(jw->win, FALSE);
@@ -1169,9 +1110,8 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                             global_bindings[target_idx].leader = next;
                             state->assigning_stage = 1;
                             editor_set_status_msg(get_any_editor_state(), "Leader set. Press second key.");
-                            return; // Wait for second key
+                            return;
                         } else {
-                            // Assign as simple Alt+Key
                             global_bindings[target_idx].key = next;
                             global_bindings[target_idx].alt = true;
                             global_bindings[target_idx].leader = 0;
@@ -1179,14 +1119,12 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                         }
                     } 
                 } else {
-                    // Regular key or stage 1 key
                     global_bindings[target_idx].key = ch;
                     if (state->assigning_stage == 0) {
                         global_bindings[target_idx].alt = false;
                         global_bindings[target_idx].ctrl = (ch > 0 && ch < 32);
                         global_bindings[target_idx].leader = 0;
                     }
-                    // if stage was 1, leader is already set, we just update the key
                 }
                 
                 state->is_assigning_key = false;
@@ -1203,7 +1141,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                     break;
                 case 'q': case 27:
                     state->current_view = SETTINGS_VIEW_MAIN;
-                    state->current_selection = 4; 
+                    state->current_selection = MAIN_MENU_KEYBINDINGS; 
                     break;
                 case 'j': case KEY_DOWN:
                     {
@@ -1224,9 +1162,9 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                         if (state->current_selection < state->scroll_top) state->scroll_top--;
                     }
                     break;
-                case KEY_DC: // Delete key (ncurses)
-                case 127:    // Backspace/Delete (common)
-                case 8:      // Ctrl+H / Backspace
+                case KEY_DC:
+                case 127:
+                case 8:
                     {
                         int current_idx = -1;
                         int count = 0;
@@ -1268,9 +1206,9 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
         case SETTINGS_VIEW_EDITOR:
             switch(ch) {
                 case 'q':
-                case 27: // ESC
+                case 27:
                     state->current_view = SETTINGS_VIEW_MAIN;
-                    state->current_selection = 0;
+                    state->current_selection = MAIN_MENU_EDITOR;
                     break;
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
                 case 'j':
@@ -1297,10 +1235,9 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                             global_config.status_bar_mode = (global_config.status_bar_mode == 1) ? 0 : 1;
                         } else if (strcmp(editor_int_settings[int_idx].name, "Icon Mode (0-2)") == 0) {
                             global_config.icon_mode = (global_config.icon_mode == 1) ? 2 : (global_config.icon_mode == 2) ? 0 : 1;
-
                         }
                     }
-                    save_global_config(); // Salva no disco
+                    save_global_config();
                     apply_settings_globally();
                     break;
             }
@@ -1310,7 +1247,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
             switch(ch) {
                 case 'q': case 27: 
                     state->current_view = SETTINGS_VIEW_MAIN; 
-                    state->current_selection = 0; 
+                    state->current_selection = MAIN_MENU_THEME; 
                     state->scroll_top = 0;
                     break;
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
@@ -1341,9 +1278,9 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
         case SETTINGS_VIEW_SPELL:
             switch(ch) {
                 case 'q':
-                case 27: // ESC
+                case 27:
                     state->current_view = SETTINGS_VIEW_MAIN;
-                    state->current_selection = 2; // Selection was 'Spell Checker'
+                    state->current_selection = MAIN_MENU_SPELL;
                     break;
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
                 case 'j':
@@ -1368,32 +1305,26 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                         } else {
                             const char *lang_code = spell_languages[state->current_selection - 1].lang_code;
                             
-                            // Always set as default immediately
                             strncpy(global_config.default_spell_lang, lang_code, sizeof(global_config.default_spell_lang) - 1);
                             global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
-                            save_global_config(); // Save new default language
-
-                            // Check if curl is available before doing anything with downloads
+                            save_global_config();
                             if (system("which curl > /dev/null 2>&1") != 0) {
                                 char *const err_cmd[] = {"/bin/sh", "-c", "echo 'Error: the curl command isn't installed, install it to download the dictionarys.'; read -n 1 - r - p 'Press any key to continue...'", NULL};
                                 create_generic_terminal_window(err_cmd);
-                                // Set status message if no curl
                                 EditorState* current_editor = get_any_editor_state();
                                 if (current_editor) {
                                     editor_set_status_msg(current_editor, "Error: curl not found. Cannot download dictionaries.");
                                 }
-                                break; // Exit early if no curl
+                                break;
                             }
                             
                             if (spell_checker_is_downloaded(lang_code)) {
-                                // Dictionary already downloaded, just set status message
                                 EditorState* current_editor = get_any_editor_state();
                                 if (current_editor) {
                                     editor_set_status_msg(current_editor, "Default spell language set to %s (already downloaded).", lang_code);
                                 }
                                 apply_settings_globally();
                             } else {
-                                // Dictionary not downloaded, proceed with download logic
                                 char command[2048];
                                 const char *base_url = "https://cgit.freedesktop.org/libreoffice/dictionaries/plain";
                                 char download_dir[1024];
@@ -1424,7 +1355,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
             switch(ch) {
                 case 'q': case 27: 
                     state->current_view = SETTINGS_VIEW_MAIN; 
-                    state->current_selection = 0; 
+                    state->current_selection = MAIN_MENU_LSP; 
                     break;
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
                 case 'j': case KEY_DOWN:
@@ -1434,7 +1365,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                     if (state->current_selection > 0) state->current_selection--;
                     break;
                 case KEY_ENTER: case '\n':
-                    if (state->current_selection == 0) { // Toggle LSP
+                    if (state->current_selection == 0) {
                         global_config.lsp_enabled = !global_config.lsp_enabled;
                     } else if (state->current_selection == 1) {
                         global_config.lsp_diagnostics = !global_config.lsp_diagnostics;
@@ -1463,7 +1394,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
             switch(ch) {
                 case 'q': case 27: 
                     state->current_view = SETTINGS_VIEW_MAIN; 
-                    state->current_selection = 6; 
+                    state->current_selection = MAIN_MENU_TASKS; 
                     state->scroll_top = 0;
                     break;
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
@@ -1495,7 +1426,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
             switch(ch) {
                 case 'q': case 27: 
                     state->current_view = SETTINGS_VIEW_MAIN; 
-                    state->current_selection = 6; 
+                    state->current_selection = MAIN_MENU_DEBUG; 
                     break;
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
                 case 'j': case KEY_DOWN:
@@ -1535,7 +1466,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
             switch(ch) {
                 case 'q': case 27: case 'h': case KEY_LEFT:
                     state->current_view = SETTINGS_VIEW_MAIN; 
-                    state->current_selection = 7; 
+                    state->current_selection = MAIN_MENU_DICTIONARY; 
                     break;
                 case KEY_CTRL_RIGHT_BRACKET: state->is_dirty = true; next_window(); break;
                 case KEY_ENTER: case '\n': {
@@ -1553,7 +1484,6 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
             break;
     }
 }
-
 void free_settings_panel_state(SettingsPanelState *state) {
     if (!state) return;
     if (state->theme_list) {
@@ -1562,13 +1492,11 @@ void free_settings_panel_state(SettingsPanelState *state) {
     }
     free(state);
 }
-
 void get_tasks_filepath(char *buffer, size_t size) {
     char dir[PATH_MAX];
     ensure_a2_config_dir(dir, sizeof(dir));
     snprintf(buffer, size, "%s/tasks.a2", dir);
 }
-
 void save_custom_tasks() {
     char path[PATH_MAX];
     get_tasks_filepath(path, sizeof(path));
@@ -1580,7 +1508,6 @@ void save_custom_tasks() {
     }
     fclose(f);
 }
-
 void load_custom_tasks() {
     char path[PATH_MAX];
     get_tasks_filepath(path, sizeof(path));
@@ -1613,7 +1540,6 @@ void load_custom_tasks() {
     }
     fclose(f);
 }
-
 void ui_create_task() {
     if (global_task_manager.num_tasks >= MAX_CUSTOM_TASKS) return;
     
@@ -1633,7 +1559,6 @@ void ui_create_task() {
     global_task_manager.num_tasks++;
     save_custom_tasks();
 }
-
 void ui_edit_task(int idx) {
     if (idx < 0 || idx >= global_task_manager.num_tasks) return;
     
@@ -1652,7 +1577,7 @@ void ui_edit_task(int idx) {
     if (!ui_ask_input("Command (e.g. 'term make'):", cmd, sizeof(cmd))) return;
     
     strncpy(t->name, name, sizeof(t->name)-1);
-    strncpy(t->description, desc, sizeof(t->description)-1);
+    strncpy(t->description, desc, sizeof(desc)-1);
     strncpy(t->command, cmd, sizeof(t->command)-1);
     
     int act = ACT_CUSTOM_TASK_START + idx;
@@ -1661,3 +1586,4 @@ void ui_edit_task(int idx) {
     
     save_custom_tasks();
 }
+
