@@ -61,6 +61,8 @@ The a2 editor is built upon these excellent open-source libraries:
 - **Jansson** - JSON support for LSP and sessions.
 - **Libcurl** - Network capabilities for dictionary downloads.
 - **stb_image** - Image loading for markdown previews.
+- **Radare2** - Reverse engineering and disassembly engine.
+- **Ghidra** - Advanced decompilation capabilities.
 
 _Full license details for a2 and its dependencies can be found in the [LICENSE](./LICENSE) file._
 
