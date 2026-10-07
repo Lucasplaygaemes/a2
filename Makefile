@@ -3,9 +3,19 @@
 # --- Compiler Configuration ---
 CC = gcc
 
-# Base CFLAGS and LDFLAGS
-CFLAGS = -g -Wall -Wextra -I. -I./a2_files $(shell pkg-config --cflags ncursesw 2>/dev/null)
-LDFLAGS = -rdynamic -lncursesw -ljansson -lpthread -ldl -lssl -lcrypto -lvterm -lm -Wl,-rpath=/usr/local/lib
+DEBUG ?= 0
+
+ifeq ($(DEBUG),1)
+    DEBUG_CFLAGS = -g -O0
+    DEBUG_LDFLAGS = -rdynamic
+else
+    DEBUG_CFLAGS = -O2
+    DEBUG_LDFLAGS = -Wl,-s 
+endif
+
+# Base CFLAGS e LDFLAGS
+CFLAGS = $(DEBUG_CFLAGS) -Wall -Wextra -I. -I./a2_files $(shell pkg-config --cflags ncursesw 2>/dev/null)
+LDFLAGS = $(DEBUG_LDFLAGS) -lncursesw -ljansson -lpthread -ldl -lssl -lcrypto -lvterm -lm -Wl,-rpath=/usr/local/lib
 
 # Enable ASan if ASAN=1 is passed: make ASAN=1
 ifeq ($(ASAN), 1)
