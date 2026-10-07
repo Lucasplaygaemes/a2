@@ -69,7 +69,7 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
     switch (action) {
         case ACT_TOGGLE_FLOATING_TERMINAL: toggle_floating_terminal(); break;
         case ACT_TOGGLE_POPUP_MOVE:
-            if (state->lsp.is_popup_visible) {
+            if (state && state->lsp.is_popup_visible) {
                 state->lsp.is_popup_movable = !state->lsp.is_popup_movable;
                 state->buffer.is_dirty = true;
                 if (state->lsp.is_popup_movable) {
