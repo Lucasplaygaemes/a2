@@ -1,0 +1,155 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to the same branch/PR cancels the run that is still in progress.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # a2 uses the TragicWarrior fork of libvterm (vterm_t, VTERM_WND_RENDER_ALL...),
+  # not the libvterm shipped by distros. Pinned so builds are reproducible;
+  # bump the commit on purpose when you want to update it.
+  LIBVTERM_REPO: https://github.com/TragicWarrior/libvterm.git
+  LIBVTERM_REF: 369cb5ea415c8c3eade43ed85c17b6ca1b9c7da4
+
+defaults:
+  run:
+    shell: bash   # bash with -eo pipefail, so `make | tee` fails when make fails
+
+jobs:
+  # Fast checks that need no dependencies.
+  hygiene:
+    name: hygiene
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No hardcoded /tmp paths in the sources
+        run: |
+          # Fixed names in a shared directory can be hijacked with symlinks.
+          # Use a2_mkstemp() / a2_tmp_dir() from a2_files/a2_tmp.h instead.
+          if grep -rn '"/tmp' a2_files plugins --include='*.c'; then
+            echo "::error::Hardcoded /tmp path found. Use a2_mkstemp() or a2_tmp_dir() (a2_files/a2_tmp.h)."
+            exit 1
+          fi
+
+  build:
+    name: build (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # What users get: -O2, stripped.
+          - name: release
+            make_args: ""
+          # AddressSanitizer: catches heap overflows / use-after-free at runtime.
+          - name: asan
+            make_args: "DEBUG=1 ASAN=1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config binutils \
+            libncursesw5-dev libjansson-dev libcurl4-openssl-dev \
+            libssl-dev libhunspell-dev
+
+      - name: Cache libvterm
+        id: vterm-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/libvterm-prefix
+          key: libvterm-${{ env.LIBVTERM_REF }}-ubuntu-24.04
+
+      - name: Build libvterm (pinned fork)
+        if: steps.vterm-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone "$LIBVTERM_REPO" "$RUNNER_TEMP/libvterm"
+          git -C "$RUNNER_TEMP/libvterm" checkout "$LIBVTERM_REF"
+          cd "$RUNNER_TEMP/libvterm"
+          cmake -DCMAKE_INSTALL_PREFIX="$HOME/libvterm-prefix" .
+          make -j"$(nproc)"
+          make install
+
+      - name: Point the compiler and loader at libvterm
+        run: |
+          {
+            echo "C_INCLUDE_PATH=$HOME/libvterm-prefix/include"
+            echo "LIBRARY_PATH=$HOME/libvterm-prefix/lib"
+            echo "LD_LIBRARY_PATH=$HOME/libvterm-prefix/lib"
+          } >> "$GITHUB_ENV"
+
+      - name: Build a2 and the plugins
+        run: make -j"$(nproc)" ${{ matrix.make_args }} 2>&1 | tee build.log
+
+      # The project still has warnings. Instead of failing on all of them, fail
+      # when the count GROWS. When you fix some, lower the number in
+      # .github/warnings-baseline.txt so the gain is locked in.
+      - name: Warning ratchet
+        if: matrix.name == 'release'
+        run: |
+          current=$(grep -c 'warning:' build.log || true)
+          baseline=$(tr -d '[:space:]' < .github/warnings-baseline.txt)
+          echo "warnings: $current (baseline: $baseline)"
+          if [ "$current" -gt "$baseline" ]; then
+            echo "::error::New compiler warnings: $current > baseline $baseline. Fix them (see build.log output above)."
+            exit 1
+          fi
+          if [ "$current" -lt "$baseline" ]; then
+            echo "::notice::Warnings dropped to $current. Lower .github/warnings-baseline.txt to $current."
+          fi
+
+      - name: Smoke test (starts in a pseudo-terminal, opens a file, quits)
+        env:
+          TERM: xterm
+          ASAN_OPTIONS: detect_leaks=0:exitcode=99
+        run: |
+          # a2 needs a terminal; `script` provides one and returns the exit code
+          # of the program, so a crash, an ASan report or a hang (timeout) fails the job.
+          printf 'hello\n' > "$RUNNER_TEMP/smoke.txt"
+          log="$RUNNER_TEMP/smoke.log"   # raw terminal output: only shown on failure
+
+          fail() {
+            echo "::error::a2 exited abnormally in the '$1' smoke test"
+            tail -c 3000 "$log" | cat -v
+            exit 1
+          }
+
+          echo "--- safe mode (no plugins) ---"
+          (sleep 3; printf ':q\r') \
+            | timeout 60 script -qec "./a2 --safe $RUNNER_TEMP/smoke.txt" /dev/null > "$log" 2>&1 \
+            || fail "safe mode"
+
+          echo "--- with plugins: open the plugin manager, close it, quit ---"
+          (sleep 3; printf ':plugins\r'; sleep 2; printf 'q'; sleep 1; printf ':q\r') \
+            | timeout 60 script -qec "./a2 $RUNNER_TEMP/smoke.txt" /dev/null > "$log" 2>&1 \
+            || fail "plugins"
+          # "ACTIVE PLUGINS (N Loaded)" with N >= 1 proves dlopen() of the plugins worked.
+          grep -aqE 'ACTIVE PLUGINS \([1-9][0-9]* Loaded\)' "$log" \
+            || { echo "::error::no plugin was loaded"; fail "plugins"; }
+
+      # Regression test for the temp-file fix: files must be created in a private
+      # per-user directory, never under a predictable name in /tmp.
+      - name: Temp files are private
+        run: |
+          dir=""
+          for d in "${XDG_RUNTIME_DIR:-/nonexistent}/a2" "/tmp/a2-$(id -u)"; do
+            if [ -d "$d" ]; then dir="$d"; break; fi
+          done
+          [ -n "$dir" ] || { echo "::error::private temp dir was not created"; exit 1; }
+          [ "$(stat -c %a "$dir")" = "700" ] || { echo "::error::$dir is not mode 700"; exit 1; }
+          ls "$dir"/a2_plugins_registry.* > /dev/null
+          [ ! -e /tmp/a2_plugins_registry.txt ] || { echo "::error::old fixed /tmp path was used"; exit 1; }
