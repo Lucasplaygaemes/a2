@@ -1,4 +1,5 @@
 #include "a2_plugin_api.h"
+#include "a2_tmp.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,12 +11,14 @@ static const A2PluginAPI *g_api = NULL;
 
 static bool g_use_radare2 = false;
 static void run_re_tool_and_display(EditorState *state, const char *title, const char *cmd) {
-    static int output_counter = 0;
-    output_counter++;
-    
     char tmp_path[512];
-    snprintf(tmp_path, sizeof(tmp_path), "/tmp/a2_re_%d_%d.txt", getpid(), output_counter);
-    FILE *f = fopen(tmp_path, "w");
+    int tmp_fd = a2_mkstemp("a2_re", tmp_path, sizeof(tmp_path));
+    if (tmp_fd < 0) {
+        g_api->set_status_msg(state, "RE Suite: could not create a temporary file");
+        return;
+    }
+    FILE *f = fdopen(tmp_fd, "w");
+    if (!f) close(tmp_fd);
     if (f) {
         fprintf(f, "======================================================================\n");
         fprintf(f, " %s\n", title);
@@ -49,10 +52,17 @@ static void cmd_disasm(EditorState *state, const char *args) {
     char *ext = strrchr(target, '.');
     if (ext && (strcmp(ext, ".c") == 0 || strcmp(ext, ".cpp") == 0)) {
         is_source = true;
-        snprintf(bin_target, sizeof(bin_target), "/tmp/a2_disasm_target.o");
+        // Reserve a unique private file for the object code (gcc overwrites it).
+        int obj_fd = a2_mkstemp("a2_disasm", bin_target, sizeof(bin_target));
+        if (obj_fd < 0) {
+            g_api->set_status_msg(state, "RE Suite: could not create a temporary file");
+            return;
+        }
+        close(obj_fd);
         char gcc_cmd[1024];
         snprintf(gcc_cmd, sizeof(gcc_cmd), "gcc -g -c \"%s\" -o \"%s\"", target, bin_target);
         if (system(gcc_cmd) != 0) {
+            unlink(bin_target);
             g_api->set_status_msg(state, "RE Suite: Compilation failed for %s", target);
             return;
         }
@@ -94,6 +104,7 @@ static void cmd_disasm(EditorState *state, const char *args) {
         }
         g_api->set_status_msg(state, "Disassembling %s (%s)...", target, engine_name);
         run_re_tool_and_display(state, title, disasm_cmd);
+        if (is_source) unlink(bin_target);  // objdump already ran (system() is synchronous)
     }
 }
 
@@ -262,15 +273,6 @@ static void cmd_decompile(EditorState *state, const char *args) {
     
     char *const decomp_cmd[] = {"r2", "-c", cmd_str, bin_target, NULL};
     
-    char tmp_path[512];
-    static int dec_counter = 0;
-    snprintf(tmp_path, sizeof(tmp_path), "/tmp/a2_dec_%d_%d.c", getpid(), ++dec_counter);
-    
-    // char sys_cmd[1024];
-    // snprintf(sys_cmd, sizeof(sys_cmd), "%s > \"%s\" 2>/dev/null", full_cmd, tmp_path);
-    // int res = system(sys_cmd);
-    // (void)res;
-    
     if (g_api->create_terminal_window) {
         g_api->create_terminal_window(decomp_cmd);
     }
@@ -332,8 +334,9 @@ A2_PLUGIN_DEFINE_INFO(
 static void cmd_re_suite_info(EditorState *state, const char *args) {
     (void)args;
     char tmp_path[512];
-    snprintf(tmp_path, sizeof(tmp_path), "/tmp/a2_re_suite_man_%d.txt", getpid());
-    FILE *f = fopen(tmp_path, "w");
+    int tmp_fd = a2_mkstemp("a2_re_suite_man", tmp_path, sizeof(tmp_path));
+    FILE *f = (tmp_fd >= 0) ? fdopen(tmp_fd, "w") : NULL;
+    if (tmp_fd >= 0 && !f) close(tmp_fd);
     if (f) {
         fprintf(f, "=========================================================\n");
         fprintf(f, "               REVERSE ENGINEERING SUITE                 \n");

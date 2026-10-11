@@ -1,6 +1,7 @@
 #include "timer.h"
 #include "screen_ui.h"
 #include "cache.h"
+#include "a2_tmp.h"
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
@@ -24,8 +25,15 @@ static void get_log_file_path(char* buffer, size_t buffer_size) {
     } else {
         const char* home_dir = getenv("HOME");
         if (!home_dir) {
-            // Fallback to /tmp if HOME isn't set
-            snprintf(buffer, buffer_size, "/tmp/%s", LOG_FILE);
+            // HOME isn't set: use a private per-user temp dir, never a bare /tmp/<name>.
+            // On failure the path is left empty and the callers' fopen() simply fails.
+            char tmp_dir[PATH_MAX];
+            if (a2_tmp_dir(tmp_dir, sizeof(tmp_dir)) != 0) {
+                buffer[0] = '\0';
+                return;
+            }
+            int len = snprintf(buffer, buffer_size, "%s/%s", tmp_dir, LOG_FILE);
+            if (len < 0 || (size_t)len >= buffer_size) buffer[0] = '\0';
             return;
         }
         snprintf(data_dir_path, sizeof(data_dir_path), "%s/.local/share/a2", home_dir);

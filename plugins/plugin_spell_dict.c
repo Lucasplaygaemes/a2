@@ -1,4 +1,5 @@
 #include "a2_plugin_api.h"
+#include "a2_tmp.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -111,12 +112,10 @@ static void *dictionary_fetch_thread(void *arg) {
         }
     }
 
-    static int out_counter = 0;
-    out_counter++;
     char result_file[512];
-    snprintf(result_file, sizeof(result_file), "/tmp/a2_dict_%d_%d.txt", getpid(), out_counter);
-
-    FILE *rf = fopen(result_file, "w");
+    int result_fd = a2_mkstemp("a2_dict", result_file, sizeof(result_file));
+    FILE *rf = (result_fd >= 0) ? fdopen(result_fd, "w") : NULL;
+    if (result_fd >= 0 && !rf) close(result_fd);
     if (!rf) {
         free(data);
         if (json_text) free(json_text);

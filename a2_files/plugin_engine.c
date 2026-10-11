@@ -4,6 +4,7 @@
 #include "others.h"
 #include "logger.h"
 #include "fileio.h"
+#include "a2_tmp.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -536,10 +537,10 @@ void plugin_engine_trigger_event(EditorState *state, A2EventType event_type, voi
 
 void plugin_engine_list_plugins(EditorState *state) {
     char tmp_file[PATH_MAX];
-    snprintf(tmp_file, sizeof(tmp_file), "/tmp/a2_plugins_registry.txt");
-
-    FILE *f = fopen(tmp_file, "w");
+    int tmp_fd = a2_mkstemp("a2_plugins_registry", tmp_file, sizeof(tmp_file));
+    FILE *f = (tmp_fd >= 0) ? fdopen(tmp_fd, "w") : NULL;
     if (!f) {
+        if (tmp_fd >= 0) close(tmp_fd);
         editor_set_status_msg(state, "Failed to create plugins report file.");
         return;
     }
