@@ -9,7 +9,6 @@
 #include "timer.h"
 #include "explorer.h"
 #include "themes.h"
-#include "dictionary.h"
 #include "diff.h"
 #include "spell.h"
 #include "base64.h"
@@ -149,7 +148,6 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     state->lsp.diagnostic_popup = NULL;
                 }
                 state->lsp.is_popup_visible = false;
-                state->dictionary.is_visible = false;
                 if (state->spell.hover_message) {
                     free(state->spell.hover_message);
                     state->spell.hover_message = NULL;
@@ -208,10 +206,6 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         if (state->spell.hover_message) {
             free(state->spell.hover_message);
             state->spell.hover_message = NULL;
-            state->buffer.is_dirty = true;
-        }
-        if (state->dictionary.is_visible) {
-            state->dictionary.is_visible = false;
             state->buffer.is_dirty = true;
         }
     }
