@@ -1,6 +1,16 @@
 # a2 Commands Manual
 
-This page details the commands available in Command Mode (activated with *:*).
+Command mode is `:`. This list is the commands implemented in `command_execution.c`
+plus the commands registered by the plugins that `make` builds into `~/.a2/plugins/`.
+
+A plugin command does nothing if that `.so` failed to load. `:plugins` shows what loaded.
+
+External commands and system utilities run through a dedicated process execution pipeline
+(`process_exec`) using direct arguments and file-descriptor pipes. User shell commands can be
+executed on demand with `:! <command>`.
+
+Buffer bounds: The current buffer engine supports up to 32768 lines per file. Lines longer than
+4095 bytes are partitioned across lines. See the main help page for details.
 
 ## File Operations
 - *:w [name]*: Writes (saves) the current file safely using atomic saving. Can optionally save to a new `name`.
@@ -71,7 +81,12 @@ This page details the commands available in Command Mode (activated with *:*).
 - *:plugins* / *:plugin-list*: Displays a list of all active dynamic `.so` plugins loaded from `~/.a2/plugins/` and their registered commands. Plugins can also be toggled ON/OFF and configured via `:settings` > *Plugins*. Selecting a plugin in the Settings menu opens a detail sub-menu for toggling plugin-registered options. Disabled plugin choices are persisted across restarts in `~/.a2/disabled_plugins.txt`.
 
 ## Reverse Engineering Suite Plugin (`plugin_re_suite.so`)
-- *:disasm [file] [func]*: Disassembles the machine code of `file` (or current buffer). Disassembles a specific function if `func` is provided. Opens in a new window split.
+
+Optional. These are not built into the editor. They shell out to `r2`, `readelf`, `nm`, `ldd`, or `strings`.
+If `r2` is not installed, the disassembly and decompile commands fail.
+There is no Ghidra headless integration. The plugin flag that says "Ghidra" still runs `r2 -c pdg`.
+
+- *:disasm [file] [func]*: Disassembles `file`, or the current buffer. A function name limits the output. Opens a split.
 - *:elf [file]*: Displays ELF file header and program headers (segments) in a new split.
 - *:sections [file]*: Displays ELF section headers list (`readelf -S`) in a new split.
 - *:symbols [file]* / *:nm [file]*: Displays the demangled symbol table (`nm -C` / `readelf -s`) in a new split.
@@ -83,8 +98,8 @@ This page details the commands available in Command Mode (activated with *:*).
 - *:re-suite*: Displays summary and help for all Reverse Engineering commands.
 
 ## Dictionary & Spell Checker Plugin (`plugin_spell_dict.so`)
-- *:dict <word>* / *:wiktionary <word>*: Fetches definition from Wiktionary in real-time and opens it in a new window split.
-- *:spell [lang]* / *:spellcheck [lang]*: Loads/switches Hunspell dictionary language (e.g. `:spell en_US` or `:spell pt_BR`).
+- *:dict <word>* / *:wiktionary <word>*: Fetches a definition from Wiktionary. Needs libcurl at runtime, loaded with dlopen. Not linked into the binary.
+- *:spell [lang]* / *:spellcheck [lang]*: Loads or switches the Hunspell language (for example `:spell en_US` or `:spell pt_BR`). Hunspell is also dlopen'd.
 ## Local History & Time Machine
 - *:history* / *:his* / *:local-history*: Displays a list of all local snapshots recorded for the current file.
 - *:history-diff <N>* / *:his-diff <N>*: Displays side-by-side diff between the active buffer and snapshot #N.
@@ -108,4 +123,10 @@ This page details the commands available in Command Mode (activated with *:*).
 - *:savemacros*: Saves current macros to `~/.a2/macros.a2`.
 - *:loadmacros*: Loads macros from the config folder.
 - *:listmacros*: Displays all loaded macros.
-- *:marks*: Lists all active marks with their line and column positions.
+- *:marks*: Lists marks that are set, with line and column.
+- *:llvm*: Compiles the current file and shows LLVM IR (`Alt+l` does the same).
+- *:logs*: Opens the editor log.
+- *:lsp-start*: Starts the language server if it is not running.
+- *:lsp-check* / *:lsp-debug*: Diagnostic helpers for the LSP client. Not a general debugger.
+- *:load-config* / *:full_load*: Reload configuration / reload the session pieces those commands implement.
+- *:shortcuts-generate-default*: Writes the current binding table out as a default file.
