@@ -458,7 +458,7 @@ void explorer_redraw(EditorWindow *jw) {
         
         if (state->show_preview && jw->width > 40 && state->num_entries > 0) {
             char full_path[PATH_MAX];
-            snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[state->selection]);
+            a2_path_join(full_path, sizeof(full_path), state->current_path, state->entries[state->selection]);
             
             draw_file_preview(jw->win, full_path, 1, list_width + 1, jw->height - 2, jw->width - list_width - 2);
         }
@@ -511,7 +511,7 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
     char selected_path[PATH_MAX];
 
     if (state->num_entries > 0 && state->selection < state->num_entries) {
-        snprintf(selected_path, sizeof(selected_path), "%s/%s", state->current_path, state->entries[state->selection]);
+        a2_path_join(selected_path, sizeof(selected_path), state->current_path, state->entries[state->selection]);
     }
 
     // Handle Alt key sequences for global shortcuts
@@ -693,14 +693,14 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                for (int i = 0; i < state->num_entries; i++) {
                    if (state->is_selected[i]) {
                        char full_path[PATH_MAX];
-                       snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[i]);
+                       a2_path_join(full_path, sizeof(full_path), state->current_path, state->entries[i]);
                        state->clipboard_paths[state->num_clipboard_items++] = strdup(full_path);
                    }
                }
            } else if (state->num_entries > 0) {
                state->clipboard_paths = malloc(sizeof(char*) * 1);
                char full_path[PATH_MAX];
-               snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[state->selection]);
+               a2_path_join(full_path, sizeof(full_path), state->current_path, state->entries[state->selection]);
                state->clipboard_paths[0] = strdup(full_path);
                state->num_clipboard_items = 1;
            }
@@ -745,7 +745,7 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                    for (int i = 0; i < state->num_entries; i++) {
                        if (state->is_selected[i]) {
                            char full_path[PATH_MAX];
-                           snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[i]);
+                           a2_path_join(full_path, sizeof(full_path), state->current_path, state->entries[i]);
                            state->clipboard_paths[state->num_clipboard_items++] = strdup(full_path);
                        }
                    }
@@ -753,7 +753,7 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                    // copy only the current item
                    state->clipboard_paths = malloc(sizeof(char*) * 1);
                    char full_path[PATH_MAX];
-                   snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[state->selection]);
+                   a2_path_join(full_path, sizeof(full_path), state->current_path, state->entries[state->selection]);
                    state->clipboard_paths[0] = strdup(full_path);
                    state->num_clipboard_items = 1;
            }
@@ -804,7 +804,7 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                         for (int i = 0; i < state->num_entries; i++) {
                             if (state->is_selected[i]) {
                                 char full_path[PATH_MAX];
-                                snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[i]);
+                                a2_path_join(full_path, sizeof(full_path), state->current_path, state->entries[i]);
                                 run_cmd("rm", "-rf", full_path, NULL);
                             }
                         }
@@ -813,7 +813,7 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                         state->num_selected = 0;
                     } else {
                         char full_path[PATH_MAX];
-                        snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[state->selection]);
+                        a2_path_join(full_path, sizeof(full_path), state->current_path, state->entries[state->selection]);
                         run_cmd("rm", "-rf", full_path, NULL);
                 }
                 explorer_reload_entries(state);
@@ -828,10 +828,10 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                 char new_name[256];
                 if (ui_ask_input("Rename to", new_name, 256)) {
                     char new_path[PATH_MAX];
-                    snprintf(new_path, sizeof(new_path), "%s/%s", state->current_path, new_name);
+                    a2_path_join(new_path, sizeof(new_path), state->current_path, new_name);
                     
                     if (rename(selected_path, new_path) == 0) {
-                        snprintf(state->status_msg, sizeof(state->status_msg), "Renamed to %s", new_name);
+                        snprintf(state->status_msg, sizeof(state->status_msg), "Renamed to %.*s", (int)(sizeof(state->status_msg) - 15), new_name);
                         explorer_reload_entries(state);
                     } else {
                         snprintf(state->status_msg, sizeof(state->status_msg), "Error renaming: %s", strerror(errno));
@@ -845,11 +845,11 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                 char file_name[256];
                 if (ui_ask_input("New file name", file_name, 256)) {
                     char new_file_path[PATH_MAX];
-                    snprintf(new_file_path, sizeof(new_file_path), "%s/%s", state->current_path, file_name);
+                    a2_path_join(new_file_path, sizeof(new_file_path), state->current_path, file_name);
                     FILE *f = fopen(new_file_path, "w");
                     if (f) {
                         fclose(f);
-                        snprintf(state->status_msg, sizeof(state->status_msg), "File '%s' created.", file_name);
+                        snprintf(state->status_msg, sizeof(state->status_msg), "File '%.*s' created.", (int)(sizeof(state->status_msg) - 20), file_name);
                         explorer_reload_entries(state);
                     } else {
                         snprintf(state->status_msg, sizeof(state->status_msg), "Error creating the file: %s", strerror(errno));
@@ -863,9 +863,9 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                 char dir_name[256];
                 if (ui_ask_input("New directory name", dir_name, 256)) {
                     char new_dir_path[PATH_MAX];
-                    snprintf(new_dir_path, sizeof(new_dir_path), "%s/%s", state->current_path, dir_name);
+                    a2_path_join(new_dir_path, sizeof(new_dir_path), state->current_path, dir_name);
                     if (mkdir(new_dir_path, 0755) == 0) {
-                        snprintf(state->status_msg, sizeof(state->status_msg), "Directory '%s' created.", dir_name);
+                        snprintf(state->status_msg, sizeof(state->status_msg), "Directory '%.*s' created.", (int)(sizeof(state->status_msg) - 25), dir_name);
                         explorer_reload_entries(state);
                     } else {
                         snprintf(state->status_msg, sizeof(state->status_msg), "Error creating the directory: %s", strerror(errno));
