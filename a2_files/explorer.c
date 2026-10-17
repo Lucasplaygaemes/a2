@@ -4,6 +4,8 @@
 #include "fileio.h"
 #include "themes.h"
 #include "screen_ui.h"
+#include "process_exec.h"
+
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -266,7 +268,8 @@ void explorer_reload_entries(ExplorerState *state) {
         }
 
         char full_path[PATH_MAX];
-        snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, dir->d_name);
+        int sn270 = snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, dir->d_name);
+        if (sn270 <= 0 || sn270 >= (int)sizeof(full_path)) { state->num_entries++; continue; }
         struct stat st;
         state->is_dir[state->num_entries] = (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode));
         state->num_entries++;
@@ -477,7 +480,7 @@ void explorer_redraw(EditorWindow *jw) {
         msg_to_show = state->status_msg;
     } else if (state->clipboard_operation != OP_NONE) {
         static char clipboard_msg[PATH_MAX + 20];
-        char *op_str =  (state->clipboard_operation = OP_COPY) ? "COPIED" : "CUT";
+        (void)clipboard_msg;
         
         // char *filename = basename(state->source_path);
         // snprintf(clipboard_msg, sizeof(clipboard_msg), "[%s : %s]", op_str, filename);
@@ -590,17 +593,13 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
             break;
         case 'a':     // git add
             if (state->num_entries > 0) {
-                char cmd[PATH_MAX + 20];
-                snprintf(cmd, sizeof(cmd), "git add \"%s\"", selected_path);
-                system(cmd);
+                run_cmd("git", "add", selected_path, NULL);
                 explorer_reload_entries(state);
             }
             break;
-        case 'u':     // git unstange
+        case 'u':     // git unstage
             if (state->num_entries > 0) {
-                char cmd[PATH_MAX + 20];
-                snprintf(cmd, sizeof(cmd), "git restore --staged \"%s\"", selected_path);
-                system(cmd);
+                run_cmd("git", "restore", "--staged", selected_path, NULL);
                 explorer_reload_entries(state);
             }
             break;
@@ -770,14 +769,14 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
            
          case 'v': // batch paste
              if (state->clipboard_operation != OP_NONE && state->num_clipboard_items > 0) {
-                 char *op_cmd = (state->clipboard_operation == OP_COPY) ? "cp -r" : "mv";
                  
                  // iterate over all items in clipboard
                  for (int i = 0 ; i < state->num_clipboard_items; i++) {
-                     char command[PATH_MAX * 2 + 20];
-                     // the "" are important for the files with spaces with name
-                     snprintf(command, sizeof(command), "%s \"%s\" \"%s/\"", op_cmd, state->clipboard_paths[i], state->current_path);
-                     system(command);
+                     if (state->clipboard_operation == OP_COPY) {
+                         run_cmd("cp", "-r", state->clipboard_paths[i], state->current_path, NULL);
+                     } else {
+                         run_cmd("mv", state->clipboard_paths[i], state->current_path, NULL);
+                     }
                  }
                  
                  snprintf(state->status_msg, sizeof(state->status_msg), "Pasted %d items.", state->num_clipboard_items);
@@ -806,9 +805,7 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                             if (state->is_selected[i]) {
                                 char full_path[PATH_MAX];
                                 snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[i]);
-                                char command[PATH_MAX + 20];
-                                snprintf(command, sizeof(command), "rm -rf \"%s\"", full_path);
-                                system(command);
+                                run_cmd("rm", "-rf", full_path, NULL);
                             }
                         }
                         // clean selection
@@ -817,9 +814,7 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                     } else {
                         char full_path[PATH_MAX];
                         snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[state->selection]);
-                        char command[PATH_MAX + 20];
-                        snprintf(command, sizeof(command), "rm -rf \"%s\"", full_path);
-                        system(command);
+                        run_cmd("rm", "-rf", full_path, NULL);
                 }
                 explorer_reload_entries(state);
             }
