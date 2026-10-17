@@ -1,5 +1,6 @@
 #include "a2_plugin_api.h"
 #include "a2_tmp.h"
+#include "process_exec.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,10 +27,7 @@ static void run_re_tool_and_display(EditorState *state, const char *title, const
         fprintf(f, "======================================================================\n\n");
         fclose(f);
     }
-    char full_cmd[1024];
-    snprintf(full_cmd, sizeof(full_cmd), "%s >> \"%s\" 2>&1", cmd, tmp_path);
-    int res = system(full_cmd);
-    (void)res;
+    run_shell_to_file(cmd, tmp_path, true);
     g_api->create_new_window(tmp_path);
     g_api->set_status_msg(state, "RE Suite: Result opened in new split (%s)", title);
 }
@@ -59,9 +57,7 @@ static void cmd_disasm(EditorState *state, const char *args) {
             return;
         }
         close(obj_fd);
-        char gcc_cmd[1024];
-        snprintf(gcc_cmd, sizeof(gcc_cmd), "gcc -g -c \"%s\" -o \"%s\"", target, bin_target);
-        if (system(gcc_cmd) != 0) {
+        if (run_cmd("gcc", "-g", "-c", target, "-o", bin_target, NULL) != 0) {
             unlink(bin_target);
             g_api->set_status_msg(state, "RE Suite: Compilation failed for %s", target);
             return;

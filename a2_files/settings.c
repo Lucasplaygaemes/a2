@@ -19,6 +19,7 @@
 #include "lsp_client.h"
 #include "logger.h"
 #include "plugin_engine.h"
+#include "process_exec.h"
 
 A2Config global_config = {
     .word_wrap = true,
@@ -1308,7 +1309,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                             strncpy(global_config.default_spell_lang, lang_code, sizeof(global_config.default_spell_lang) - 1);
                             global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
                             save_global_config();
-                            if (system("which curl > /dev/null 2>&1") != 0) {
+                            if (!run_check_tool("curl")) {
                                 char *const err_cmd[] = {"/bin/sh", "-c", "echo 'Error: the curl command isn't installed, install it to download the dictionarys.'; read -n 1 - r - p 'Press any key to continue...'", NULL};
                                 create_generic_terminal_window(err_cmd);
                                 EditorState* current_editor = get_any_editor_state();

@@ -14,6 +14,7 @@
 #include "logger.h"
 #include "local_history.h"
 #include "plugin_engine.h"
+#include "process_exec.h"
 
 #include <sys/stat.h>
 #include <ctype.h> // For isspace
@@ -46,9 +47,7 @@ static void process_gdb_command(EditorState *state, const char *args, bool tui_m
                 snprintf(gdb_cmd, sizeof(gdb_cmd), "gdb %s ./a.out", flag);
             } else {
                 editor_set_status_msg(state, "Compiling %s for debugging...", fn);
-                char compile_cmd[1024];
-                snprintf(compile_cmd, sizeof(compile_cmd), "gcc -g \"%s\" -o \"%s\"", fn, target);
-                int res = system(compile_cmd);
+                int res = run_cmd("gcc", "-g", fn, "-o", target, NULL);
                 if (res == 0 && access(target, X_OK) == 0) {
                     snprintf(gdb_cmd, sizeof(gdb_cmd), "gdb %s \"%s\"", flag, target);
                 } else {
@@ -88,7 +87,8 @@ static void resolve_filename_for_save(const char *input_path, char *out_abs_path
     } else {
         char cwd[PATH_MAX];
         if (getcwd(cwd, sizeof(cwd)) != NULL) {
-            snprintf(out_abs_path, max_len, "%s/%s", cwd, input_path);
+            int r = snprintf(out_abs_path, max_len, "%s/%s", cwd, input_path);
+            if (r >= (int)max_len) { out_abs_path[max_len - 1] = '\0'; }
         } else {
             strncpy(out_abs_path, input_path, max_len - 1);
             out_abs_path[max_len - 1] = '\0';
@@ -565,11 +565,9 @@ void process_command(EditorState *state, bool *should_exit) {
                     target[sizeof(target) - 1] = '\0';
                     char *dot = strrchr(target, '.');
                     if (dot && (strcmp(dot, ".c") == 0 || strcmp(dot, ".cpp") == 0)) *dot = '\0';
-                    char compile_cmd[1024];
-                    snprintf(compile_cmd, sizeof(compile_cmd), "gcc -g \"%s\" -o \"%s\"", state->buffer.filename, target);
-                    int r = system(compile_cmd);
+                    int r = run_cmd("gcc", "-g", state->buffer.filename, "-o", target, NULL);
                     if (r == 0) {
-                        char reload_cmd[512];
+                        char reload_cmd[520];
                         snprintf(reload_cmd, sizeof(reload_cmd), "file %s", target);
                         send_cmd_to_terminal_window(reload_cmd);
                         send_cmd_to_terminal_window("run");
@@ -759,11 +757,7 @@ void execute_shell_command(EditorState *state) {
     }
     close(fd);
 
-    char full_shell_command[2048];
-    snprintf(full_shell_command, sizeof(full_shell_command), "%s > %s 2>&1", cmd, temp_output_file);
-    def_prog_mode(); endwin();
-    system(full_shell_command);
-    reset_prog_mode(); refresh();
+    run_shell_to_file(cmd, temp_output_file, false);
 
     FILE *f = fopen(temp_output_file, "r");
     if(f) {
@@ -823,13 +817,9 @@ void compile_file(EditorState *state, char* args) {
     }
     close(fd);
 
-    char full_shell_command[2048];
-    snprintf(full_shell_command, sizeof(full_shell_command), "%s > %s 2>&1", command, temp_output_file);
-    def_prog_mode(); endwin();
-    ret = system(full_shell_command);
-    reset_prog_mode(); refresh();
+    ret = run_shell_to_file(command, temp_output_file, false);
 
-    if (WIFEXITED(ret) && WEXITSTATUS(ret) == 0) {
+    if (ret == 0) {
         char display_output_name[40];
         strncpy(display_output_name, output_filename, sizeof(display_output_name) - 1);
         display_output_name[sizeof(display_output_name)-1] = '\0';
@@ -854,12 +844,7 @@ void run_and_display_command(const char* command, const char* title) {
     }
     close(fd);
 
-    char full_shell_command[2048];
-    snprintf(full_shell_command, sizeof(full_shell_command), "%s > %s 2>&1", command, temp_output_file);
-
-    def_prog_mode(); endwin();
-    system(full_shell_command);
-    reset_prog_mode(); refresh();
+    run_shell_to_file(command, temp_output_file, false);
     
     display_output_screen(title, temp_output_file);
     remove(temp_output_file);
@@ -892,13 +877,13 @@ void add_to_command_history(EditorState *state, const char* command) {
 }
 
 void copy_selection_to_clipboard(EditorState *state) {
-    char* copy_cmd = NULL;
-    if (system("command -v wl-copy > /dev/null 2>&1") == 0) {
-        copy_cmd = "wl-copy";
-    } else if (system("command -v xclip > /dev/null 2>&1") == 0) {
-        copy_cmd = "xclip -selection clipboard";
-    } else if (system("command -v xsel > /dev/null 2>&1") == 0) {
-        copy_cmd = "xsel --clipboard --input";
+    int copy_tool = 0;
+    if (run_check_tool("wl-copy")) {
+        copy_tool = 1;
+    } else if (run_check_tool("xclip")) {
+        copy_tool = 2;
+    } else if (run_check_tool("xsel")) {
+        copy_tool = 3;
     } else {
         editor_set_status_msg(state, "No clipboard utility found (wl-clipboard, xclip, or xsel).");
         return;
@@ -942,41 +927,30 @@ void copy_selection_to_clipboard(EditorState *state) {
         strncat(selected_text, state->buffer.lines[end_line], end_col);
     }
 
-    char* temp_filename = get_cache_filename("a2_clip.XXXXXX");
-    if (!temp_filename) {
-        editor_set_status_msg(state, "Error creating temp file path.");
-        free(selected_text);
-        return;
+    if (copy_tool == 1) {
+        run_cmd_feed_stdin(selected_text, strlen(selected_text), "wl-copy", NULL);
+    } else if (copy_tool == 2) {
+        run_cmd_feed_stdin(selected_text, strlen(selected_text), "xclip", "-selection", "clipboard", NULL);
+    } else if (copy_tool == 3) {
+        run_cmd_feed_stdin(selected_text, strlen(selected_text), "xsel", "--clipboard", "--input", NULL);
     }
 
-    int fd = mkstemp(temp_filename);
-    if (fd == -1) {
-        editor_set_status_msg(state, "Error creating temp file.");
-        free(selected_text);
-        free(temp_filename);
-        return;
-    }
-    write(fd, selected_text, strlen(selected_text));
-    close(fd);
     free(selected_text);
-
-    char command[1024];
-    snprintf(command, sizeof(command), "%s < %s", copy_cmd, temp_filename);
-    
-    system(command);
-    remove(temp_filename);
-    free(temp_filename);
     editor_set_status_msg(state, "Copied to clipboard.");
 }
 
 void paste_from_clipboard(EditorState *state) {
-    char* paste_cmd = NULL;
-    if (system("command -v wl-paste > /dev/null 2>&1") == 0) {
-        paste_cmd = "wl-paste";
-    } else if (system("command -v xclip > /dev/null 2>&1") == 0) {
-        paste_cmd = "xclip -selection clipboard -o";
-    } else if (system("command -v xsel > /dev/null 2>&1") == 0) {
-        paste_cmd = "xsel --clipboard --output";
+    char *const wl_paste_argv[] = {"wl-paste", NULL};
+    char *const xclip_argv[] = {"xclip", "-selection", "clipboard", "-o", NULL};
+    char *const xsel_argv[] = {"xsel", "--clipboard", "--output", NULL};
+    char *const *paste_argv = NULL;
+
+    if (run_check_tool("wl-paste")) {
+        paste_argv = wl_paste_argv;
+    } else if (run_check_tool("xclip")) {
+        paste_argv = xclip_argv;
+    } else if (run_check_tool("xsel")) {
+        paste_argv = xsel_argv;
     } else {
         editor_set_status_msg(state, "No clipboard utility found (wl-clipboard, xclip, or xsel).");
         return;
@@ -996,9 +970,7 @@ void paste_from_clipboard(EditorState *state) {
     }
     close(fd);
 
-    char command[1024];
-    snprintf(command, sizeof(command), "%s > %s", paste_cmd, temp_filename);
-    system(command);
+    run_argv_to_file((char *const *)paste_argv, temp_filename, false);
 
     FILE *f = fopen(temp_filename, "r");
     if (!f) { 
@@ -1085,10 +1057,7 @@ void compile_and_view_assembly(EditorState *state) {
     
     // compilation commands
     // -S: compile only; -g: debug info (.loc); -fverbose-asm : commnets 
-    char cmd[2048];
-    snprintf(cmd, sizeof(cmd), "gcc -S -g -fverbose-asm \"%s\" -o \"%s\"", source_file, asm_file);
-    
-    int ret = system(cmd);
+    int ret = run_cmd("gcc", "-S", "-g", "-fverbose-asm", source_file, "-o", asm_file, NULL);
     if (ret != 0) {
         editor_set_status_msg(state, "Compilation Failed! Check source."); 
         return;
@@ -1172,12 +1141,8 @@ void compile_and_view_llvm(EditorState *state) {
     if (dot) *dot = '\0';
     strcat(llvm_file, ".ll");
     
-    // Command: clang -S -emit-llvm -g (includes debug info)
-    char cmd[2048];
-    snprintf(cmd, sizeof(cmd), "clang -S -emit-llvm -g \"%s\" -o \"%s\"", source_file, llvm_file);
-    
     editor_set_status_msg(state, "Compiling to LLVM IR...");
-    int ret = system(cmd);
+    int ret = run_cmd("clang", "-S", "-emit-llvm", "-g", source_file, "-o", llvm_file, NULL);
     if (ret != 0) {
         editor_set_status_msg(state, "LLVM compilation failed!"); 
         return;
