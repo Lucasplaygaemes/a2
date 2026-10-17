@@ -1,7 +1,9 @@
 #ifndef DEFS_H
 #define DEFS_H
 
+#ifndef _XOPEN_SOURCE
 #define _XOPEN_SOURCE 700 // Activate the POSIX functionalitys, including the wcwidth
+#endif
 #include <locale.h>       // Essential for the funcionality of the large characteres
 #include <stddef.h>       // Define types like wchar_t
 #include <wchar.h>        // Define functions like wcwidth
@@ -409,6 +411,9 @@ typedef struct {
     time_t last_auto_save_time;
     SyntaxRule *syntax_rules;
     int num_syntax_rules;
+    char comment_line[8];         // line comment token, e.g. "//" "#" ";"
+    char comment_block_start[8];  // block comment open, e.g. "/*" or ""
+    char comment_block_end[8];    // block comment close, e.g. "*/" or ""
     BracketInfo *unmatched_brackets;
     int num_unmatched_brackets;
     AssemblyMapping *mapping;
@@ -554,15 +559,6 @@ typedef struct EditorState {
     EditorLsp lsp;
     EditorSpell spell;
     EditorImageHover image_hover;
-    
-    struct {
-        bool is_visible;
-        bool is_loading;
-        char current_word[100];
-        char content_text[4096];
-        int popup_y;
-        int popup_x;
-    } dictionary;
     
     DirectoryInfo **recent_dirs;
     int num_recent_dirs;
