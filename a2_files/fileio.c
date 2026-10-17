@@ -13,6 +13,7 @@
 #include "logger.h"
 #include "local_history.h"
 #include "plugin_engine.h"
+#include "process_exec.h"
 
 
 #include <limits.h> // For PATH_MAX
@@ -67,18 +68,11 @@ bool perform_smart_merge(EditorState *state) {
     f = fopen(tmp_base, "w"); 
     if (f) { fputs(state->buffer.shadow_copy ? state->buffer.shadow_copy : "", f); fclose(f); }
 
-    char cmd[PATH_MAX * 3 + 100];
-    snprintf(cmd, sizeof(cmd), "git merge-file -p \"%s\" \"%s\" \"%s\" > \"%s\"", tmp_current, tmp_base, state->buffer.filename, tmp_disk);
-    
-    int exit_status = system(cmd);
-
-    if (WIFEXITED(exit_status)) {
-        int code = WEXITSTATUS(exit_status);
-        if (code >= 0) {
+    int code = run_cmd_to_file(tmp_disk, "git", "merge-file", "-p", tmp_current, tmp_base, state->buffer.filename, NULL);
+    if (code >= 0) {
             // Save original filename to restore it after loading merged content
-            char original_filename[PATH_MAX];
-            strncpy(original_filename, state->buffer.filename, PATH_MAX - 1);
-            original_filename[PATH_MAX - 1] = '\0';
+            char original_filename[256];
+            snprintf(original_filename, sizeof(original_filename), "%s", state->buffer.filename);
 
             if (code > 0) {
                 ui_show_message("CONFLICT DETECTED", "Entering War Room mode!\nLeft: BASE | Center: RESULT | Right: DISK\nUse '[' and ']' to navigate, 'm' (mine) or 't' (theirs) to resolve.");
@@ -89,7 +83,7 @@ bool perform_smart_merge(EditorState *state) {
                 // 1. Result (Center) - Load merged content into the ACTIVE buffer
                 load_file_core(state, tmp_disk);
                 // Restore the original filename so we don't save to the temp file!
-                strncpy(state->buffer.filename, original_filename, sizeof(state->buffer.filename) - 1);
+                snprintf(state->buffer.filename, sizeof(state->buffer.filename), "%s", original_filename);
                 
                 // 2. Mine/Base (Left) - Create a TEMPORARY window for context
                 create_new_window(NULL); 
@@ -110,7 +104,7 @@ bool perform_smart_merge(EditorState *state) {
                 ui_show_message("MERGE SUCCESSFUL", "Your changes and external changes were merged successfully.");
                 load_file_core(state, tmp_disk);
                 // Restore the original filename so we don't save to the temp file!
-                strncpy(state->buffer.filename, original_filename, sizeof(state->buffer.filename) - 1);
+                snprintf(state->buffer.filename, sizeof(state->buffer.filename), "%s", original_filename);
             }            
             state->buffer.modified = true;
             // IMPORTANT: Update shadow_copy to the new common ancestor (what was just on disk)
@@ -118,7 +112,6 @@ bool perform_smart_merge(EditorState *state) {
             if(state->buffer.shadow_copy) free(state->buffer.shadow_copy);
             state->buffer.shadow_copy = editor_buffer_to_string(state);
         }
-    }
 
     remove(tmp_current); remove(tmp_base); remove(tmp_disk);
     free(tmp_current); free(tmp_base); free(tmp_disk);
@@ -404,7 +397,7 @@ void load_file(EditorState *state, const char *filename) {
     editor_update_git_branch(state);
     // Save the previous filename before loading a new one
     if (strcmp(state->buffer.filename, filename) != 0) {
-        strncpy(state->buffer.previous_filename, state->buffer.filename, sizeof(state->buffer.previous_filename) - 1);
+        snprintf(state->buffer.previous_filename, sizeof(state->buffer.previous_filename), "%s", state->buffer.filename);
     }
     add_to_file_history(state, filename);
 
@@ -605,12 +598,12 @@ void save_file(EditorState *state) {
                snprintf(command, sizeof(command), "cat \"%s\" | sudo tee \"%s\" > /dev/null", temp_sudo_filename, state->buffer.filename);
                
                def_prog_mode(); endwin();
-               int ret = system(command);
+               int ret = run_shell_command(command);
                reset_prog_mode(); refresh(); redraw_all_windows();
                
                remove(temp_sudo_filename); free(temp_sudo_filename);
                
-               if (WIFEXITED(ret) && WEXITSTATUS(ret) == 0) {
+               if (ret == 0) {
                    state->buffer.modified = false;
                    state->buffer.last_mod_time = get_file_mod_time(state->buffer.filename);
                    
@@ -725,6 +718,9 @@ void load_syntax_file(EditorState *state, const char *filename) {
         state->buffer.syntax_rules = NULL;
         state->buffer.num_syntax_rules = 0;
     }
+    memset(state->buffer.comment_line, 0, sizeof(state->buffer.comment_line));
+    memset(state->buffer.comment_block_start, 0, sizeof(state->buffer.comment_block_start));
+    memset(state->buffer.comment_block_end, 0, sizeof(state->buffer.comment_block_end));
 
     if (!filename) {
         return; // No syntax file to load, just clear old rules.
@@ -733,23 +729,35 @@ void load_syntax_file(EditorState *state, const char *filename) {
     char path[PATH_MAX];
     FILE *file = NULL;
 
-    // 1. Try system-wide install path first (/usr/local/share/a2/syntaxes/<file>)
-    snprintf(path, sizeof(path), "/usr/local/share/a2/syntaxes/%s", filename);
-    file = fopen(path, "r");
-
-    // 2. If not found, try path relative to executable (for development)
-    if (!file && executable_dir[0] != '\0') {
-        snprintf(path, sizeof(path), "%s/syntaxes/%s", executable_dir, filename);
-        file = fopen(path, "r");
+    // 1. Try path relative to executable (for development/portable builds)
+    if (executable_dir[0] != '\0') {
+        int sn = snprintf(path, sizeof(path), "%s/syntaxes/%s", executable_dir, filename);
+        if (sn > 0 && sn < (int)sizeof(path))
+            file = fopen(path, "r");
     }
 
-    // 3. If still not found, try relative to current working directory
+    // 2. If not found, try relative to current working directory
     if (!file) {
         snprintf(path, sizeof(path), "syntaxes/%s", filename);
         file = fopen(path, "r");
     }
+
+    // 3. Try user local folder (~/.a2/syntaxes/<file>)
+    if (!file) {
+        const char *home = getenv("HOME");
+        if (home) {
+            snprintf(path, sizeof(path), "%s/.a2/syntaxes/%s", home, filename);
+            file = fopen(path, "r");
+        }
+    }
+
+    // 4. Try system-wide install path (/usr/local/share/a2/syntaxes/<file>)
+    if (!file) {
+        snprintf(path, sizeof(path), "/usr/local/share/a2/syntaxes/%s", filename);
+        file = fopen(path, "r");
+    }
     
-    // 4. Final fallback to just the filename in the CWD
+    // 5. Final fallback to just the filename in the CWD
     if (!file) {
         file = fopen(filename, "r");
     }
@@ -774,6 +782,17 @@ void load_syntax_file(EditorState *state, const char *filename) {
         char *word_str = trim_whitespace(colon + 1);
 
         if (strlen(type_str) == 0 || strlen(word_str) == 0) continue;
+
+        if (strcmp(type_str, "COMMENT_LINE") == 0) {
+            strncpy(state->buffer.comment_line, word_str, sizeof(state->buffer.comment_line) - 1);
+            continue;
+        } else if (strcmp(type_str, "COMMENT_BLOCK_START") == 0) {
+            strncpy(state->buffer.comment_block_start, word_str, sizeof(state->buffer.comment_block_start) - 1);
+            continue;
+        } else if (strcmp(type_str, "COMMENT_BLOCK_END") == 0) {
+            strncpy(state->buffer.comment_block_end, word_str, sizeof(state->buffer.comment_block_end) - 1);
+            continue;
+        }
 
         state->buffer.num_syntax_rules++;
         state->buffer.syntax_rules = realloc(state->buffer.syntax_rules, sizeof(SyntaxRule) * state->buffer.num_syntax_rules);
@@ -800,7 +819,8 @@ void get_pos_path(const char *filename, char *out_path, size_t size) {
     ensure_a2_config_dir(config_dir, sizeof(config_dir));
     
     char pos_dir[PATH_MAX];
-    snprintf(pos_dir, sizeof(pos_dir), "%s/pos", config_dir);
+    int sn = snprintf(pos_dir, sizeof(pos_dir), "%s/pos", config_dir);
+    if (sn <= 0 || sn >= (int)sizeof(pos_dir)) return;
     mkdir(pos_dir, 0755);
 
     // Get absolute path to ensure uniqueness
@@ -954,7 +974,8 @@ void handle_file_recovery(EditorState *state, const char *original_filename, con
 void get_macros_filename(char *buffer, size_t size) {
     char dir[PATH_MAX];
     ensure_a2_config_dir(dir, sizeof(dir));
-    snprintf(buffer, size, "%s/macros.a2", dir);
+    int sn = snprintf(buffer, size, "%s/macros.a2", dir);
+    if (sn >= (int)size && size > 0) buffer[size - 1] = '\0';
 }
 
 void save_macros(EditorState *state) {
