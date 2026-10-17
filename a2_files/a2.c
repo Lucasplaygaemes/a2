@@ -1253,29 +1253,29 @@ int main(int argc, char *argv[]) {
                             char final_path[PATH_MAX];
                             if (parsed_path[0] != '/' && parsed_path[0] != '~') {
                                 char dir_path[PATH_MAX];
-                                strncpy(dir_path, active_state->buffer.filename, PATH_MAX-1);
+                                a2_strlcpy(dir_path, active_state->buffer.filename, sizeof(dir_path));
                                 char *last_slash = strrchr(dir_path, '/');
                                 if (last_slash) {
                                     *last_slash = '\0';
-                                    snprintf(final_path, PATH_MAX, "%s/%s", dir_path, parsed_path);
+                                    a2_path_join(final_path, sizeof(final_path), dir_path, parsed_path);
                                 } else {
-                                    strncpy(final_path, parsed_path, PATH_MAX-1);
+                                    a2_strlcpy(final_path, parsed_path, sizeof(final_path));
                                 }
                             } else {
-                                strncpy(final_path, parsed_path, PATH_MAX-1);
+                                a2_strlcpy(final_path, parsed_path, sizeof(final_path));
                             }
                             
                             if (final_path[0] == '~') {
                                 char expanded[PATH_MAX];
                                 const char *home = getenv("HOME");
                                 if (home) {
-                                    snprintf(expanded, PATH_MAX, "%s%s", home, final_path + 1);
-                                    strncpy(final_path, expanded, PATH_MAX-1);
+                                    snprintf(expanded, sizeof(expanded), "%.*s%.*s", (int)(sizeof(expanded)/2), home, (int)(sizeof(expanded)/2 - 1), final_path + 1);
+                                    a2_strlcpy(final_path, expanded, sizeof(final_path));
                                 }
                             }
                             
                             if (strcmp(active_state->image_hover.image_path, final_path) != 0) {
-                                strncpy(active_state->image_hover.image_path, final_path, PATH_MAX-1);
+                                a2_strlcpy(active_state->image_hover.image_path, final_path, sizeof(active_state->image_hover.image_path));
                                 active_state->image_hover.kitty_image_id = 0;
                             }
                             active_state->buffer.is_dirty = true;
