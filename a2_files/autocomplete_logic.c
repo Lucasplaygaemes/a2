@@ -41,7 +41,7 @@ void editor_start_completion(EditorState *state) {
         char *line_copy = strdup(state->buffer.lines[i]); if (!line_copy) continue;
         char *saveptr;
         for (char *token = strtok_r(line_copy, delimiters, &saveptr); token != NULL; token = strtok_r(NULL, delimiters, &saveptr)) {
-            if (strncmp(token, state->input.word_to_complete, len) == 0 && strlen(token) > len) add_suggestion(state, token, NULL, NULL);
+            if (strncmp(token, state->input.word_to_complete, len) == 0 && strlen(token) > (size_t)len) add_suggestion(state, token, NULL, NULL);
         }
         free(line_copy);
     }
@@ -68,7 +68,7 @@ void editor_start_command_completion(EditorState *state) {
         state->input.completion_mode = COMPLETION_COMMAND;
         state->input.selected_suggestion = 0;
         state->input.completion_scroll_top = 0;
-        strncpy(state->input.word_to_complete, buffer, sizeof(state->input.word_to_complete) - 1);
+        snprintf(state->input.word_to_complete, sizeof(state->input.word_to_complete), "%s", buffer);
         state->input.completion_start_col = 0;
     }
 }
@@ -159,14 +159,16 @@ void editor_draw_completion_win(WINDOW *win, EditorState *state) {
         int visual_cursor_y, visual_cursor_x; get_visual_pos(win, state, &visual_cursor_y, &visual_cursor_x);
         int cursor_screen_y = visual_cursor_y - state->view.top_line;
         int max_h = parent_rows - 2 - (cursor_screen_y + 1);
-        if (max_h < 3) max_h = 3; if (max_h > 15) max_h = 15;
+        if (max_h < 3) max_h = 3;
+        if (max_h > 15) max_h = 15;
         win_h = state->input.num_suggestions < max_h ? state->input.num_suggestions : max_h;
         win_w = max_label_len + max_detail_len + 4;
         if (win_w > parent_cols - 2) win_w = parent_cols - 2;
         win_y = getbegy(win) + cursor_screen_y + 1;
         win_x = getbegx(win) + get_visual_col(state->buffer.lines[state->cursor.line], state->input.completion_start_col) % parent_cols;
         if (win_x + win_w >= getbegx(win) + parent_cols) win_x = getbegx(win) + parent_cols - win_w;
-        if (win_y < getbegy(win)) win_y = getbegy(win); if (win_x < getbegx(win)) win_x = getbegx(win);
+        if (win_y < getbegy(win)) win_y = getbegy(win);
+        if (win_x < getbegx(win)) win_x = getbegx(win);
     } else {
         int max_h = parent_rows - 2; if (max_h < 3) max_h = 3; if (max_h > 15) max_h = 15;
         win_h = state->input.num_suggestions < max_h ? state->input.num_suggestions : max_h;
@@ -213,8 +215,14 @@ void editor_start_theme_completion(EditorState *state) {
     FILE* cf = fopen(cp, "r");
     if (cf) { if (fgets(custom, sizeof(custom), cf)) custom[strcspn(custom, "\n")] = 0; fclose(cf); if (custom[0]) dirs[dc++] = custom; }
     const char* h = getenv("HOME");
-    if (h) { snprintf(global, sizeof(global), "%s/.a2/themes", h); dirs[dc++] = global; }
-    if (executable_dir[0]) { snprintf(exec, sizeof(exec), "%s/themes", executable_dir); dirs[dc++] = exec; }
+    if (h) {
+        int n = snprintf(global, sizeof(global), "%s/.a2/themes", h);
+        if (n > 0 && n < (int)sizeof(global)) dirs[dc++] = global;
+    }
+    if (executable_dir[0]) {
+        int n = snprintf(exec, sizeof(exec), "%s/themes", executable_dir);
+        if (n > 0 && n < (int)sizeof(exec)) dirs[dc++] = exec;
+    }
     dirs[dc++] = "themes"; dirs[dc++] = "/usr/local/share/a2/themes";
     for (int i = 0; i < dc; i++) {
         DIR *d = opendir(dirs[i]);
@@ -403,7 +411,6 @@ void handle_command_mode_key(EditorState *state, wint_t ch, bool *should_exit) {
             if (state->input.command_pos > 0) { 
                 int new_pos = state->input.command_pos - 1;
                 while (new_pos > 0 && (state->input.command_buffer[new_pos] & 0xC0) == 0x80) new_pos--;
-                int del_len = state->input.command_pos - new_pos;
                 memmove(&state->input.command_buffer[new_pos], &state->input.command_buffer[state->input.command_pos], strlen(state->input.command_buffer) - state->input.command_pos + 1);
                 state->input.command_pos = new_pos;
                 state->buffer.is_dirty = true;
