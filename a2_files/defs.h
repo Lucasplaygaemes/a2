@@ -39,6 +39,35 @@ typedef struct {
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
+static inline void a2_strlcpy(char *dst, const char *src, size_t size) {
+    if (!dst || size == 0) return;
+    if (!src) { dst[0] = '\0'; return; }
+    size_t len = strlen(src);
+    if (len >= size) len = size - 1;
+    memcpy(dst, src, len);
+    dst[len] = '\0';
+}
+
+static inline void a2_path_join(char *dst, size_t size, const char *p1, const char *p2) {
+    if (!dst || size == 0) return;
+    dst[0] = '\0';
+    size_t l1 = p1 ? strlen(p1) : 0;
+    size_t l2 = p2 ? strlen(p2) : 0;
+    if (l1 >= size) l1 = size - 1;
+    if (p1 && l1 > 0) memcpy(dst, p1, l1);
+    dst[l1] = '\0';
+    if (l1 > 0 && dst[l1 - 1] != '/' && l1 + 1 < size) {
+        dst[l1++] = '/';
+        dst[l1] = '\0';
+    }
+    size_t rem = size - 1 - l1;
+    if (l2 > rem) l2 = rem;
+    if (p2 && l2 > 0) {
+        memcpy(dst + l1, p2, l2);
+        dst[l1 + l2] = '\0';
+    }
+}
+
 #define KEY_CTRL_P 16
 #define KEY_CTRL_DEL 520
 #define KEY_CTRL_K 11
