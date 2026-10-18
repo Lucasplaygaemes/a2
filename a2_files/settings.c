@@ -143,7 +143,7 @@ static EditorState* get_any_editor_state();
 void get_config_filepath(char *buffer, size_t size) {
     char dir[PATH_MAX];
     ensure_a2_config_dir(dir, sizeof(dir));
-    snprintf(buffer, size, "%s/settings.a2", dir);
+    a2_path_join(buffer, size, dir, "settings.a2");
 }
 
 void key_to_string(KeyBinding *kb, char *buf, size_t size) {
@@ -165,9 +165,9 @@ void key_to_string(KeyBinding *kb, char *buf, size_t size) {
 void ensure_a2_config_dir(char *path_out, size_t size) {
     const char *home = getenv("HOME");
     if (home) {
-        snprintf(path_out, size, "%s/.a2", home);
+        a2_path_join(path_out, size, home, ".a2");
     } else {
-        snprintf(path_out, size, ".a2");
+        a2_strlcpy(path_out, ".a2", size);
     }
     mkdir(path_out, 0755);
 }
@@ -175,22 +175,22 @@ void ensure_a2_config_dir(char *path_out, size_t size) {
 void get_sc_path(char *buffer, size_t size) {
     char dir[PATH_MAX];
     ensure_a2_config_dir(dir, sizeof(dir));
-    snprintf(buffer, size, "%s/sc.a2", dir);
+    a2_path_join(buffer, size, dir, "sc.a2");
 }
 
 void get_ds_path(char *buffer, size_t size) {
     char dir[PATH_MAX];
     ensure_a2_config_dir(dir, sizeof(dir));
-    snprintf(buffer, size, "%s/ds.a2", dir);
+    a2_path_join(buffer, size, dir, "ds.a2");
     if (access(buffer, F_OK) == 0) return;
     if (executable_dir[0] != '\0') {
-        snprintf(buffer, size, "%s/ds.a2", executable_dir);
+        a2_path_join(buffer, size, executable_dir, "ds.a2");
         if (access(buffer, F_OK) == 0) return;
     }
-    snprintf(buffer, size, "/usr/local/share/a2/ds.a2");
+    a2_strlcpy(buffer, "/usr/local/share/a2/ds.a2", size);
     if (access(buffer, F_OK) == 0) return;
     
-    snprintf(buffer, size, "ds.a2");
+    a2_strlcpy(buffer, "ds.a2", size);
 }
 
 void save_keybindings() {
@@ -677,7 +677,7 @@ void populate_theme_list(SettingsPanelState *state) {
     }
     char exec_theme_path[PATH_MAX] = {0};
     if (executable_dir[0] != '\0') {
-        snprintf(exec_theme_path, sizeof(exec_theme_path), "%s/themes", executable_dir);
+        a2_path_join(exec_theme_path, sizeof(exec_theme_path), executable_dir, "themes");
     }
     const char* dirs_to_check[] = { 
         custom_theme_dir, 
@@ -1326,10 +1326,11 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                                 }
                                 apply_settings_globally();
                             } else {
-                                char command[2048];
+                                char command[4096];
                                 const char *base_url = "https://cgit.freedesktop.org/libreoffice/dictionaries/plain";
-                                char download_dir[1024];
-                                snprintf(download_dir, sizeof(download_dir), "%s/.config/a2/hunspell", getenv("HOME"));
+                                char download_dir[256];
+                                const char *home = getenv("HOME");
+                                snprintf(download_dir, sizeof(download_dir), "%.150s/.config/a2/hunspell", home ? home : ".");
                                 
                                 snprintf(command, sizeof(command),
                                 "set -e; " 
@@ -1496,7 +1497,7 @@ void free_settings_panel_state(SettingsPanelState *state) {
 void get_tasks_filepath(char *buffer, size_t size) {
     char dir[PATH_MAX];
     ensure_a2_config_dir(dir, sizeof(dir));
-    snprintf(buffer, size, "%s/tasks.a2", dir);
+    a2_path_join(buffer, size, dir, "tasks.a2");
 }
 void save_custom_tasks() {
     char path[PATH_MAX];
@@ -1527,14 +1528,14 @@ void load_custom_tasks() {
         char *cmd = strtok(NULL, "");
         
         if (id && name && desc && cmd) {
-            strncpy(t->id, id, sizeof(t->id)-1);
-            strncpy(t->name, name, sizeof(t->name)-1);
-            strncpy(t->description, desc, sizeof(t->description)-1);
-            strncpy(t->command, cmd, sizeof(t->command)-1);
+            a2_strlcpy(t->id, id, sizeof(t->id));
+            a2_strlcpy(t->name, name, sizeof(t->name));
+            a2_strlcpy(t->description, desc, sizeof(t->description));
+            a2_strlcpy(t->command, cmd, sizeof(t->command));
             
             int act = ACT_CUSTOM_TASK_START + global_task_manager.num_tasks;
-            strncpy(global_bindings[act].name, t->name, sizeof(global_bindings[act].name)-1);
-            strncpy(global_bindings[act].desc, t->description, sizeof(global_bindings[act].desc)-1);
+            a2_strlcpy(global_bindings[act].name, t->name, sizeof(global_bindings[act].name));
+            a2_strlcpy(global_bindings[act].desc, t->description, sizeof(global_bindings[act].desc));
             
             global_task_manager.num_tasks++;
         }
@@ -1554,8 +1555,8 @@ void ui_create_task() {
     global_task_manager.tasks[global_task_manager.num_tasks] = new_task;
     
     int act = ACT_CUSTOM_TASK_START + global_task_manager.num_tasks;
-    strncpy(global_bindings[act].name, new_task.name, sizeof(global_bindings[act].name)-1);
-    strncpy(global_bindings[act].desc, new_task.description, sizeof(global_bindings[act].desc)-1);
+    a2_strlcpy(global_bindings[act].name, new_task.name, sizeof(global_bindings[act].name));
+    a2_strlcpy(global_bindings[act].desc, new_task.description, sizeof(global_bindings[act].desc));
     
     global_task_manager.num_tasks++;
     save_custom_tasks();
@@ -1569,21 +1570,21 @@ void ui_edit_task(int idx) {
     char desc[128];
     char cmd[256];
     
-    strncpy(name, t->name, sizeof(name)-1);
-    strncpy(desc, t->description, sizeof(desc)-1);
-    strncpy(cmd, t->command, sizeof(cmd)-1);
+    a2_strlcpy(name, t->name, sizeof(name));
+    a2_strlcpy(desc, t->description, sizeof(desc));
+    a2_strlcpy(cmd, t->command, sizeof(cmd));
     
     if (!ui_ask_input("Task Name:", name, sizeof(name))) return;
     if (!ui_ask_input("Description:", desc, sizeof(desc))) return;
     if (!ui_ask_input("Command (e.g. 'term make'):", cmd, sizeof(cmd))) return;
     
-    strncpy(t->name, name, sizeof(t->name)-1);
-    strncpy(t->description, desc, sizeof(desc)-1);
-    strncpy(t->command, cmd, sizeof(t->command)-1);
+    a2_strlcpy(t->name, name, sizeof(t->name));
+    a2_strlcpy(t->description, desc, sizeof(t->description));
+    a2_strlcpy(t->command, cmd, sizeof(t->command));
     
     int act = ACT_CUSTOM_TASK_START + idx;
-    strncpy(global_bindings[act].name, t->name, sizeof(global_bindings[act].name)-1);
-    strncpy(global_bindings[act].desc, t->description, sizeof(global_bindings[act].desc)-1);
+    a2_strlcpy(global_bindings[act].name, t->name, sizeof(global_bindings[act].name));
+    a2_strlcpy(global_bindings[act].desc, t->description, sizeof(global_bindings[act].desc));
     
     save_custom_tasks();
 }
