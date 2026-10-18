@@ -1053,6 +1053,7 @@ void redraw_all_windows() {
                     getbegyx(jw->content_win, win_y, win_x);
                     int rows, cols;
                     getmaxyx(jw->content_win, rows, cols);
+                    (void)rows;
                     int max_cols = 40;
                     int max_rows = 15;
                     int draw_y = win_y + 1;
@@ -1818,7 +1819,7 @@ void display_content_search(EditorState *state, const char* prefilled_term) {
     pthread_mutex_lock(&global_grep_state.mutex);
     global_grep_state.is_running = true;
     global_grep_state.results_ready = false;
-    strncpy(global_grep_state.search_term, search_term, sizeof(global_grep_state.search_term) - 1);
+    snprintf(global_grep_state.search_term, sizeof(global_grep_state.search_term), "%s", search_term);
     pthread_mutex_unlock(&global_grep_state.mutex);
     
     if (pthread_create(&global_grep_state.thread, NULL, background_grep_worker, NULL) != 0) {
@@ -2275,8 +2276,9 @@ void display_help_viewer(const char* filename) {
         f = fopen(path, "r");
     } else {
         if (executable_dir[0] != '\0') {
-            snprintf(path, sizeof(path), "%s/man/%s", executable_dir, filename);
-            f = fopen(path, "r");
+            int sn = snprintf(path, sizeof(path), "%s/man/%s", executable_dir, filename);
+            if (sn > 0 && sn < (int)sizeof(path))
+                f = fopen(path, "r");
         }
         
         if (!f) {
@@ -2304,7 +2306,7 @@ void display_help_viewer(const char* filename) {
         state->lines[0] = strdup("Help file not found.");
         state->num_lines = 1;
     }
-    strncpy(state->current_file, filename, sizeof(state->current_file) - 1);
+    snprintf(state->current_file, sizeof(state->current_file), "%s", filename);
 
     ws->windows[ws->num_windows - 1] = new_window;
     ws->active_window_idx = ws->num_windows - 1;
@@ -2343,8 +2345,8 @@ EditorState *find_assembly_state_for_source(const char *source_filename) {
     if (dot) {
         *dot = '\0';
         
-        char asm_guess[PATH_MAX];
-        char llvm_guess[PATH_MAX];
+        char asm_guess[PATH_MAX + 16];
+        char llvm_guess[PATH_MAX + 16];
         snprintf(asm_guess, sizeof(asm_guess), "%s.s", base_name);
         snprintf(llvm_guess, sizeof(llvm_guess), "%s.ll", base_name);
         
@@ -2421,6 +2423,7 @@ void sync_scroll(EditorWindow *active_jw) {
         if (target_jw && target_line != -1) {
             int rows, cols;
             getmaxyx(target_jw->win, rows, cols);
+            (void)cols;
             int content_height = rows - (ACTIVE_WS->num_windows > 1 ? 2 : 0);
             
             // If the target line is out of the vision
