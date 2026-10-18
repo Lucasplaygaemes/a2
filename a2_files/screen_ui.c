@@ -1171,7 +1171,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                 mvwprintw(win, rows - 1, left_len + 2, "| %.*s", available - 2, state->view.status_msg);
             }
         } else {
-            char left_bar[256], right_bar[64], error_count_str[32] = "";
+            char left_bar[384], right_bar[64], error_count_str[32] = "";
             int diag_count = state->lsp.document ? state->lsp.document->diagnostics_count : 0;
             if (diag_count > 0) snprintf(error_count_str, sizeof(error_count_str), " [!%d]", diag_count);
 
@@ -1613,8 +1613,9 @@ static void help_viewer_load_file(HelpViewerState *state, const char *filename) 
     FILE *f = NULL;
     
     if (executable_dir[0] != '\0') {
-        snprintf(path, sizeof(path), "%s/man/%s", executable_dir, filename);
-        f = fopen(path, "r");
+        int sn = snprintf(path, sizeof(path), "%s/man/%s", executable_dir, filename);
+        if (sn > 0 && sn < (int)sizeof(path))
+            f = fopen(path, "r");
     }
     
     if (!f) {
@@ -1701,8 +1702,6 @@ void help_viewer_redraw(EditorWindow *jw) {
         char *line = state->lines[i];
         int wrap_width = cols - 4;
         if (wrap_width <= 0) wrap_width = 1;
-        
-        int line_len = strlen(line);
         
         // Calculate total screen lines this file line will occupy to highlight the whole block
         if (i == state->current_line) {
