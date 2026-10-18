@@ -180,6 +180,8 @@ void editor_do_replace(EditorState *state, const char *find, const char *replace
 }
 
 void editor_do_regex_replace(EditorState *state, const char *find, const char *replace, const char *flags) {
+    (void)find;
+    (void)replace;
     (void)flags;
     editor_set_status_msg(state, "Regex replace not yet implemented.");
 }
