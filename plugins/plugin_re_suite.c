@@ -39,7 +39,7 @@ static void cmd_disasm(EditorState *state, const char *args) {
         sscanf(args, "%255s %255s", target, func);
     }
     if (target[0] == '\0' && state && state->buffer.filename[0]) {
-        strncpy(target, state->buffer.filename, sizeof(target) - 1);
+        snprintf(target, sizeof(target), "%s", state->buffer.filename);
     }
     if (target[0] == '\0') {
         g_api->set_status_msg(state, "RE Suite: Usage :disasm <file> [func]");
@@ -129,7 +129,7 @@ static void cmd_set_backend(EditorState *state, const char *args) {
 static void cmd_elf(EditorState *state, const char *args) {
     char target[512] = {0};
     if (args && strlen(args) > 0) strncpy(target, args, sizeof(target) - 1);
-    else if (state && state->buffer.filename[0]) strncpy(target, state->buffer.filename, sizeof(target) - 1);
+    else if (state && state->buffer.filename[0]) snprintf(target, sizeof(target), "%s", state->buffer.filename);
     if (target[0] == '\0') {
         g_api->set_status_msg(state, "RE Suite: Usage :elf <file>");
         return;
@@ -144,7 +144,7 @@ static void cmd_elf(EditorState *state, const char *args) {
 static void cmd_sections(EditorState *state, const char *args) {
     char target[512] = {0};
     if (args && strlen(args) > 0) strncpy(target, args, sizeof(target) - 1);
-    else if (state && state->buffer.filename[0]) strncpy(target, state->buffer.filename, sizeof(target) - 1);
+    else if (state && state->buffer.filename[0]) snprintf(target, sizeof(target), "%s", state->buffer.filename);
     if (target[0] == '\0') {
         g_api->set_status_msg(state, "RE Suite: Usage :sections <file>");
         return;
@@ -158,7 +158,7 @@ static void cmd_sections(EditorState *state, const char *args) {
 static void cmd_symbols(EditorState *state, const char *args) {
     char target[512] = {0};
     if (args && strlen(args) > 0) strncpy(target, args, sizeof(target) - 1);
-    else if (state && state->buffer.filename[0]) strncpy(target, state->buffer.filename, sizeof(target) - 1);
+    else if (state && state->buffer.filename[0]) snprintf(target, sizeof(target), "%s", state->buffer.filename);
     if (target[0] == '\0') {
         g_api->set_status_msg(state, "RE Suite: Usage :symbols <file>");
         return;
@@ -172,7 +172,7 @@ static void cmd_symbols(EditorState *state, const char *args) {
 static void cmd_imports(EditorState *state, const char *args) {
     char target[512] = {0};
     if (args && strlen(args) > 0) strncpy(target, args, sizeof(target) - 1);
-    else if (state && state->buffer.filename[0]) strncpy(target, state->buffer.filename, sizeof(target) - 1);
+    else if (state && state->buffer.filename[0]) snprintf(target, sizeof(target), "%s", state->buffer.filename);
     if (target[0] == '\0') {
         g_api->set_status_msg(state, "RE Suite: Usage :imports <file>");
         return;
@@ -186,7 +186,7 @@ static void cmd_imports(EditorState *state, const char *args) {
 static void cmd_relocs(EditorState *state, const char *args) {
     char target[512] = {0};
     if (args && strlen(args) > 0) strncpy(target, args, sizeof(target) - 1);
-    else if (state && state->buffer.filename[0]) strncpy(target, state->buffer.filename, sizeof(target) - 1);
+    else if (state && state->buffer.filename[0]) snprintf(target, sizeof(target), "%s", state->buffer.filename);
     if (target[0] == '\0') {
         g_api->set_status_msg(state, "RE Suite: Usage :relocs <file>");
         return;
@@ -200,7 +200,7 @@ static void cmd_relocs(EditorState *state, const char *args) {
 static void cmd_checksec(EditorState *state, const char *args) {
     char target[512] = {0};
     if (args && strlen(args) > 0) strncpy(target, args, sizeof(target) - 1);
-    else if (state && state->buffer.filename[0]) strncpy(target, state->buffer.filename, sizeof(target) - 1);
+    else if (state && state->buffer.filename[0]) snprintf(target, sizeof(target), "%s", state->buffer.filename);
     if (target[0] == '\0') {
         g_api->set_status_msg(state, "RE Suite: Usage :checksec <file>");
         return;
@@ -224,7 +224,7 @@ static void cmd_strings(EditorState *state, const char *args) {
         sscanf(args, "%255s %d", target, &min_len);
     }
     if (target[0] == '\0' && state && state->buffer.filename[0]) {
-        strncpy(target, state->buffer.filename, sizeof(target) - 1);
+        snprintf(target, sizeof(target), "%s", state->buffer.filename);
     }
     if (target[0] == '\0') {
         g_api->set_status_msg(state, "RE Suite: Usage :strings <file> [min_len]");
@@ -247,7 +247,7 @@ static void cmd_decompile(EditorState *state, const char *args) {
         sscanf(args, "%255s %255s", target, func);
     }
     if (target[0] == '\0' && state && state->buffer.filename[0]) {
-        strncpy(target, state->buffer.filename, sizeof(target) - 1);
+        snprintf(target, sizeof(target), "%s", state->buffer.filename);
     }
     if (target[0] == '\0') {
         g_api->set_status_msg(state, "RE Suite: Usage :decompile <file> [func]");
@@ -309,7 +309,7 @@ static void cmd_repl(EditorState *state, const char *args) {
 static void cmd_hex(EditorState *state, const char *args) {
     char target[512] = {0};
     if (args && strlen(args) > 0) strncpy(target, args, sizeof(target) - 1);
-    else if (state && state->buffer.filename[0]) strncpy(target, state->buffer.filename, sizeof(target) - 1);
+    else if (state && state->buffer.filename[0]) snprintf(target, sizeof(target), "%s", state->buffer.filename);
     if (target[0] == '\0') {
         g_api->set_status_msg(state, "RE Suite: Usage :hex <file>");
         return;
