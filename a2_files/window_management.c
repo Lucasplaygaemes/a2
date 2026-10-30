@@ -2,7 +2,7 @@
 #include <wchar.h>
 #include <stdlib.h>
 
-#include "window_managment.h"
+#include "window_management.h"
 #include "defs.h"
 #include "base64.h"
 #include "fileio.h"
@@ -530,6 +530,24 @@ void toggle_floating_terminal() {
 
 void recalculate_window_layout() {
     Workspace *ws = ACTIVE_WS;
+    if (g_headless_mode) {
+        if (!ws || ws->num_windows == 0) return;
+        for (int i = 0; i < ws->num_windows; i++) {
+            EditorWindow *jw = ws->windows[i];
+            if (!jw) continue;
+            jw->y = 0;
+            jw->x = 0;
+            jw->width = 80;
+            jw->height = 24;
+            jw->win = NULL;
+            jw->content_win = NULL;
+            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                jw->state->buffer.is_dirty = true;
+            }
+        }
+        return;
+    }
+
     int screen_rows, screen_cols;
     getmaxyx(stdscr, screen_rows, screen_cols);
 
@@ -868,7 +886,7 @@ void free_workspace(Workspace *ws) {
 }
 
 void redraw_all_windows() {
-    if (workspace_manager.num_workspaces == 0) return;
+    if (g_headless_mode || workspace_manager.num_workspaces == 0) return;
 
     Workspace *ws = ACTIVE_WS;    
     bool any_dirty = false;
