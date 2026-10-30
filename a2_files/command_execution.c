@@ -4,7 +4,7 @@
 #include "fileio.h" // For save_file, load_file, get_syntax_file_from_extension, load_syntax_file
 #include "lsp_client.h" // For lsp_did_save, lsp_did_change
 #include "screen_ui.h" // For display_help_screen, display_output_screen
-#include "window_managment.h" // For closing the active window
+#include "window_management.h" // For closing the active window
 #include "others.h" // For trim_whitespace, display_work_summary, and editor_set_status_msg
 #include "timer.h" // For display_work_summary
 #include "cache.h"
@@ -76,22 +76,19 @@ static void resolve_filename_for_save(const char *input_path, char *out_abs_path
 
     char abs_path[PATH_MAX];
     if (realpath(input_path, abs_path) != NULL) {
-        strncpy(out_abs_path, abs_path, max_len - 1);
-        out_abs_path[max_len - 1] = '\0';
+        a2_strlcpy(out_abs_path, abs_path, max_len);
         return;
     }
 
     if (input_path[0] == '/') {
-        strncpy(out_abs_path, input_path, max_len - 1);
-        out_abs_path[max_len - 1] = '\0';
+        a2_strlcpy(out_abs_path, input_path, max_len);
     } else {
         char cwd[PATH_MAX];
         if (getcwd(cwd, sizeof(cwd)) != NULL) {
             int r = snprintf(out_abs_path, max_len, "%s/%s", cwd, input_path);
             if (r >= (int)max_len) { out_abs_path[max_len - 1] = '\0'; }
         } else {
-            strncpy(out_abs_path, input_path, max_len - 1);
-            out_abs_path[max_len - 1] = '\0';
+            a2_strlcpy(out_abs_path, input_path, max_len);
         }
     }
 }
@@ -157,8 +154,7 @@ void process_command(EditorState *state, bool *should_exit) {
             char abs_path[PATH_MAX];
             resolve_filename_for_save(new_name, abs_path, sizeof(abs_path));
             if (abs_path[0] != '\0') {
-                strncpy(state->buffer.filename, abs_path, sizeof(state->buffer.filename) - 1);
-                state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
+                a2_strlcpy(state->buffer.filename, abs_path, sizeof(state->buffer.filename));
                 const char *syntax_file = get_syntax_file_from_extension(state->buffer.filename);
                 load_syntax_file(state, syntax_file);
             }
@@ -178,8 +174,7 @@ void process_command(EditorState *state, bool *should_exit) {
             char abs_path[PATH_MAX];
             resolve_filename_for_save(args, abs_path, sizeof(abs_path));
             if (abs_path[0] != '\0') {
-                strncpy(state->buffer.filename, abs_path, sizeof(state->buffer.filename) - 1);
-                state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
+                a2_strlcpy(state->buffer.filename, abs_path, sizeof(state->buffer.filename));
                 const char *syntax_file = get_syntax_file_from_extension(state->buffer.filename);
                 load_syntax_file(state, syntax_file);
             }
@@ -193,8 +188,7 @@ void process_command(EditorState *state, bool *should_exit) {
             char abs_path[PATH_MAX];
             resolve_filename_for_save(new_name, abs_path, sizeof(abs_path));
             if (abs_path[0] != '\0') {
-                strncpy(state->buffer.filename, abs_path, sizeof(state->buffer.filename) - 1);
-                state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
+                a2_strlcpy(state->buffer.filename, abs_path, sizeof(state->buffer.filename));
                 const char *syntax_file = get_syntax_file_from_extension(state->buffer.filename);
                 load_syntax_file(state, syntax_file);
             }
@@ -237,7 +231,7 @@ void process_command(EditorState *state, bool *should_exit) {
         create_generic_terminal_window(cmd);
     } else if (strcmp(command, "theme") == 0) {
         if (strlen(args) > 0) {
-            char theme_name[256];
+            char theme_name[1024 + 16];
             if (strstr(args, ".theme")) {
                 snprintf(theme_name, sizeof(theme_name), "%s", args);
             } else {
@@ -348,7 +342,11 @@ void process_command(EditorState *state, bool *should_exit) {
     } else if (strcmp(command, "timer") == 0) {
         display_work_summary();
     } else if (strcmp(command, "settings") == 0) {
-        create_settings_panel_window();
+        if (g_headless_mode || strlen(args) > 0) {
+            handle_settings_command(state, args);
+        } else {
+            create_settings_panel_window();
+        }
     } else if (strcmp(command, "diff") == 0) {
         if (strlen(args) > 0) {
             diff_command(state, args);
@@ -513,7 +511,7 @@ void process_command(EditorState *state, bool *should_exit) {
                 process_gdb_command(state, args, true);
             } else if (strcmp(command, "gdb-break") == 0 || strcmp(command, "gdb-b") == 0) {
                 if (strlen(args) > 0) {
-                    char bk[256];
+                    char bk[1024 + 16];
                     snprintf(bk, sizeof(bk), "break %s", args);
                     if (send_cmd_to_terminal_window(bk)) editor_set_status_msg(state, "GDB: %s", bk);
                     else editor_set_status_msg(state, "No active GDB terminal split found.");
@@ -521,7 +519,7 @@ void process_command(EditorState *state, bool *should_exit) {
                     execute_action(ACT_GDB_BREAK, state, NULL);
                 }
             } else if (strcmp(command, "gdb-run") == 0 || strcmp(command, "gdb-r") == 0) {
-                char run_cmd[512] = "run";
+                char run_cmd[1024 + 16] = "run";
                 if (strlen(args) > 0) snprintf(run_cmd, sizeof(run_cmd), "run %s", args);
                 if (send_cmd_to_terminal_window(run_cmd)) editor_set_status_msg(state, "GDB: %s", run_cmd);
                 else editor_set_status_msg(state, "No active GDB terminal split found.");
@@ -532,7 +530,7 @@ void process_command(EditorState *state, bool *should_exit) {
             } else if (strcmp(command, "gdb-continue") == 0 || strcmp(command, "gdb-c") == 0) {
                 execute_action(ACT_GDB_CONTINUE, state, NULL);
             } else if (strcmp(command, "gdb-print") == 0 || strcmp(command, "gdb-p") == 0) {
-                char p_cmd[512];
+                char p_cmd[1024 + 16];
                 if (strlen(args) > 0) {
                     snprintf(p_cmd, sizeof(p_cmd), "print %s", args);
                 } else {
@@ -544,7 +542,7 @@ void process_command(EditorState *state, bool *should_exit) {
                 if (send_cmd_to_terminal_window(p_cmd)) editor_set_status_msg(state, "GDB: %s", p_cmd);
                 else editor_set_status_msg(state, "No active GDB terminal split found.");
             } else if (strcmp(command, "gdb-watch") == 0 || strcmp(command, "gdb-w") == 0) {
-                char w_cmd[512];
+                char w_cmd[1024 + 16];
                 if (strlen(args) > 0) {
                     snprintf(w_cmd, sizeof(w_cmd), "watch %s", args);
                 } else {
@@ -735,8 +733,7 @@ void execute_shell_command(EditorState *state) {
             char cwd[1024];
             if (getcwd(cwd, sizeof(cwd)) != 0) {
                 char display_cwd[80];
-                strncpy(display_cwd, cwd, sizeof(display_cwd) - 1);
-                display_cwd[sizeof(display_cwd) - 1] = '\0';
+                a2_strlcpy(display_cwd, cwd, sizeof(display_cwd));
                 editor_set_status_msg(state, "Current directory: %s", display_cwd);
             }
         }
@@ -821,8 +818,7 @@ void compile_file(EditorState *state, char* args) {
 
     if (ret == 0) {
         char display_output_name[40];
-        strncpy(display_output_name, output_filename, sizeof(display_output_name) - 1);
-        display_output_name[sizeof(display_output_name)-1] = '\0';
+        a2_strlcpy(display_output_name, output_filename, sizeof(display_output_name));
         editor_set_status_msg(state, "Compilation succeeded! Executable: %s", display_output_name);
         remove(temp_output_file);
     } else {
