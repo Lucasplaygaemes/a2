@@ -1,6 +1,6 @@
 #include "defs.h"
 #include "screen_ui.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "fileio.h"
 #include "direct_navigation.h"
 #include "command_execution.h"
@@ -12,12 +12,11 @@
 #include "diff.h"
 #include "spell.h"
 #include "base64.h"
-#include "spell.h"
-#include "lsp_client.h"
-#include "a2_files/settings.h" // Corrected path
+#include "settings.h"
 #include "logger.h"
 #include "lsp_watchdog.h"
 #include "plugin_engine.h"
+#include "headless.h"
 
 
 #include <locale.h>
@@ -83,108 +82,331 @@ void inicializar_ncurses() {
     bkgd(COLOR_PAIR(8));
 }
 
+static bool handle_lsp_code_action_input(EditorState *state, wint_t ch) {
+    if (!state->lsp.code_action_popup_visible) return false;
+    switch ((int)ch) {
+        case 'j':
+        case KEY_DOWN:
+            if (state->lsp.code_action_selected < state->lsp.code_actions_count - 1)
+                state->lsp.code_action_selected++;
+            break;
+        case 'k':
+        case KEY_UP:
+            if (state->lsp.code_action_selected > 0)
+                state->lsp.code_action_selected--;
+            break;
+        case '\n':
+        case '\r':
+        case KEY_ENTER:
+            lsp_apply_code_action(state, state->lsp.code_action_selected);
+            break;
+        case 27: /* Esc */
+            lsp_free_code_actions(state);
+            editor_set_status_msg(state, "Code action cancelled.");
+            break;
+        default:
+            break;
+    }
+    state->buffer.is_dirty = true;
+    return true;
+}
+
+static bool handle_movable_popup_input(EditorState *state, wint_t ch) {
+    if (!state->lsp.is_popup_movable) return false;
+    switch (ch) {
+        case KEY_UP:    state->lsp.popup_y--; break;
+        case KEY_DOWN:  state->lsp.popup_y++; break;
+        case KEY_LEFT:  state->lsp.popup_x--; break;
+        case KEY_RIGHT: state->lsp.popup_x++; break;
+        case KEY_MOUSE: {
+            MEVENT event;
+            if (getmouse(&event) == OK) {
+                if (event.bstate & BUTTON1_CLICKED || event.bstate & BUTTON1_PRESSED) {
+                    state->lsp.popup_y = event.y - (state->lsp.popup_height / 2);
+                    state->lsp.popup_x = event.x - (state->lsp.popup_width / 2);
+                }
+            }
+            break;
+        }
+        case '\n':
+        case '\r':
+        case KEY_ENTER:
+            state->lsp.is_popup_pinned = true;
+            state->lsp.is_popup_movable = false;
+            break;
+        case 27: // ESC
+            state->lsp.is_popup_movable = false;
+            state->lsp.is_popup_pinned = false;
+            if (state->lsp.diagnostic_popup) {
+                delwin(state->lsp.diagnostic_popup);
+                state->lsp.diagnostic_popup = NULL;
+            }
+            state->lsp.is_popup_visible = false;
+            if (state->spell.hover_message) {
+                free(state->spell.hover_message);
+                state->spell.hover_message = NULL;
+            }
+            break;
+    }
+
+    if (state->lsp.popup_y < 0) state->lsp.popup_y = 0;
+    if (state->lsp.popup_x < 0) state->lsp.popup_x = 0;
+
+    state->buffer.is_dirty = true;
+    return true;
+}
+
+static bool check_and_consume_kitty_apc(WINDOW *win, wint_t ch) {
+    if (ch != 27 || !win) return false;
+    nodelay(win, TRUE);
+    wint_t next_ch;
+    int get_result = wget_wch(win, &next_ch);
+    nodelay(win, FALSE);
+
+    if (get_result != ERR && next_ch == '_') {
+        wtimeout(win, 500);
+        wint_t apc_ch;
+        int esc_seen = 0;
+        while (wget_wch(win, &apc_ch) != ERR) {
+            if (apc_ch == 27) esc_seen = 1;
+            else if (esc_seen && apc_ch == '\\') break;
+            else esc_seen = 0;
+        }
+        wtimeout(win, -1);
+        return true;
+    } else if (get_result != ERR) {
+        unget_wch(next_ch);
+    }
+    return false;
+}
+
+static void append_macro_char(EditorState *state, wint_t ch) {
+    int reg_idx = state->input.recording_register_idx;
+    char new_chars[MB_CUR_MAX + 1];
+    int len = wctomb(new_chars, ch);
+    if (len > 0) {
+        new_chars[len] = '\0';
+        char *old_macro = state->input.macro_registers[reg_idx];
+        if (old_macro == NULL) {
+            state->input.macro_registers[reg_idx] = strdup(new_chars);
+        } else {
+            char *new_macro = malloc(strlen(old_macro) + len + 1);
+            strcpy(new_macro, old_macro);
+            strcat(new_macro, new_chars);
+            free(old_macro);
+            state->input.macro_registers[reg_idx] = new_macro;
+        }
+    }
+}
+
+static bool handle_completion_mode_input(EditorState *state, wint_t ch, WINDOW *active_win) {
+    if (state->input.completion_mode == COMPLETION_NONE) return false;
+    int win_h = 0;
+    if (state->input.completion_win) win_h = getmaxy(state->input.completion_win);
+
+    switch (ch) {
+        case KEY_UP:
+            state->input.selected_suggestion--;
+            if (state->input.selected_suggestion < 0) {
+                state->input.selected_suggestion = state->input.num_suggestions - 1;
+                if (win_h > 0) {
+                    int new_top = state->input.num_suggestions - win_h;
+                    state->input.completion_scroll_top = new_top > 0 ? new_top : 0;
+                }
+            }
+            if (state->input.selected_suggestion < state->input.completion_scroll_top) {
+                state->input.completion_scroll_top = state->input.selected_suggestion;
+            }
+            return true;
+        case ' ':
+        case KEY_DOWN:
+            state->input.selected_suggestion++;
+            if (state->input.selected_suggestion >= state->input.num_suggestions) {
+                state->input.selected_suggestion = 0;
+                state->input.completion_scroll_top = 0;
+            }
+            if (win_h > 0 && state->input.selected_suggestion >= state->input.completion_scroll_top + win_h) {
+                state->input.completion_scroll_top = state->input.selected_suggestion - win_h + 1;
+            }
+            return true;
+        case KEY_ENTER: case '\n': case 13:
+            editor_apply_completion(state);
+            return true;
+        case 27: // ESC or Alt
+            if (active_win) {
+                nodelay(active_win, TRUE);
+                wint_t completion_next_ch;
+                int completion_get_result = wget_wch(active_win, &completion_next_ch);
+                nodelay(active_win, FALSE);
+
+                if (completion_get_result != ERR && (completion_next_ch == 's' || completion_next_ch == 'S')) {
+                    editor_expand_snippet(state);
+                    return true;
+                }
+            }
+            editor_end_completion(state);
+            return true;
+        default:
+            editor_end_completion(state);
+            return false;
+    }
+}
+
+static void handle_operator_pending_mode(EditorState *state, wint_t ch, bool *should_exit) {
+    char op = state->input.pending_operator;
+
+    // Se já estivermos no modo objeto de texto esperando a tecla alvo (ex: 'w' em 'diw')
+    if (state->input.pending_text_object_mode != 0) {
+        char inner_mode = state->input.pending_text_object_mode;
+        state->input.pending_text_object_mode = 0;
+        state->input.pending_operator = 0;
+        state->input.mode = NORMAL;
+
+        int sl, sc, el, ec;
+        bool inner = (inner_mode == 'i');
+        if (find_text_object_bounds(state, ch, inner, &sl, &sc, &el, &ec)) {
+            state->cursor.selection_start_line = sl;
+            state->cursor.selection_start_col = sc;
+            state->cursor.line = el;
+            state->cursor.col = ec;
+
+            if (op == 'd') {
+                editor_delete_selection(state);
+            } else if (op == 'y') {
+                editor_yank_selection(state);
+                state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
+            } else if (op == 'c') {
+                editor_delete_selection(state);
+                state->input.mode = INSERT;
+            } else if (op == '>' || op == '<') {
+                push_undo(state); clear_redo_stack(state);
+                for (int i = sl; i <= el; i++) {
+                    if (op == '>') editor_ident_line(state, i);
+                    else           editor_unindent_line(state, i);
+                }
+                state->cursor.line = sl; state->cursor.col = 0;
+                state->cursor.ideal_col = 0; state->buffer.is_dirty = true;
+            }
+        } else {
+            editor_set_status_msg(state, "Objeto de texto nao encontrado.");
+        }
+    }
+    // Se o usuário digitou 'i' ou 'a' para selecionar um objeto de texto
+    else if (ch == 'i' || ch == 'a') {
+        state->input.pending_text_object_mode = ch;
+        editor_set_status_msg(state, "-- (%c) %c --", op, (char)ch);
+    }
+    // Execução padrão: duplicação de operador (dd, yy, cc) ou operador + movimento
+    else {
+        int count = state->input.prefix_count > 0 ? state->input.prefix_count : 1;
+        state->input.prefix_count = 0;
+        state->input.pending_operator = 0;
+        state->input.mode = NORMAL;
+
+        if (ch == (wint_t)op) { // dd, yy ou cc — repete N vezes
+            if (op == 'd') {
+                for (int i = 0; i < count; i++) editor_delete_line(state);
+            } else if (op == 'y') {
+                // Para yy com count, selecionamos N linhas e yankamos
+                state->cursor.selection_start_line = state->cursor.line;
+                state->cursor.selection_start_col = 0;
+                int end = state->cursor.line + count - 1;
+                if (end >= state->buffer.num_lines) end = state->buffer.num_lines - 1;
+                state->cursor.line = end;
+                state->cursor.col = state->buffer.lines[end] ? (int)strlen(state->buffer.lines[end]) : 0;
+                state->cursor.visual_selection_mode = VISUAL_MODE_LINE;
+                editor_yank_selection(state);
+                state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
+                state->cursor.line = state->cursor.selection_start_line;
+                state->cursor.col = 0;
+            } else if (op == 'c') { // cc: limpa a linha e entra em INSERT
+                push_undo(state);
+                clear_redo_stack(state);
+                char *l = state->buffer.lines[state->cursor.line];
+                if (l) {
+                    l[0] = '\0';
+                    state->cursor.col = 0;
+                    state->cursor.ideal_col = 0;
+                    state->input.mode = INSERT;
+                    state->buffer.is_dirty = true;
+                }
+            } else if (op == '>' || op == '<') { // >> ou << — N linhas
+                int end_line = state->cursor.line + count - 1;
+                if (end_line >= state->buffer.num_lines) end_line = state->buffer.num_lines - 1;
+                push_undo(state); clear_redo_stack(state);
+                for (int i = state->cursor.line; i <= end_line; i++) {
+                    if (op == '>') editor_ident_line(state, i);
+                    else           editor_unindent_line(state, i);
+                }
+                state->cursor.col = 0; state->cursor.ideal_col = 0;
+                state->buffer.is_dirty = true;
+            }
+        } else { // Operador + Movimento — executa o motion N vezes
+            int start_line = state->cursor.line;
+            int start_col = state->cursor.col;
+
+            // Executa o movimento N vezes
+            for (int i = 0; i < count; i++) {
+                EditorAction action = get_action_from_key(ch, false, false, 0);
+                if (action != ACT_NONE) {
+                    execute_action(action, state, should_exit);
+                } else {
+                    handle_normal_mode_key(state, ch);
+                }
+            }
+
+            // Organiza os limites da seleção
+            int sl, sc, el, ec;
+            if (start_line < state->cursor.line || (start_line == state->cursor.line && start_col <= state->cursor.col)) {
+                sl = start_line; sc = start_col;
+                el = state->cursor.line; ec = state->cursor.col;
+            } else {
+                sl = state->cursor.line; sc = state->cursor.col;
+                el = start_line; ec = start_col;
+            }
+
+            state->cursor.selection_start_line = sl;
+            state->cursor.selection_start_col = sc;
+            state->cursor.line = el;
+            state->cursor.col = ec;
+
+            if (op == 'd') {
+                editor_delete_selection(state);
+            } else if (op == 'y') {
+                editor_yank_selection(state);
+                state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
+            } else if (op == 'c') {
+                editor_delete_selection(state);
+                state->input.mode = INSERT;
+            } else if (op == '>' || op == '<') { // >motion ou <motion
+                push_undo(state); clear_redo_stack(state);
+                for (int i = sl; i <= el; i++) {
+                    if (op == '>') editor_ident_line(state, i);
+                    else           editor_unindent_line(state, i);
+                }
+                state->cursor.line = sl; state->cursor.col = 0;
+                state->cursor.ideal_col = 0; state->buffer.is_dirty = true;
+            }
+        }
+    }
+}
+
 
 void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     local_history_check_idle_snapshot(state);
     A2_LOG(LOG_DEBUG, TAG_CORE, "Input: ch=%d, mode=%d, single=%d", ch, (int)state->input.mode, state->input.single_command_mode);
 
-    // --- CODE ACTION POPUP MODE ---
-    if (state->lsp.code_action_popup_visible) {
-        switch ((int)ch) {
-            case 'j':
-            case KEY_DOWN:
-                if (state->lsp.code_action_selected < state->lsp.code_actions_count - 1)
-                    state->lsp.code_action_selected++;
-                break;
-            case 'k':
-            case KEY_UP:
-                if (state->lsp.code_action_selected > 0)
-                    state->lsp.code_action_selected--;
-                break;
-            case '\n':
-            case '\r':
-            case KEY_ENTER:
-                lsp_apply_code_action(state, state->lsp.code_action_selected);
-                break;
-            case 27: /* Esc */
-                lsp_free_code_actions(state);
-                editor_set_status_msg(state, "Code action cancelled.");
-                break;
-            default:
-                break;
-        }
-        state->buffer.is_dirty = true;
-        return; /* consume the key — do not propagate to normal editor handling */
+    // 1. Popup modes (LSP code action, movable diagnostic window)
+    if (handle_lsp_code_action_input(state, ch) || handle_movable_popup_input(state, ch)) {
+        return;
     }
 
-    // --- FLOTING WINDOW MOVABLE MODE ---
-    if (state->lsp.is_popup_movable) {
-        switch(ch) {
-            case KEY_UP:    state->lsp.popup_y--; break;
-            case KEY_DOWN:  state->lsp.popup_y++; break;
-            case KEY_LEFT:  state->lsp.popup_x--; break;
-            case KEY_RIGHT: state->lsp.popup_x++; break;
-            case KEY_MOUSE: {
-                MEVENT event;
-                if (getmouse(&event) == OK) {
-                    if (event.bstate & BUTTON1_CLICKED || event.bstate & BUTTON1_PRESSED) {
-                        state->lsp.popup_y = event.y - (state->lsp.popup_height / 2);
-                        state->lsp.popup_x = event.x - (state->lsp.popup_width / 2);
-                    }
-                }
-                break;
-            }
-            case '\n':
-            case '\r':
-            case KEY_ENTER:
-                state->lsp.is_popup_pinned = true;
-                state->lsp.is_popup_movable = false;
-                break;
-            case 27: // ESC
-                state->lsp.is_popup_movable = false;
-                state->lsp.is_popup_pinned = false;
-                if (state->lsp.diagnostic_popup) {
-                    delwin(state->lsp.diagnostic_popup);
-                    state->lsp.diagnostic_popup = NULL;
-                }
-                state->lsp.is_popup_visible = false;
-                if (state->spell.hover_message) {
-                    free(state->spell.hover_message);
-                    state->spell.hover_message = NULL;
-                }
-                break;
-        }
-        
-        if (state->lsp.popup_y < 0) state->lsp.popup_y = 0;
-        if (state->lsp.popup_x < 0) state->lsp.popup_x = 0;
-        
-        state->buffer.is_dirty = true;
-        return; // Consume input completely
+    // 2. Filter Kitty APC sequences
+    WINDOW *content_win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->content_win;
+    if (check_and_consume_kitty_apc(content_win, ch)) {
+        return;
     }
 
-    // Check for Kitty APC (Application Program Command) early to prevent resetting hovers!
-    if (ch == 27) {
-        WINDOW *active_win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->content_win;
-        nodelay(active_win, TRUE);
-        wint_t next_ch;
-        int get_result = wget_wch(active_win, &next_ch);
-        nodelay(active_win, FALSE);
-        
-        if (get_result != ERR && next_ch == '_') {
-            wtimeout(active_win, 500);
-            wint_t apc_ch;
-            int esc_seen = 0;
-            while (wget_wch(active_win, &apc_ch) != ERR) {
-                if (apc_ch == 27) esc_seen = 1;
-                else if (esc_seen && apc_ch == '\\') break;
-                else esc_seen = 0;
-            }
-            wtimeout(active_win, -1);
-            return; // Drop entirely, it's just a terminal response
-        } else if (get_result != ERR) {
-            unget_wch(next_ch);
-        }
-    }
     if (!state->lsp.is_popup_movable && state->lsp.is_popup_visible && ch == KEY_MOUSE) {
         MEVENT event;
         if (getmouse(&event) == OK) {
@@ -246,76 +468,13 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
     EditorAction current_act = get_action_from_key(ch, false, is_ctrl_tmp, state->input.pending_sequence_key);
 
     if (state->input.is_recording_macro && current_act != ACT_MACRO_RECORD) {
-        int reg_idx = state->input.recording_register_idx;
-        char new_chars[MB_CUR_MAX + 1];
-        int len = wctomb(new_chars, ch);
-        if (len > 0) {
-            new_chars[len] = '\0';
-            char *old_macro = state->input.macro_registers[reg_idx];
-            if (old_macro == NULL) {
-                state->input.macro_registers[reg_idx] = strdup(new_chars);
-            } else {
-                char *new_macro = malloc(strlen(old_macro) + len + 1);
-                strcpy(new_macro, old_macro);
-                strcat(new_macro, new_chars);
-                free(old_macro);
-                state->input.macro_registers[reg_idx] = new_macro;
-            }
-        }
+        append_macro_char(state, ch);
     }
     EditorWindow* active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
     WINDOW *active_win = active_jw->win;
     
-    if (state->input.completion_mode != COMPLETION_NONE) {
-        int win_h = 0;
-        if (state->input.completion_win) win_h = getmaxy(state->input.completion_win);
-
-        switch(ch) {
-            case KEY_UP:
-                state->input.selected_suggestion--;
-                if (state->input.selected_suggestion < 0) {
-                    state->input.selected_suggestion = state->input.num_suggestions - 1;
-                    if(win_h > 0) {
-                       int new_top = state->input.num_suggestions - win_h;
-                       state->input.completion_scroll_top = new_top > 0 ? new_top : 0;
-                    }
-                }
-                if (state->input.selected_suggestion < state->input.completion_scroll_top) {
-                    state->input.completion_scroll_top = state->input.selected_suggestion;
-                }
-                return; // Use return to prevent further processing
-            case ' ':
-            case KEY_DOWN:
-                state->input.selected_suggestion++;
-                if (state->input.selected_suggestion >= state->input.num_suggestions) {
-                    state->input.selected_suggestion = 0;
-                    state->input.completion_scroll_top = 0;
-                }
-                if (win_h > 0 && state->input.selected_suggestion >= state->input.completion_scroll_top + win_h) {
-                    state->input.completion_scroll_top = state->input.selected_suggestion - win_h + 1;
-                }
-                return;
-            case KEY_ENTER: case '\n': case 13:
-                editor_apply_completion(state);
-                return;
-            case 27: // ESC or Alt
-                nodelay(active_win, TRUE);
-                wint_t completion_next_ch;
-                int completion_get_result = wget_wch(active_win, &completion_next_ch);
-                nodelay(active_win, FALSE);
-                
-                if (completion_get_result != ERR && (completion_next_ch == 's' || completion_next_ch == 'S')) {
-                    editor_expand_snippet(state);
-                    return; // Snippet handled, stay in completion mode if possible
-                }
-                
-                editor_end_completion(state);
-                return;
-            default: 
-                editor_end_completion(state);
-                // Let the rest of the function process the key
-                break;
-        }
+    if (handle_completion_mode_input(state, ch, active_win)) {
+        return;
     }
         
     if (ch == 27 || ch == 31) { // ESC or Alt
@@ -347,8 +506,7 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
                     int count = state->input.insert_repeat_count - 1;
                     state->input.insert_repeat_count = 0;
                     char rep_buf[1024];
-                    strncpy(rep_buf, state->input.insert_repeat_buf, sizeof(rep_buf) - 1);
-                    rep_buf[sizeof(rep_buf) - 1] = '\0';
+                    a2_strlcpy(rep_buf, state->input.insert_repeat_buf, sizeof(rep_buf));
                     state->input.insert_repeat_buf[0] = '\0';
 
                     for (int r = 0; r < count; r++) {
@@ -499,145 +657,9 @@ void process_editor_input(EditorState *state, wint_t ch, bool *should_exit) {
         case NORMAL:
             handle_normal_mode_key(state, ch);
             break;
-        case OPERATOR_PENDING: {
-    char op = state->input.pending_operator;
-
-    // Se já estivermos no modo objeto de texto esperando a tecla alvo (ex: 'w' em 'diw')
-    if (state->input.pending_text_object_mode != 0) {
-        char inner_mode = state->input.pending_text_object_mode;
-        state->input.pending_text_object_mode = 0;
-        state->input.pending_operator = 0;
-        state->input.mode = NORMAL;
-
-        int sl, sc, el, ec;
-        bool inner = (inner_mode == 'i');
-        if (find_text_object_bounds(state, ch, inner, &sl, &sc, &el, &ec)) {
-            state->cursor.selection_start_line = sl;
-            state->cursor.selection_start_col = sc;
-            state->cursor.line = el;
-            state->cursor.col = ec;
-
-            if (op == 'd') {
-                editor_delete_selection(state);
-            } else if (op == 'y') {
-                editor_yank_selection(state);
-                state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
-            } else if (op == 'c') {
-                editor_delete_selection(state);
-                state->input.mode = INSERT;
-            } else if (op == '>' || op == '<') {
-                push_undo(state); clear_redo_stack(state);
-                for (int i = sl; i <= el; i++) {
-                    if (op == '>') editor_ident_line(state, i);
-                    else           editor_unindent_line(state, i);
-                }
-                state->cursor.line = sl; state->cursor.col = 0;
-                state->cursor.ideal_col = 0; state->buffer.is_dirty = true;
-            }
-        } else {
-            editor_set_status_msg(state, "Objeto de texto nao encontrado.");
-        }
-    }
-    // Se o usuário digitou 'i' ou 'a' para selecionar um objeto de texto
-    else if (ch == 'i' || ch == 'a') {
-        state->input.pending_text_object_mode = ch;
-        editor_set_status_msg(state, "-- (%c) %c --", op, (char)ch);
-    }
-    // Execução padrão: duplicação de operador (dd, yy, cc) ou operador + movimento
-    else {
-        int count = state->input.prefix_count > 0 ? state->input.prefix_count : 1;
-        state->input.prefix_count = 0;
-        state->input.pending_operator = 0;
-        state->input.mode = NORMAL;
-
-        if (ch == (wint_t)op) { // dd, yy ou cc — repete N vezes
-            if (op == 'd') {
-                for (int i = 0; i < count; i++) editor_delete_line(state);
-            } else if (op == 'y') {
-                // Para yy com count, selecionamos N linhas e yankamos
-                state->cursor.selection_start_line = state->cursor.line;
-                state->cursor.selection_start_col = 0;
-                int end = state->cursor.line + count - 1;
-                if (end >= state->buffer.num_lines) end = state->buffer.num_lines - 1;
-                state->cursor.line = end;
-                state->cursor.col = state->buffer.lines[end] ? (int)strlen(state->buffer.lines[end]) : 0;
-                state->cursor.visual_selection_mode = VISUAL_MODE_LINE;
-                editor_yank_selection(state);
-                state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
-                state->cursor.line = state->cursor.selection_start_line;
-                state->cursor.col = 0;
-            } else if (op == 'c') { // cc: limpa a linha e entra em INSERT
-                push_undo(state);
-                clear_redo_stack(state);
-                char *l = state->buffer.lines[state->cursor.line];
-                if (l) {
-                    l[0] = '\0';
-                    state->cursor.col = 0;
-                    state->cursor.ideal_col = 0;
-                    state->input.mode = INSERT;
-                    state->buffer.is_dirty = true;
-                }
-            } else if (op == '>' || op == '<') { // >> ou << — N linhas
-                int end_line = state->cursor.line + count - 1;
-                if (end_line >= state->buffer.num_lines) end_line = state->buffer.num_lines - 1;
-                push_undo(state); clear_redo_stack(state);
-                for (int i = state->cursor.line; i <= end_line; i++) {
-                    if (op == '>') editor_ident_line(state, i);
-                    else           editor_unindent_line(state, i);
-                }
-                state->cursor.col = 0; state->cursor.ideal_col = 0;
-                state->buffer.is_dirty = true;
-            }
-        } else { // Operador + Movimento — executa o motion N vezes
-            int start_line = state->cursor.line;
-            int start_col = state->cursor.col;
-
-            // Executa o movimento N vezes
-            for (int i = 0; i < count; i++) {
-                EditorAction action = get_action_from_key(ch, false, false, 0);
-                if (action != ACT_NONE) {
-                    execute_action(action, state, should_exit);
-                } else {
-                    handle_normal_mode_key(state, ch);
-                }
-            }
-
-            // Organiza os limites da seleção
-            int sl, sc, el, ec;
-            if (start_line < state->cursor.line || (start_line == state->cursor.line && start_col <= state->cursor.col)) {
-                sl = start_line; sc = start_col;
-                el = state->cursor.line; ec = state->cursor.col;
-            } else {
-                sl = state->cursor.line; sc = state->cursor.col;
-                el = start_line; ec = start_col;
-            }
-
-            state->cursor.selection_start_line = sl;
-            state->cursor.selection_start_col = sc;
-            state->cursor.line = el;
-            state->cursor.col = ec;
-
-            if (op == 'd') {
-                editor_delete_selection(state);
-            } else if (op == 'y') {
-                editor_yank_selection(state);
-                state->cursor.visual_selection_mode = VISUAL_MODE_NONE;
-            } else if (op == 'c') {
-                editor_delete_selection(state);
-                state->input.mode = INSERT;
-            } else if (op == '>' || op == '<') { // >motion ou <motion
-                push_undo(state); clear_redo_stack(state);
-                for (int i = sl; i <= el; i++) {
-                    if (op == '>') editor_ident_line(state, i);
-                    else           editor_unindent_line(state, i);
-                }
-                state->cursor.line = sl; state->cursor.col = 0;
-                state->cursor.ideal_col = 0; state->buffer.is_dirty = true;
-            }
-        }
-    }
-    break;
-}
+        case OPERATOR_PENDING:
+            handle_operator_pending_mode(state, ch, should_exit);
+            break;
         case INSERT:
             handle_insert_mode_key(state, ch);
             break;
@@ -689,7 +711,9 @@ bool handle_global_shortcut(int ch, bool alt, bool ctrl, bool *should_exit) {
 bool g_safe_mode = false;
 
 void emergency_crash_handler(int sig) {
-    endwin();
+    if (!g_headless_mode) {
+        endwin();
+    }
     fprintf(stderr, "\n[CRITICAL ERROR] a2 crashed (Signal %d). Entering emergency recovery...\n", sig);
     if (workspace_manager.num_workspaces > 0) {
         for (int i = 0; i < workspace_manager.num_workspaces; i++) {
@@ -715,6 +739,221 @@ void emergency_crash_handler(int sig) {
     }
     fprintf(stderr, "Recovery completed. Editor terminated to prevent data loss.\n");
     exit(1);
+}
+
+static void terminal_forward_key(int pty_fd, wint_t ch) {
+    if (pty_fd == -1) return;
+    if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
+        char b = 0x7f;
+        write(pty_fd, &b, 1);
+    } else if (ch == '\n' || ch == KEY_ENTER || ch == 13) {
+        char b = '\r';
+        write(pty_fd, &b, 1);
+    } else if (ch == KEY_UP) {
+        write(pty_fd, "\033[A", 3);
+    } else if (ch == KEY_DOWN) {
+        write(pty_fd, "\033[B", 3);
+    } else if (ch == KEY_RIGHT) {
+        write(pty_fd, "\033[C", 3);
+    } else if (ch == KEY_LEFT) {
+        write(pty_fd, "\033[D", 3);
+    } else {
+        char mb_buf[MB_CUR_MAX + 1];
+        int n = wctomb(mb_buf, ch);
+        if (n > 0) {
+            write(pty_fd, mb_buf, n);
+        }
+    }
+}
+
+static bool extract_markdown_image_path(const char *line, char *out_path, size_t out_size) {
+    if (!line || !out_path || out_size == 0) return false;
+    out_path[0] = '\0';
+
+    const char *bang = strstr(line, "![");
+    if (bang) {
+        const char *bracket = strchr(bang, ']');
+        if (bracket && *(bracket + 1) == '(') {
+            const char *paren = strchr(bracket + 2, ')');
+            if (paren) {
+                size_t len = paren - (bracket + 2);
+                if (len > 0 && len < out_size) {
+                    strncpy(out_path, bracket + 2, len);
+                    out_path[len] = '\0';
+                    return true;
+                }
+            }
+        }
+    } else {
+        const char *at = strstr(line, "@[");
+        if (at) {
+            const char *bracket = strchr(at + 2, ']');
+            if (bracket) {
+                size_t len = bracket - (at + 2);
+                if (len > 0 && len < out_size) {
+                    strncpy(out_path, at + 2, len);
+                    out_path[len] = '\0';
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+static void check_lsp_completion_debounce(EditorState *active_state) {
+    if (!active_state->lsp.completion_pending) return;
+
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+
+    long long elapsed_ns = (now.tv_sec - active_state->lsp.last_keystroke.tv_sec) * 1000000000LL;
+    elapsed_ns += (now.tv_nsec - active_state->lsp.last_keystroke.tv_nsec);
+
+    if (elapsed_ns > LSP_DEBOUNCE_NS) {
+        active_state->lsp.completion_pending = false;
+        editor_start_completion(active_state);
+        if (active_state->input.word_to_complete[0] != '\0') {
+            lsp_send_completion_request(active_state);
+        }
+    }
+}
+
+static void check_spell_hover_debounce(EditorState *active_state) {
+    if (!active_state->spell.hover_pending || !active_state->spell.checker.enabled) return;
+
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+
+    long long elapsed_ns = (now.tv_sec - active_state->spell.hover_last_move.tv_sec) * 1000000000LL;
+    elapsed_ns += (now.tv_nsec - active_state->spell.hover_last_move.tv_nsec);
+
+    if (elapsed_ns > 250000000LL) { // 250ms debounce
+        active_state->spell.hover_pending = false;
+
+        char word[100];
+        get_word_at_cursor(active_state, word, sizeof(word));
+
+        if (strlen(word) > 0 && !spell_checker_check_word(&active_state->spell.checker, word)) {
+            if (strcmp(active_state->spell.hover_word, word) != 0) {
+                int n_sugg = 0;
+                char **suggestions = spell_checker_suggest(&active_state->spell.checker, word, &n_sugg);
+                if (n_sugg > 0) {
+                    char popup_msg[256] = "Did you mean: ";
+                    for (int i = 0; i < n_sugg && i < 3; i++) {
+                        strcat(popup_msg, suggestions[i]);
+                        if (i < n_sugg - 1 && i < 2) strcat(popup_msg, ", ");
+                    }
+                    if (active_state->spell.hover_message) free(active_state->spell.hover_message);
+                    active_state->spell.hover_message = strdup(popup_msg);
+                    strcpy(active_state->spell.hover_word, word);
+                    active_state->buffer.is_dirty = true;
+                    spell_checker_free_suggestions(&active_state->spell.checker, suggestions, n_sugg);
+                }
+            }
+        } else {
+            if (active_state->spell.hover_message) {
+                free(active_state->spell.hover_message);
+                active_state->spell.hover_message = NULL;
+                active_state->buffer.is_dirty = true;
+            }
+            active_state->spell.hover_word[0] = '\0';
+        }
+    }
+}
+
+static void check_image_hover_debounce(EditorState *active_state) {
+    if (!active_state->image_hover.hover_pending || !global_config.image_preview_enabled) return;
+
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    long long elapsed_ns = (now.tv_sec - active_state->image_hover.hover_last_move.tv_sec) * 1000000000LL;
+    elapsed_ns += (now.tv_nsec - active_state->image_hover.hover_last_move.tv_nsec);
+
+    if (elapsed_ns > 400000000LL) { // 400ms debounce
+        active_state->image_hover.hover_pending = false;
+        char *line = (active_state->cursor.line >= 0 && active_state->cursor.line < active_state->buffer.num_lines)
+                     ? active_state->buffer.lines[active_state->cursor.line]
+                     : NULL;
+        char parsed_path[PATH_MAX] = {0};
+        extract_markdown_image_path(line, parsed_path, sizeof(parsed_path));
+
+        if (parsed_path[0] != '\0') {
+            char final_path[PATH_MAX];
+            if (parsed_path[0] != '/' && parsed_path[0] != '~') {
+                char dir_path[PATH_MAX];
+                a2_strlcpy(dir_path, active_state->buffer.filename, sizeof(dir_path));
+                char *last_slash = strrchr(dir_path, '/');
+                if (last_slash) {
+                    *last_slash = '\0';
+                    a2_path_join(final_path, sizeof(final_path), dir_path, parsed_path);
+                } else {
+                    a2_strlcpy(final_path, parsed_path, sizeof(final_path));
+                }
+            } else {
+                a2_strlcpy(final_path, parsed_path, sizeof(final_path));
+            }
+
+            if (final_path[0] == '~') {
+                char expanded[PATH_MAX];
+                const char *home = getenv("HOME");
+                if (home) {
+                    snprintf(expanded, sizeof(expanded), "%.*s%.*s",
+                             (int)(sizeof(expanded) / 2), home,
+                             (int)(sizeof(expanded) / 2 - 1), final_path + 1);
+                    a2_strlcpy(final_path, expanded, sizeof(final_path));
+                }
+            }
+
+            if (strcmp(active_state->image_hover.image_path, final_path) != 0) {
+                a2_strlcpy(active_state->image_hover.image_path, final_path, sizeof(active_state->image_hover.image_path));
+                active_state->image_hover.kitty_image_id = 0;
+            }
+            active_state->buffer.is_dirty = true;
+        } else {
+            if (active_state->image_hover.image_path[0] != '\0') {
+                active_state->image_hover.image_path[0] = '\0';
+                active_state->buffer.is_dirty = true;
+            }
+        }
+    }
+}
+
+static void process_active_editor_debouncers(void) {
+    if (workspace_manager.num_workspaces <= 0 || ACTIVE_WS->num_windows <= 0) {
+        return;
+    }
+    EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
+    if (!active_jw || active_jw->type != WINDOW_TYPE_EDITOR || !active_jw->state) {
+        return;
+    }
+    EditorState *state = active_jw->state;
+    check_lsp_completion_debounce(state);
+    check_spell_hover_debounce(state);
+    check_image_hover_debounce(state);
+}
+
+static void print_usage(const char *prog_name) {
+    printf("a2 - Modal Terminal Text Editor\n");
+    printf("Usage: %s [OPTIONS] [FILE] [LINE]\n\n", prog_name);
+    printf("Options:\n");
+    printf("  -h, --help            Show this help message and exit\n");
+    printf("  -v, --version         Show version and build information\n");
+    printf("  -s, --safe            Start in safe mode (disables plugins and user configs)\n");
+    printf("  -H, --headless        Run in headless mode without GUI/ncurses\n");
+    printf("  -c, --eval <command>  Execute a ':' command in headless mode\n");
+    printf("      --dump            Dump buffer content to stdout and exit\n\n");
+    printf("Commands inside the editor:\n");
+    printf("  :guide           Open the starter guide\n");
+    printf("  :about           Show editor details and license\n");
+    printf("  Alt+T            Command palette\n");
+    printf("  Alt+F            Fuzzy file finder\n");
+}
+
+static void print_version(void) {
+    printf("a2 text editor\n");
+    printf("License: GNU GPL version 2 only <https://www.gnu.org/licenses/old-licenses/gpl-2.0.html>\n");
+    printf("Features: LSP client, libvterm terminal, dynamic plugins, syntax highlighting, headless mode\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -746,26 +985,64 @@ int main(int argc, char *argv[]) {
     setlocale(LC_ALL, "");
     a2_log_init();
     
-    int file_arg_index = 1;
-    if (argc > 1 && (strcmp(argv[1], "--safe") == 0 || strcmp(argv[1], "--safe-mode") == 0 || strcmp(argv[1], "-s") == 0)) {
-        g_safe_mode = true;
-        file_arg_index = 2;
+    #define MAX_HEADLESS_CMDS 64
+    char *headless_cmds[MAX_HEADLESS_CMDS];
+    int headless_cmd_count = 0;
+    bool dump_mode = false;
+    const char *target_filename = NULL;
+    int target_line = 0;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            print_usage(argv[0]);
+            return 0;
+        } else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--version") == 0) {
+            print_version();
+            return 0;
+        } else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--safe") == 0 || strcmp(argv[i], "--safe-mode") == 0) {
+            g_safe_mode = true;
+        } else if (strcmp(argv[i], "-H") == 0 || strcmp(argv[i], "--headless") == 0) {
+            g_headless_mode = true;
+        } else if (strcmp(argv[i], "--dump") == 0) {
+            dump_mode = true;
+            g_headless_mode = true;
+        } else if ((strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--eval") == 0) && i + 1 < argc) {
+            if (headless_cmd_count < MAX_HEADLESS_CMDS) {
+                headless_cmds[headless_cmd_count++] = argv[++i];
+            }
+            g_headless_mode = true;
+        } else if (argv[i][0] != '-') {
+            if (!target_filename) {
+                target_filename = argv[i];
+            } else if (target_line == 0) {
+                target_line = atoi(argv[i]);
+            }
+        }
+    }
+
+    if (g_headless_mode) {
+        A2_LOG(LOG_INFO, TAG_CORE, "--- A2 Editor Started (HEADLESS MODE) ---");
+    } else if (g_safe_mode) {
         A2_LOG(LOG_INFO, TAG_CORE, "--- A2 Editor Started (SAFE MODE) ---");
     } else {
         A2_LOG(LOG_INFO, TAG_CORE, "--- A2 Editor Started ---");
     }
     
-    inicializar_ncurses();
+    if (!g_headless_mode) {
+        inicializar_ncurses();
+    }
     
-    if (!g_safe_mode) {
+    if (!g_safe_mode && !g_headless_mode) {
         load_global_config();
         load_custom_tasks();
     }
     
     reset_bindings_to_default();
-    load_keybindings();
+    if (!g_headless_mode) {
+        load_keybindings();
+    }
     
-    if (!g_safe_mode) {
+    if (!g_safe_mode && !g_headless_mode) {
         char *default_theme_name = load_default_theme_name();
         bool theme_loaded = false;
         if (default_theme_name) {
@@ -783,11 +1060,13 @@ int main(int argc, char *argv[]) {
     pthread_mutex_init(&global_grep_state.mutex, NULL);
     initialize_workspaces();
 
-    if (!g_safe_mode && workspace_manager.num_workspaces > 0 && ACTIVE_WS->num_windows > 0) {
+    if (!g_safe_mode && !g_headless_mode && workspace_manager.num_workspaces > 0 && ACTIVE_WS->num_windows > 0) {
         plugin_engine_init(ACTIVE_WS->windows[0]->state);
     }
 
-    project_startup_check();
+    if (!g_headless_mode) {
+        project_startup_check();
+    }
 
     if (workspace_manager.num_workspaces > 0 && ACTIVE_WS->num_windows > 0 && ACTIVE_WS->windows[0]->state) {
         if (g_safe_mode) {
@@ -798,7 +1077,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Automatically load macros on startup
-    if (!g_safe_mode) {
+    if (!g_safe_mode && !g_headless_mode) {
         load_macros(ACTIVE_WS->windows[0]->state);
     }
 
@@ -808,27 +1087,37 @@ int main(int argc, char *argv[]) {
         update_directory_access(initial_state, cwd);
     }
 
-    if (argc > file_arg_index) {
-        load_file(ACTIVE_WS->windows[0]->state, argv[file_arg_index]);
-        EditorState *state = ACTIVE_WS->windows[0]->state;
+    if (target_filename) {
+        load_file(initial_state, target_filename);
 
-        if (!g_safe_mode) {
+        if (!g_safe_mode && !g_headless_mode) {
             napms(100);
-            lsp_initialize(state);
+            lsp_initialize(initial_state);
             napms(500);
         }
 
-        if (argc > file_arg_index + 1) {
-            state->cursor.line = atoi(argv[file_arg_index + 1]) - 1;
-            if (state->cursor.line >= state->buffer.num_lines) {
-                state->cursor.line = state->buffer.num_lines - 1;
+        if (target_line > 0) {
+            initial_state->cursor.line = target_line - 1;
+            if (initial_state->cursor.line >= initial_state->buffer.num_lines) {
+                initial_state->cursor.line = initial_state->buffer.num_lines - 1;
             }
-            if (state->cursor.line < 0) {
-                state->cursor.line = 0;
+            if (initial_state->cursor.line < 0) {
+                initial_state->cursor.line = 0;
             }
-            state->cursor.ideal_col = 0;
-            state->view.top_line = state->cursor.line;
+            initial_state->cursor.ideal_col = 0;
+            initial_state->view.top_line = initial_state->cursor.line;
         }
+    }
+
+    if (g_headless_mode) {
+        int ret = headless_run(initial_state, headless_cmd_count, headless_cmds, dump_mode);
+        stop_and_log_work();
+        for (int i = 0; i < workspace_manager.num_workspaces; i++) {
+            free_workspace(workspace_manager.workspaces[i]);
+        }
+        free(workspace_manager.workspaces);
+        pthread_mutex_destroy(&global_grep_state.mutex);
+        return ret;
     }
 
     redraw_all_windows();
@@ -926,23 +1215,7 @@ int main(int argc, char *argv[]) {
                     }
 
                     if (!shortcut_consumed) {
-                        if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
-                            char b = 0x7f; write(ws->floating_term->term.pty_fd, &b, 1);
-                        } else if (ch == '\n' || ch == KEY_ENTER || ch == 13) {
-                            char b = '\r'; write(ws->floating_term->term.pty_fd, &b, 1);
-                        } else if (ch == KEY_UP) {
-                            write(ws->floating_term->term.pty_fd, "\033[A", 3);
-                        } else if (ch == KEY_DOWN) {
-                            write(ws->floating_term->term.pty_fd, "\033[B", 3);
-                        } else if (ch == KEY_RIGHT) {
-                            write(ws->floating_term->term.pty_fd, "\033[C", 3);
-                        } else if (ch == KEY_LEFT) {
-                            write(ws->floating_term->term.pty_fd, "\033[D", 3);
-                        } else {
-                            char mb_buf[MB_CUR_MAX + 1];
-                            int n = wctomb(mb_buf, ch);
-                            if (n > 0) write(ws->floating_term->term.pty_fd, mb_buf, n);
-                        }
+                        terminal_forward_key(ws->floating_term->term.pty_fd, ch);
                     }
                 }
                 continue; // Skip normal input processing
@@ -1000,27 +1273,7 @@ int main(int argc, char *argv[]) {
                     }
 
                     if (!shortcut_consumed) {
-                        if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
-                            char b = 0x7f; // Standard terminal backspace
-                            write(active_jw->term.pty_fd, &b, 1);
-                        } else if (ch == '\n' || ch == KEY_ENTER || ch == 13) {
-                            char b = '\r'; // Terminal Enter
-                            write(active_jw->term.pty_fd, &b, 1);
-                        } else if (ch == KEY_UP) {
-                            write(active_jw->term.pty_fd, "\033[A", 3);
-                        } else if (ch == KEY_DOWN) {
-                            write(active_jw->term.pty_fd, "\033[B", 3);
-                        } else if (ch == KEY_RIGHT) {
-                            write(active_jw->term.pty_fd, "\033[C", 3);
-                        } else if (ch == KEY_LEFT) {
-                            write(active_jw->term.pty_fd, "\033[D", 3);
-                        } else {
-                            char mb_buf[MB_CUR_MAX + 1];
-                            int n = wctomb(mb_buf, ch);
-                            if (n > 0) {
-                                write(active_jw->term.pty_fd, mb_buf, n);
-                            }
-                        }
+                        terminal_forward_key(active_jw->term.pty_fd, ch);
                     }
                 } 
             } else if (active_jw->type == WINDOW_TYPE_TERMINAL && active_jw->term.pty_fd == -1) {
@@ -1131,165 +1384,8 @@ int main(int argc, char *argv[]) {
             }
         }
         
-        // Debouncer for LSP Autocomplete
-        if (workspace_manager.num_workspaces > 0 && ACTIVE_WS->num_windows > 0) {
-            EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
-            if (active_jw && active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
-                EditorState *active_state = active_jw->state;
-                if (active_state->lsp.completion_pending) {
-                    struct timespec now;
-                    clock_gettime(CLOCK_MONOTONIC, &now);
-
-                    long long elapsed_ns = (now.tv_sec - active_state->lsp.last_keystroke.tv_sec) * 1000000000LL;
-                    elapsed_ns += (now.tv_nsec - active_state->lsp.last_keystroke.tv_nsec);
-
-                    if (elapsed_ns > LSP_DEBOUNCE_NS) {
-                        active_state->lsp.completion_pending = false;
-                        // Run local completion logic first to get the word to complete
-                        editor_start_completion(active_state);
-                        // Only send request if there's something to complete
-                        if(active_state->input.word_to_complete[0] != '\0') {
-                            lsp_send_completion_request(active_state);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Debouncer for Spell Checker Hover
-        if (workspace_manager.num_workspaces > 0 && ACTIVE_WS->num_windows > 0) {
-            EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
-            if (active_jw && active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
-                EditorState *active_state = active_jw->state;
-                if (active_state->spell.hover_pending && active_state->spell.checker.enabled) {
-                    struct timespec now;
-                    clock_gettime(CLOCK_MONOTONIC, &now);
-
-                    long long elapsed_ns = (now.tv_sec - active_state->spell.hover_last_move.tv_sec) * 1000000000LL;
-                    elapsed_ns += (now.tv_nsec - active_state->spell.hover_last_move.tv_nsec);
-
-                    if (elapsed_ns > 250000000) { // 250ms debounce
-                        active_state->spell.hover_pending = false;
-                        
-                        char word[100];
-                        get_word_at_cursor(active_state, word, sizeof(word));
-
-                        if (strlen(word) > 0 && !spell_checker_check_word(&active_state->spell.checker, word)) {
-                            // Avoid re-generating message for the same word
-                            if (strcmp(active_state->spell.hover_word, word) != 0) {
-                                int n_sugg = 0;
-                                char** suggestions = spell_checker_suggest(&active_state->spell.checker, word, &n_sugg);
-                                if (n_sugg > 0) {
-                                    char popup_msg[256] = "Did you mean: ";
-                                    for (int i = 0; i < n_sugg && i < 3; i++) {
-                                        strcat(popup_msg, suggestions[i]);
-                                        if (i < n_sugg - 1 && i < 2) strcat(popup_msg, ", ");
-                                    }
-                                    if (active_state->spell.hover_message) free(active_state->spell.hover_message);
-                                    active_state->spell.hover_message = strdup(popup_msg);
-                                    strcpy(active_state->spell.hover_word, word);
-                                    active_state->buffer.is_dirty = true;
-                                    spell_checker_free_suggestions(&active_state->spell.checker, suggestions, n_sugg);
-                                }
-                            }
-                        } else {
-                            // Word is correct or empty, clear message
-                            if (active_state->spell.hover_message) {
-                                free(active_state->spell.hover_message);
-                                active_state->spell.hover_message = NULL;
-                                active_state->buffer.is_dirty = true;
-                            }
-                            active_state->spell.hover_word[0] = '\0';
-                        }
-                    }
-            }
-        }
-
-        // Debouncer for Image Hover
-        if (workspace_manager.num_workspaces > 0 && ACTIVE_WS->num_windows > 0) {
-            EditorWindow *active_jw = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx];
-            if (active_jw && active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
-                EditorState *active_state = active_jw->state;
-                if (active_state->image_hover.hover_pending && global_config.image_preview_enabled) {
-                    struct timespec now;
-                    clock_gettime(CLOCK_MONOTONIC, &now);
-                    long long elapsed_ns = (now.tv_sec - active_state->image_hover.hover_last_move.tv_sec) * 1000000000LL;
-                    elapsed_ns += (now.tv_nsec - active_state->image_hover.hover_last_move.tv_nsec);
-
-                    if (elapsed_ns > 400000000) { // 400ms debounce
-                        active_state->image_hover.hover_pending = false;
-                        char *line = active_state->buffer.lines[active_state->cursor.line];
-                        char parsed_path[PATH_MAX] = {0};
-                        if (line) {
-                            char *bang = strstr(line, "![");
-                            if (bang) {
-                                char *bracket = strchr(bang, ']');
-                                if (bracket && *(bracket+1) == '(') {
-                                    char *paren = strchr(bracket + 2, ')');
-                                    if (paren) {
-                                        int len = paren - (bracket + 2);
-                                        if (len > 0 && len < PATH_MAX) {
-                                            strncpy(parsed_path, bracket + 2, len);
-                                            parsed_path[len] = '\0';
-                                        }
-                                    }
-                                }
-                            } else {
-                                char *at = strstr(line, "@[");
-                                if (at) {
-                                    char *bracket = strchr(at + 2, ']');
-                                    if (bracket) {
-                                        int len = bracket - (at + 2);
-                                        if (len > 0 && len < PATH_MAX) {
-                                            strncpy(parsed_path, at + 2, len);
-                                            parsed_path[len] = '\0';
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if (parsed_path[0] != '\0') {
-                            char final_path[PATH_MAX];
-                            if (parsed_path[0] != '/' && parsed_path[0] != '~') {
-                                char dir_path[PATH_MAX];
-                                a2_strlcpy(dir_path, active_state->buffer.filename, sizeof(dir_path));
-                                char *last_slash = strrchr(dir_path, '/');
-                                if (last_slash) {
-                                    *last_slash = '\0';
-                                    a2_path_join(final_path, sizeof(final_path), dir_path, parsed_path);
-                                } else {
-                                    a2_strlcpy(final_path, parsed_path, sizeof(final_path));
-                                }
-                            } else {
-                                a2_strlcpy(final_path, parsed_path, sizeof(final_path));
-                            }
-                            
-                            if (final_path[0] == '~') {
-                                char expanded[PATH_MAX];
-                                const char *home = getenv("HOME");
-                                if (home) {
-                                    snprintf(expanded, sizeof(expanded), "%.*s%.*s", (int)(sizeof(expanded)/2), home, (int)(sizeof(expanded)/2 - 1), final_path + 1);
-                                    a2_strlcpy(final_path, expanded, sizeof(final_path));
-                                }
-                            }
-                            
-                            if (strcmp(active_state->image_hover.image_path, final_path) != 0) {
-                                a2_strlcpy(active_state->image_hover.image_path, final_path, sizeof(active_state->image_hover.image_path));
-                                active_state->image_hover.kitty_image_id = 0;
-                            }
-                            active_state->buffer.is_dirty = true;
-                        } else {
-                            if (active_state->image_hover.image_path[0] != '\0') {
-                                active_state->image_hover.image_path[0] = '\0';
-                                active_state->buffer.is_dirty = true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    } // Missing brace for while(1)? No, the brace is further down.
+        // Debouncers for LSP completion, spell hover, and image preview
+        process_active_editor_debouncers();
                             
         pthread_mutex_lock(&global_grep_state.mutex);
         if (global_grep_state.results_ready) {
