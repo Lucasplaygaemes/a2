@@ -73,13 +73,11 @@ Used only as external programs, and only by optional features or plugins:
 - **git**, **gcc** / **clang**, clipboard tools (`wl-copy`, `xclip`, `xsel`).
 - **radare2** (`r2`), if the reverse-engineering plugin is built and `r2` is on `PATH`.
 
-The `Makefile` also passes `-lssl -lcrypto`. The editor never calls OpenSSL. That flag is leftover. A table in `editor_utils.c` mentions the same libraries only so `:gcc` can suggest link flags when *your* C file includes `<openssl/ssl.h>`.
+The editor never calls OpenSSL directly; any leftover `-lssl -lcrypto` flags were removed from the linker flags. A table in `editor_utils.c` only mentions those libraries so `:gcc` can suggest link flags when *your* C file includes `<openssl/ssl.h>`.
 
 ## License
 
-a2 is [GPL-2.0-only](./LICENSE). There is no "or later" grant in the source, and the `LICENSE` file is only the editor's license. It does not restate the licenses of ncurses, libvterm, Jansson, curl, Hunspell, or stb_image.
-
-OpenSSL is not something a2 needs to keep. Dropping `-lssl -lcrypto` from the link line does not change libraries or behavior, and it should happen during the cleanup. A decision about relicensing can wait until the code is actually organized. Notes on that choice are in the cleanup discussion, not a promise that the combination is already clean.
+a2 is licensed under [GPL-2.0-only](./LICENSE). The `LICENSE` file contains the full GPL-2.0 license text alongside acknowledgements and copyright notices for included/linked third-party libraries (ncurses, libvterm, Jansson, curl, Hunspell, stb_image, and external tools).
 
 ## Contributing
 
