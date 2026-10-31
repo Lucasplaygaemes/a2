@@ -7,6 +7,7 @@ char* global_yank_register = NULL;
 char* global_move_register = NULL;
 bool is_global_moving = false;
 GrepState global_grep_state;
+bool g_headless_mode = false;
 
 KeyBinding global_bindings[ACT_COUNT];
 

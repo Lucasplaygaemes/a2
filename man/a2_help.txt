@@ -1,33 +1,43 @@
 # a2 - A Modal Text Editor
 
-Welcome to `a2`, a lightweight, fast, and configurable text editor inspired by Vim.
+a2 is a modal editor for the Linux terminal, written in C from scratch.
+It brings together modal editing, LSP capabilities, and terminal integration in a lightweight native package.
 
-## Quick Navigation
-- For a beginner tutorial guide, see the starter guide: [*Guia*](guia.txt)
-- For help with *commands* (the ':' mode), see the commands manual: [*Commands*](commands_help.txt)
-- For help with *keyboard shortcuts*, see the shortcuts manual: [*Shortcuts*](shortcuts_help.txt)
+## Quick navigation
 
-## Core Features
+- Starter guide: [*Guide*](guide.txt)   (`:guide` or `:guia`)
+- Commands (`:` mode): [*Commands*](commands_help.txt)
+- Keyboard shortcuts: [*Shortcuts*](shortcuts_help.txt)
+- Credits and license: `:about`
 
-- *Configuration:* All settings, macros, and keyboard shortcuts are stored centrally in `~/.a2/`, making your environment easy to backup and portable.
-- *Spell Checker:* Real-time spell checking with suggestions (Tab completion) and hover-info for misspelled words. Activated conditionally for .txt files or when no Language Server Protocol (LSP) is active.
-- *Dictionary Lookup:* Online dictionary definition via Wiktionary using 'D' in Normal mode.
-- *Modal Editing:* Efficiently edit text with Normal, Insert, and Visual modes.
-- *Workspaces & Splits:* Organize your work across multiple workspaces, each with its own layout of split windows.
-- *Fuzzy Finder:* Quickly find and open any file in your project with a fuzzy search (*Alt+F*).
-- *Command Palette:* A searchable command palette (*Alt+T*) for easy access to all editor commands.
-- *File Explorer:* A built-in file explorer (*:explorer*) to navigate and manage files.
-- *Atomic Save:* Writes files safely to prevent corruption in the event of power loss or a crash, while maintaining the automatic `.sv` backup.
-- *LSP Support:* Language Server Protocol integration for real-time diagnostics, code highlighting, and completion.
-- *Interactive Popups:* Diagnostic and spell checking hovers can become movable floating windows (use *Ctrl+Shift+M* or click them). Press Enter to pin them to the screen.
-- *Macros:* Record and play back sequences of commands (*q* and *@*) to automate repetitive tasks.
-- *Advanced Search & Replace:* A powerful *:s* command that supports regular expressions for text substitutions.
-- *Unified Search:* Search with */* or *Ctrl+F* using the unified command bar with full history and arrow navigation.
-- *Multi-Cursor:* Edit multiple lines simultaneously. Add extra cursors using *Alt+Shift+Up/Down* or *Middle Mouse Click*. Clear them with *Esc*.
-- *Theming:* Customize the editor's appearance with simple `.theme` files.
-- *Assembly View:* Compile and view assembly code synchronized with your C source (*Alt+A*).
-- *Snippets:* Expand code snippets from the completion menu (*Alt+S* during completion).
-- *Project Management:* Save and load project sessions, including open files, window layouts, and cursor positions.
-- *Dynamic Plugin Architecture:* Load C-ABI dynamic `.so` plugins at startup from `~/.a2/plugins/`. Manage, toggle, and configure plugin-registered settings via `:settings` > *Plugins*. Preferences and disabled plugins persist across restarts in `~/.a2/disabled_plugins.txt`.
-- *Reverse Engineering Suite Plugin:* Built-in RE tools (:disasm, :elf, :sections, :symbols, :imports, :relocs, :checksec, :strings, :hex) opening clean output splits.
-- *Custom Tasks:* Define commands and assign them customized keybindings to quickly automate your workflow.
+## Features
+
+- Normal, insert, visual, and command modes.
+- Splits, layouts, and workspaces.
+- Fuzzy finder (`Alt+f`), command palette (`Alt+t`), file explorer (`Alt+e` or `:explorer`).
+- LSP client (diagnostics, completion, hover, definition, rename, code actions), if you have a language server configured.
+- Plugins: shared libraries loaded from `~/.a2/plugins/`. `make` builds the ones in `plugins/` into that directory.
+- Themes, a settings panel (`:settings`), and keybindings. Your overrides are saved in `~/.a2/sc.a2`. The shipped defaults are `ds.a2`, and they match `default_bindings` in `a2_files/defs.c`.
+- Spell checking (Hunspell, dlopen) and a Wiktionary lookup (`D` in normal mode, needs libcurl).
+- Integrated terminal (`:term`) via libvterm, plus a floating terminal (`Alt+F12`).
+- Git gutter and safe external command execution (`process_exec`).
+- Macros (`q`, `@`), local history (`:history`), and project sessions (`:save-project`).
+
+## Architecture & Key Notes
+
+- Syntax files configure keywords, types, standard library functions, and per-language comment delimiters (`COMMENT_LINE`, `COMMENT_BLOCK_START`, `COMMENT_BLOCK_END`).
+- Keybinding priorities: `Alt+Shift+S` opens Show Symbols. To access the full settings panel, use `:settings`.
+- Text navigation: motion uses `k` (left), `ç` (right), `o` (up), `l` (down), in addition to the standard arrow keys. See the shortcuts page.
+- Reverse engineering tools: binary analysis features leverage external utilities (`r2`, `readelf`, `nm`) via plugins when installed on `PATH`.
+
+## Hard limits
+
+- 32768 lines per buffer. The rest of the file is discarded on open.
+- 4095 bytes per read chunk. A longer source line is split into several editor lines.
+- 512 undo levels, each a full copy of the buffer.
+- Filename stored in the buffer: 255 bytes.
+
+## Platform
+
+Linux. Not ported to Windows. macOS is untested.
+Install with `./install.sh` from a clone. Help texts are installed to `/usr/local/share/a2/man/`.

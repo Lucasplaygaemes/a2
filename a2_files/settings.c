@@ -1,6 +1,6 @@
 #define _GNU_SOURCE
 #include "settings.h"
-#include "window_managment.h" // for the close_active_window (close_current_window)
+#include "window_management.h" // for the close_active_window (close_current_window)
 #include "fileio.h"
 #include "themes.h"
 #include "cache.h"
@@ -19,6 +19,7 @@
 #include "lsp_client.h"
 #include "logger.h"
 #include "plugin_engine.h"
+#include "process_exec.h"
 
 A2Config global_config = {
     .word_wrap = true,
@@ -142,7 +143,7 @@ static EditorState* get_any_editor_state();
 void get_config_filepath(char *buffer, size_t size) {
     char dir[PATH_MAX];
     ensure_a2_config_dir(dir, sizeof(dir));
-    snprintf(buffer, size, "%s/settings.a2", dir);
+    a2_path_join(buffer, size, dir, "settings.a2");
 }
 
 void key_to_string(KeyBinding *kb, char *buf, size_t size) {
@@ -164,9 +165,9 @@ void key_to_string(KeyBinding *kb, char *buf, size_t size) {
 void ensure_a2_config_dir(char *path_out, size_t size) {
     const char *home = getenv("HOME");
     if (home) {
-        snprintf(path_out, size, "%s/.a2", home);
+        a2_path_join(path_out, size, home, ".a2");
     } else {
-        snprintf(path_out, size, ".a2");
+        a2_strlcpy(path_out, ".a2", size);
     }
     mkdir(path_out, 0755);
 }
@@ -174,22 +175,22 @@ void ensure_a2_config_dir(char *path_out, size_t size) {
 void get_sc_path(char *buffer, size_t size) {
     char dir[PATH_MAX];
     ensure_a2_config_dir(dir, sizeof(dir));
-    snprintf(buffer, size, "%s/sc.a2", dir);
+    a2_path_join(buffer, size, dir, "sc.a2");
 }
 
 void get_ds_path(char *buffer, size_t size) {
     char dir[PATH_MAX];
     ensure_a2_config_dir(dir, sizeof(dir));
-    snprintf(buffer, size, "%s/ds.a2", dir);
+    a2_path_join(buffer, size, dir, "ds.a2");
     if (access(buffer, F_OK) == 0) return;
     if (executable_dir[0] != '\0') {
-        snprintf(buffer, size, "%s/ds.a2", executable_dir);
+        a2_path_join(buffer, size, executable_dir, "ds.a2");
         if (access(buffer, F_OK) == 0) return;
     }
-    snprintf(buffer, size, "/usr/local/share/a2/ds.a2");
+    a2_strlcpy(buffer, "/usr/local/share/a2/ds.a2", size);
     if (access(buffer, F_OK) == 0) return;
     
-    snprintf(buffer, size, "ds.a2");
+    a2_strlcpy(buffer, "ds.a2", size);
 }
 
 void save_keybindings() {
@@ -676,7 +677,7 @@ void populate_theme_list(SettingsPanelState *state) {
     }
     char exec_theme_path[PATH_MAX] = {0};
     if (executable_dir[0] != '\0') {
-        snprintf(exec_theme_path, sizeof(exec_theme_path), "%s/themes", executable_dir);
+        a2_path_join(exec_theme_path, sizeof(exec_theme_path), executable_dir, "themes");
     }
     const char* dirs_to_check[] = { 
         custom_theme_dir, 
@@ -1038,8 +1039,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                     char name[128];
                     bool enabled;
                     if (plugin_engine_get_plugin_info(state->current_selection, name, sizeof(name), &enabled)) {
-                        strncpy(state->selected_plugin_name, name, sizeof(state->selected_plugin_name) - 1);
-                        state->selected_plugin_name[sizeof(state->selected_plugin_name) - 1] = '\0';
+                        a2_strlcpy(state->selected_plugin_name, name, sizeof(state->selected_plugin_name));
                         state->current_view = SETTINGS_VIEW_PLUGIN_DETAIL;
                         state->current_selection = 0;
                         state->scroll_top = 0;
@@ -1308,7 +1308,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                             strncpy(global_config.default_spell_lang, lang_code, sizeof(global_config.default_spell_lang) - 1);
                             global_config.default_spell_lang[sizeof(global_config.default_spell_lang) - 1] = '\0';
                             save_global_config();
-                            if (system("which curl > /dev/null 2>&1") != 0) {
+                            if (!run_check_tool("curl")) {
                                 char *const err_cmd[] = {"/bin/sh", "-c", "echo 'Error: the curl command isn't installed, install it to download the dictionarys.'; read -n 1 - r - p 'Press any key to continue...'", NULL};
                                 create_generic_terminal_window(err_cmd);
                                 EditorState* current_editor = get_any_editor_state();
@@ -1325,10 +1325,11 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                                 }
                                 apply_settings_globally();
                             } else {
-                                char command[2048];
+                                char command[4096];
                                 const char *base_url = "https://cgit.freedesktop.org/libreoffice/dictionaries/plain";
-                                char download_dir[1024];
-                                snprintf(download_dir, sizeof(download_dir), "%s/.config/a2/hunspell", getenv("HOME"));
+                                char download_dir[256];
+                                const char *home = getenv("HOME");
+                                snprintf(download_dir, sizeof(download_dir), "%.150s/.config/a2/hunspell", home ? home : ".");
                                 
                                 snprintf(command, sizeof(command),
                                 "set -e; " 
@@ -1495,7 +1496,7 @@ void free_settings_panel_state(SettingsPanelState *state) {
 void get_tasks_filepath(char *buffer, size_t size) {
     char dir[PATH_MAX];
     ensure_a2_config_dir(dir, sizeof(dir));
-    snprintf(buffer, size, "%s/tasks.a2", dir);
+    a2_path_join(buffer, size, dir, "tasks.a2");
 }
 void save_custom_tasks() {
     char path[PATH_MAX];
@@ -1526,14 +1527,14 @@ void load_custom_tasks() {
         char *cmd = strtok(NULL, "");
         
         if (id && name && desc && cmd) {
-            strncpy(t->id, id, sizeof(t->id)-1);
-            strncpy(t->name, name, sizeof(t->name)-1);
-            strncpy(t->description, desc, sizeof(t->description)-1);
-            strncpy(t->command, cmd, sizeof(t->command)-1);
+            a2_strlcpy(t->id, id, sizeof(t->id));
+            a2_strlcpy(t->name, name, sizeof(t->name));
+            a2_strlcpy(t->description, desc, sizeof(t->description));
+            a2_strlcpy(t->command, cmd, sizeof(t->command));
             
             int act = ACT_CUSTOM_TASK_START + global_task_manager.num_tasks;
-            strncpy(global_bindings[act].name, t->name, sizeof(global_bindings[act].name)-1);
-            strncpy(global_bindings[act].desc, t->description, sizeof(global_bindings[act].desc)-1);
+            a2_strlcpy(global_bindings[act].name, t->name, sizeof(global_bindings[act].name));
+            a2_strlcpy(global_bindings[act].desc, t->description, sizeof(global_bindings[act].desc));
             
             global_task_manager.num_tasks++;
         }
@@ -1553,8 +1554,8 @@ void ui_create_task() {
     global_task_manager.tasks[global_task_manager.num_tasks] = new_task;
     
     int act = ACT_CUSTOM_TASK_START + global_task_manager.num_tasks;
-    strncpy(global_bindings[act].name, new_task.name, sizeof(global_bindings[act].name)-1);
-    strncpy(global_bindings[act].desc, new_task.description, sizeof(global_bindings[act].desc)-1);
+    a2_strlcpy(global_bindings[act].name, new_task.name, sizeof(global_bindings[act].name));
+    a2_strlcpy(global_bindings[act].desc, new_task.description, sizeof(global_bindings[act].desc));
     
     global_task_manager.num_tasks++;
     save_custom_tasks();
@@ -1568,22 +1569,188 @@ void ui_edit_task(int idx) {
     char desc[128];
     char cmd[256];
     
-    strncpy(name, t->name, sizeof(name)-1);
-    strncpy(desc, t->description, sizeof(desc)-1);
-    strncpy(cmd, t->command, sizeof(cmd)-1);
+    a2_strlcpy(name, t->name, sizeof(name));
+    a2_strlcpy(desc, t->description, sizeof(desc));
+    a2_strlcpy(cmd, t->command, sizeof(cmd));
     
     if (!ui_ask_input("Task Name:", name, sizeof(name))) return;
     if (!ui_ask_input("Description:", desc, sizeof(desc))) return;
     if (!ui_ask_input("Command (e.g. 'term make'):", cmd, sizeof(cmd))) return;
     
-    strncpy(t->name, name, sizeof(t->name)-1);
-    strncpy(t->description, desc, sizeof(desc)-1);
-    strncpy(t->command, cmd, sizeof(t->command)-1);
+    a2_strlcpy(t->name, name, sizeof(t->name));
+    a2_strlcpy(t->description, desc, sizeof(t->description));
+    a2_strlcpy(t->command, cmd, sizeof(t->command));
     
     int act = ACT_CUSTOM_TASK_START + idx;
-    strncpy(global_bindings[act].name, t->name, sizeof(global_bindings[act].name)-1);
-    strncpy(global_bindings[act].desc, t->description, sizeof(global_bindings[act].desc)-1);
+    a2_strlcpy(global_bindings[act].name, t->name, sizeof(global_bindings[act].name));
+    a2_strlcpy(global_bindings[act].desc, t->description, sizeof(global_bindings[act].desc));
     
     save_custom_tasks();
+}
+
+typedef enum {
+    SETTING_BOOL,
+    SETTING_INT,
+    SETTING_STR
+} ConfigFieldType;
+
+typedef struct {
+    const char *name;
+    ConfigFieldType type;
+    void *ptr;
+    int max_len;
+} ConfigEntry;
+
+static const ConfigEntry config_entries[] = {
+    {"word_wrap",              SETTING_BOOL, &global_config.word_wrap, 0},
+    {"auto_indent",            SETTING_BOOL, &global_config.auto_indent, 0},
+    {"paste_mode",             SETTING_BOOL, &global_config.paste_mode, 0},
+    {"tab_size",               SETTING_INT,  &global_config.tab_size, 0},
+    {"expand_tab",             SETTING_BOOL, &global_config.expand_tab, 0},
+    {"status_bar_mode",        SETTING_INT,  &global_config.status_bar_mode, 0},
+    {"show_line_numbers",      SETTING_BOOL, &global_config.show_line_numbers, 0},
+    {"show_scrollbar",         SETTING_BOOL, &global_config.show_scrollbar, 0},
+    {"relative_line_numbers",  SETTING_BOOL, &global_config.relative_line_numbers, 0},
+    {"show_error_count",       SETTING_BOOL, &global_config.show_error_count, 0},
+    {"abbreviate_filename",    SETTING_BOOL, &global_config.abbreviate_filename, 0},
+    {"smart_save_enabled",     SETTING_BOOL, &global_config.smart_save_enabled, 0},
+    {"git_gutter_enabled",     SETTING_BOOL, &global_config.git_gutter_enabled, 0},
+    {"auto_load_project",      SETTING_BOOL, &global_config.auto_load_project, 0},
+    {"lsp_enabled",            SETTING_BOOL, &global_config.lsp_enabled, 0},
+    {"lsp_diagnostics",        SETTING_BOOL, &global_config.lsp_diagnostics, 0},
+    {"lsp_inline_diagnostics", SETTING_BOOL, &global_config.lsp_inline_diagnostics, 0},
+    {"lsp_highlight",          SETTING_BOOL, &global_config.lsp_highlight, 0},
+    {"lsp_completion",         SETTING_BOOL, &global_config.lsp_completion, 0},
+    {"lsp_hover",              SETTING_BOOL, &global_config.lsp_hover, 0},
+    {"spell_checker_enabled",  SETTING_BOOL, &global_config.spell_checker_enabled, 0},
+    {"default_spell_lang",     SETTING_STR,  global_config.default_spell_lang, sizeof(global_config.default_spell_lang)},
+    {"dictionary_lang",        SETTING_STR,  global_config.dictionary_lang, sizeof(global_config.dictionary_lang)},
+    {"image_preview_enabled",  SETTING_BOOL, &global_config.image_preview_enabled, 0},
+    {"debug_enabled",          SETTING_BOOL, &global_config.debug_enabled, 0},
+    {"log_level_filter",       SETTING_INT,  &global_config.log_level_filter, 0},
+    {"icon_mode",              SETTING_INT,  &global_config.icon_mode, 0},
+    {NULL, 0, NULL, 0}
+};
+
+void handle_settings_command(EditorState *state, const char *args) {
+    if (!args) args = "";
+    while (isspace((unsigned char)*args)) args++;
+
+    if (*args == '\0' || strcmp(args, "list") == 0) {
+        printf("=== a2 Settings ===\n");
+        for (int i = 0; config_entries[i].name != NULL; i++) {
+            const ConfigEntry *entry = &config_entries[i];
+            if (entry->type == SETTING_BOOL) {
+                bool val = *(bool*)entry->ptr;
+                printf("  %-24s = %s\n", entry->name, val ? "true (1)" : "false (0)");
+            } else if (entry->type == SETTING_INT) {
+                int val = *(int*)entry->ptr;
+                printf("  %-24s = %d\n", entry->name, val);
+            } else if (entry->type == SETTING_STR) {
+                const char *val = (const char*)entry->ptr;
+                printf("  %-24s = \"%s\"\n", entry->name, val);
+            }
+        }
+        printf("\nUsage: :settings <key> [val]  (or ':settings set <key> <val>')\n");
+        if (state) editor_set_status_msg(state, "Settings listed on terminal output.");
+        return;
+    }
+
+    if (strcmp(args, "save") == 0) {
+        save_global_config();
+        if (state) editor_set_status_msg(state, "Settings saved.");
+        else printf("[a2] Settings saved to configuration file.\n");
+        return;
+    }
+
+    if (strcmp(args, "reload") == 0) {
+        load_global_config();
+        apply_settings_globally();
+        if (state) editor_set_status_msg(state, "Settings reloaded.");
+        else printf("[a2] Settings reloaded from configuration file.\n");
+        return;
+    }
+
+    char key[64] = "", value[128] = "";
+    if (strncmp(args, "get ", 4) == 0) {
+        sscanf(args + 4, "%63s", key);
+    } else if (strncmp(args, "set ", 4) == 0) {
+        sscanf(args + 4, "%63s %127s", key, value);
+    } else {
+        const char *eq = strchr(args, '=');
+        if (eq) {
+            int klen = eq - args;
+            if (klen >= (int)sizeof(key)) klen = sizeof(key) - 1;
+            strncpy(key, args, klen);
+            key[klen] = '\0';
+            strncpy(value, eq + 1, sizeof(value) - 1);
+            value[sizeof(value) - 1] = '\0';
+        } else {
+            int count = sscanf(args, "%63s %127s", key, value);
+            if (count == 1) {
+                value[0] = '\0';
+            }
+        }
+    }
+
+    char *k = trim_whitespace(key);
+    char *v = trim_whitespace(value);
+
+    const ConfigEntry *found = NULL;
+    for (int i = 0; config_entries[i].name != NULL; i++) {
+        if (strcasecmp(config_entries[i].name, k) == 0) {
+            found = &config_entries[i];
+            break;
+        }
+    }
+
+    if (!found) {
+        if (state) editor_set_status_msg(state, "Unknown setting: '%s'. Run ':settings' to list.", k);
+        else printf("[a2] Unknown setting: '%s'. Run ':settings' to list.\n", k);
+        return;
+    }
+
+    if (v[0] == '\0') {
+        if (found->type == SETTING_BOOL) {
+            bool b = *(bool*)found->ptr;
+            if (state) editor_set_status_msg(state, "%s = %s", found->name, b ? "true" : "false");
+            else printf("%s = %s\n", found->name, b ? "true" : "false");
+        } else if (found->type == SETTING_INT) {
+            int iv = *(int*)found->ptr;
+            if (state) editor_set_status_msg(state, "%s = %d", found->name, iv);
+            else printf("%s = %d\n", found->name, iv);
+        } else if (found->type == SETTING_STR) {
+            const char *sv = (const char*)found->ptr;
+            if (state) editor_set_status_msg(state, "%s = \"%s\"", found->name, sv);
+            else printf("%s = \"%s\"\n", found->name, sv);
+        }
+        return;
+    }
+
+    if (found->type == SETTING_BOOL) {
+        bool b = false;
+        if (strcasecmp(v, "1") == 0 || strcasecmp(v, "true") == 0 || strcasecmp(v, "yes") == 0 || strcasecmp(v, "on") == 0) {
+            b = true;
+        } else if (strcasecmp(v, "0") == 0 || strcasecmp(v, "false") == 0 || strcasecmp(v, "no") == 0 || strcasecmp(v, "off") == 0) {
+            b = false;
+        } else {
+            if (state) editor_set_status_msg(state, "Invalid boolean '%s'. Use true/false or 1/0.", v);
+            else printf("[a2] Invalid boolean '%s'. Use true/false or 1/0.\n", v);
+            return;
+        }
+        *(bool*)found->ptr = b;
+    } else if (found->type == SETTING_INT) {
+        int iv = atoi(v);
+        *(int*)found->ptr = iv;
+    } else if (found->type == SETTING_STR) {
+        strncpy((char*)found->ptr, v, found->max_len - 1);
+        ((char*)found->ptr)[found->max_len - 1] = '\0';
+    }
+
+    apply_settings_globally();
+    save_global_config();
+
+    if (state) editor_set_status_msg(state, "Setting '%s' updated and saved.", found->name);
+    else printf("[a2] Setting '%s' updated and saved.\n", found->name);
 }
 

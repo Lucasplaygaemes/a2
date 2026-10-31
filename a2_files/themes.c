@@ -54,7 +54,7 @@ static void set_default_theme() {
 }
 
 bool load_theme(const char* theme_name) {
-    char path[PATH_MAX];
+    char path[PATH_MAX * 2];
     FILE *f = NULL;
     char custom_theme_dir[PATH_MAX] = {0};
 
@@ -98,7 +98,9 @@ bool load_theme(const char* theme_name) {
 
     // 5. If not found, try path relative to executable's themes directory
     if (!f && executable_dir[0] != '\0') {
-        snprintf(path, sizeof(path), "%s/themes/%s", executable_dir, theme_name);
+        char exec_themes[PATH_MAX];
+        a2_path_join(exec_themes, sizeof(exec_themes), executable_dir, "themes");
+        a2_path_join(path, sizeof(path), exec_themes, theme_name);
         f = fopen(path, "r");
     }
 

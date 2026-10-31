@@ -1,9 +1,11 @@
 #define _GNU_SOURCE
-#include "window_managment.h"
+#include "window_management.h"
 #include "explorer.h"
 #include "fileio.h"
 #include "themes.h"
 #include "screen_ui.h"
+#include "process_exec.h"
+
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -266,7 +268,8 @@ void explorer_reload_entries(ExplorerState *state) {
         }
 
         char full_path[PATH_MAX];
-        snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, dir->d_name);
+        int sn270 = snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, dir->d_name);
+        if (sn270 <= 0 || sn270 >= (int)sizeof(full_path)) { state->num_entries++; continue; }
         struct stat st;
         state->is_dir[state->num_entries] = (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode));
         state->num_entries++;
@@ -455,7 +458,7 @@ void explorer_redraw(EditorWindow *jw) {
         
         if (state->show_preview && jw->width > 40 && state->num_entries > 0) {
             char full_path[PATH_MAX];
-            snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[state->selection]);
+            a2_path_join(full_path, sizeof(full_path), state->current_path, state->entries[state->selection]);
             
             draw_file_preview(jw->win, full_path, 1, list_width + 1, jw->height - 2, jw->width - list_width - 2);
         }
@@ -477,7 +480,7 @@ void explorer_redraw(EditorWindow *jw) {
         msg_to_show = state->status_msg;
     } else if (state->clipboard_operation != OP_NONE) {
         static char clipboard_msg[PATH_MAX + 20];
-        char *op_str =  (state->clipboard_operation = OP_COPY) ? "COPIED" : "CUT";
+        (void)clipboard_msg;
         
         // char *filename = basename(state->source_path);
         // snprintf(clipboard_msg, sizeof(clipboard_msg), "[%s : %s]", op_str, filename);
@@ -508,7 +511,7 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
     char selected_path[PATH_MAX];
 
     if (state->num_entries > 0 && state->selection < state->num_entries) {
-        snprintf(selected_path, sizeof(selected_path), "%s/%s", state->current_path, state->entries[state->selection]);
+        a2_path_join(selected_path, sizeof(selected_path), state->current_path, state->entries[state->selection]);
     }
 
     // Handle Alt key sequences for global shortcuts
@@ -590,17 +593,13 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
             break;
         case 'a':     // git add
             if (state->num_entries > 0) {
-                char cmd[PATH_MAX + 20];
-                snprintf(cmd, sizeof(cmd), "git add \"%s\"", selected_path);
-                system(cmd);
+                run_cmd("git", "add", selected_path, NULL);
                 explorer_reload_entries(state);
             }
             break;
-        case 'u':     // git unstange
+        case 'u':     // git unstage
             if (state->num_entries > 0) {
-                char cmd[PATH_MAX + 20];
-                snprintf(cmd, sizeof(cmd), "git restore --staged \"%s\"", selected_path);
-                system(cmd);
+                run_cmd("git", "restore", "--staged", selected_path, NULL);
                 explorer_reload_entries(state);
             }
             break;
@@ -694,14 +693,14 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                for (int i = 0; i < state->num_entries; i++) {
                    if (state->is_selected[i]) {
                        char full_path[PATH_MAX];
-                       snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[i]);
+                       a2_path_join(full_path, sizeof(full_path), state->current_path, state->entries[i]);
                        state->clipboard_paths[state->num_clipboard_items++] = strdup(full_path);
                    }
                }
            } else if (state->num_entries > 0) {
                state->clipboard_paths = malloc(sizeof(char*) * 1);
                char full_path[PATH_MAX];
-               snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[state->selection]);
+               a2_path_join(full_path, sizeof(full_path), state->current_path, state->entries[state->selection]);
                state->clipboard_paths[0] = strdup(full_path);
                state->num_clipboard_items = 1;
            }
@@ -746,7 +745,7 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                    for (int i = 0; i < state->num_entries; i++) {
                        if (state->is_selected[i]) {
                            char full_path[PATH_MAX];
-                           snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[i]);
+                           a2_path_join(full_path, sizeof(full_path), state->current_path, state->entries[i]);
                            state->clipboard_paths[state->num_clipboard_items++] = strdup(full_path);
                        }
                    }
@@ -754,7 +753,7 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                    // copy only the current item
                    state->clipboard_paths = malloc(sizeof(char*) * 1);
                    char full_path[PATH_MAX];
-                   snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[state->selection]);
+                   a2_path_join(full_path, sizeof(full_path), state->current_path, state->entries[state->selection]);
                    state->clipboard_paths[0] = strdup(full_path);
                    state->num_clipboard_items = 1;
            }
@@ -770,14 +769,14 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
            
          case 'v': // batch paste
              if (state->clipboard_operation != OP_NONE && state->num_clipboard_items > 0) {
-                 char *op_cmd = (state->clipboard_operation == OP_COPY) ? "cp -r" : "mv";
                  
                  // iterate over all items in clipboard
                  for (int i = 0 ; i < state->num_clipboard_items; i++) {
-                     char command[PATH_MAX * 2 + 20];
-                     // the "" are important for the files with spaces with name
-                     snprintf(command, sizeof(command), "%s \"%s\" \"%s/\"", op_cmd, state->clipboard_paths[i], state->current_path);
-                     system(command);
+                     if (state->clipboard_operation == OP_COPY) {
+                         run_cmd("cp", "-r", state->clipboard_paths[i], state->current_path, NULL);
+                     } else {
+                         run_cmd("mv", state->clipboard_paths[i], state->current_path, NULL);
+                     }
                  }
                  
                  snprintf(state->status_msg, sizeof(state->status_msg), "Pasted %d items.", state->num_clipboard_items);
@@ -805,10 +804,8 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                         for (int i = 0; i < state->num_entries; i++) {
                             if (state->is_selected[i]) {
                                 char full_path[PATH_MAX];
-                                snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[i]);
-                                char command[PATH_MAX + 20];
-                                snprintf(command, sizeof(command), "rm -rf \"%s\"", full_path);
-                                system(command);
+                                a2_path_join(full_path, sizeof(full_path), state->current_path, state->entries[i]);
+                                run_cmd("rm", "-rf", full_path, NULL);
                             }
                         }
                         // clean selection
@@ -816,10 +813,8 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                         state->num_selected = 0;
                     } else {
                         char full_path[PATH_MAX];
-                        snprintf(full_path, sizeof(full_path), "%s/%s", state->current_path, state->entries[state->selection]);
-                        char command[PATH_MAX + 20];
-                        snprintf(command, sizeof(command), "rm -rf \"%s\"", full_path);
-                        system(command);
+                        a2_path_join(full_path, sizeof(full_path), state->current_path, state->entries[state->selection]);
+                        run_cmd("rm", "-rf", full_path, NULL);
                 }
                 explorer_reload_entries(state);
             }
@@ -833,10 +828,10 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                 char new_name[256];
                 if (ui_ask_input("Rename to", new_name, 256)) {
                     char new_path[PATH_MAX];
-                    snprintf(new_path, sizeof(new_path), "%s/%s", state->current_path, new_name);
+                    a2_path_join(new_path, sizeof(new_path), state->current_path, new_name);
                     
                     if (rename(selected_path, new_path) == 0) {
-                        snprintf(state->status_msg, sizeof(state->status_msg), "Renamed to %s", new_name);
+                        snprintf(state->status_msg, sizeof(state->status_msg), "Renamed to %.*s", (int)(sizeof(state->status_msg) - 15), new_name);
                         explorer_reload_entries(state);
                     } else {
                         snprintf(state->status_msg, sizeof(state->status_msg), "Error renaming: %s", strerror(errno));
@@ -850,11 +845,11 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                 char file_name[256];
                 if (ui_ask_input("New file name", file_name, 256)) {
                     char new_file_path[PATH_MAX];
-                    snprintf(new_file_path, sizeof(new_file_path), "%s/%s", state->current_path, file_name);
+                    a2_path_join(new_file_path, sizeof(new_file_path), state->current_path, file_name);
                     FILE *f = fopen(new_file_path, "w");
                     if (f) {
                         fclose(f);
-                        snprintf(state->status_msg, sizeof(state->status_msg), "File '%s' created.", file_name);
+                        snprintf(state->status_msg, sizeof(state->status_msg), "File '%.*s' created.", (int)(sizeof(state->status_msg) - 20), file_name);
                         explorer_reload_entries(state);
                     } else {
                         snprintf(state->status_msg, sizeof(state->status_msg), "Error creating the file: %s", strerror(errno));
@@ -868,9 +863,9 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                 char dir_name[256];
                 if (ui_ask_input("New directory name", dir_name, 256)) {
                     char new_dir_path[PATH_MAX];
-                    snprintf(new_dir_path, sizeof(new_dir_path), "%s/%s", state->current_path, dir_name);
+                    a2_path_join(new_dir_path, sizeof(new_dir_path), state->current_path, dir_name);
                     if (mkdir(new_dir_path, 0755) == 0) {
-                        snprintf(state->status_msg, sizeof(state->status_msg), "Directory '%s' created.", dir_name);
+                        snprintf(state->status_msg, sizeof(state->status_msg), "Directory '%.*s' created.", (int)(sizeof(state->status_msg) - 25), dir_name);
                         explorer_reload_entries(state);
                     } else {
                         snprintf(state->status_msg, sizeof(state->status_msg), "Error creating the directory: %s", strerror(errno));

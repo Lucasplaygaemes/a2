@@ -15,7 +15,7 @@ endif
 
 # Base CFLAGS e LDFLAGS
 CFLAGS = $(DEBUG_CFLAGS) -Wall -Wextra -I. -I./a2_files $(shell pkg-config --cflags ncursesw 2>/dev/null)
-LDFLAGS = $(DEBUG_LDFLAGS) -lncursesw -ljansson -lpthread -ldl -lssl -lcrypto -lvterm -lm -Wl,-rpath=/usr/local/lib
+LDFLAGS = $(DEBUG_LDFLAGS) -lncursesw -ljansson -lpthread -ldl -lvterm -lm -Wl,-rpath=/usr/local/lib
 
 # Enable ASan if ASAN=1 is passed: make ASAN=1
 ifeq ($(ASAN), 1)
@@ -39,7 +39,7 @@ all: $(TARGET) plugins
 # Source files for a2
 A2_SOURCES = a2.c command_execution.c defs.c direct_navigation.c fileio.c lsp_client.c \
              editor_utils.c text_editing.c undo_redo.c search_local.c autocomplete_logic.c editor_actions.c \
-             screen_ui.c window_managment.c project.c timer.c cache.c explorer.c diff.c themes.c spell.c settings.c logger.c lsp_watchdog.c base64.c dictionary.c local_history.c plugin_engine.c
+             screen_ui.c window_management.c project.c timer.c cache.c explorer.c diff.c themes.c spell.c settings.c logger.c lsp_watchdog.c base64.c local_history.c plugin_engine.c process_exec.c headless.c
 # Adds the directory prefix to source and object files
 A2_SRCS = $(addprefix $(A2_DIR)/, $(A2_SOURCES))
 A2_OBJS = $(A2_SRCS:.c=.o)
@@ -99,9 +99,11 @@ install: all
 	sudo cp -r man/*.txt /usr/local/share/a2/man/
 	@echo "Installation complete."
     
-# Target to force clean, compile, and install in a single command
-rebuild: clean install
+# Rebuild the binary and plugins. Does not install.
+rebuild: clean all
 
+# `make` / `make all` also builds plugins/*.c into ~/.a2/plugins.
+# That writes outside the build tree on purpose: it is where the editor loads .so files.
 USER_PLUGINS_DIR = $(HOME)/.a2/plugins
 
 plugins:
@@ -114,7 +116,7 @@ plugins:
 			if [ "$$f" = "plugins/plugin_spell_dict.c" ]; then \
 				extra_libs="-lcurl $$(pkg-config --libs hunspell 2>/dev/null || echo '-lhunspell-1.7')"; \
 			fi; \
-			$(CC) -shared -fPIC $(CFLAGS) -I./a2_files "$$f" $$extra_libs -o $(USER_PLUGINS_DIR)/"$$plugin_name"; \
+			$(CC) -shared -fPIC $(CFLAGS) -I./a2_files a2_files/process_exec.c "$$f" $$extra_libs -o $(USER_PLUGINS_DIR)/"$$plugin_name"; \
 		fi \
 	done
 

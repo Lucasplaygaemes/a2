@@ -5,7 +5,7 @@
 #include "defs.h"
 #include "lsp_client.h"
 #include "screen_ui.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "command_execution.h"
 #include "cache.h"
 #include "settings.h"
@@ -472,8 +472,9 @@ void make_make_file(EditorState *state, const char *args) {
     char *ldflags = analyze_include_and_generate_flags(state);
     FILE *f = fopen("Makefile", "w");
     if (!f) { editor_set_status_msg(state, "Erro ao criar Makefile: %s", strerror(errno)); if (ldflags) free(ldflags); return; }
-    char executable_name[256]; strncpy(executable_name, state->buffer.filename, sizeof(executable_name) - 1);
-    executable_name[sizeof(executable_name) - 1] = '\0'; char *ponto = strrchr(executable_name, '.'); if (ponto) *ponto = '\0';
+    char executable_name[256];
+    a2_strlcpy(executable_name, state->buffer.filename, sizeof(executable_name));
+    char *ponto = strrchr(executable_name, '.'); if (ponto) *ponto = '\0';
     fprintf(f, "CC=gcc\nTARGET=%s\nSOURCES=$(wildcard *.c)\nOBJECTS=$(SOURCES:.c=.o)\nCFLAGS+=-g -Wall %s\nLDFLAGS+=%s\n\n.PHONY: all clean\n\nall: $(TARGET)\n\n$(TARGET): $(OBJECTS)\n\t$(CC) $(CFLAGS) -o $(TARGET) $(OBJECTS) $(LDFLAGS)\n\n%%.o: %%.c\n\t$(CC) $(CFLAGS) -c $< -o $@ -MMD\n\nclean:\n\trm -f $(TARGET) $(OBJECTS) $(OBJECTS:.o=.d)\n\n-include $(OBJECTS:.o=.d)\n", executable_name, args ? args : "", ldflags ? ldflags : "");
     fclose(f); if (ldflags) free(ldflags);
     create_generic_terminal_window((char*[]){"make", NULL});

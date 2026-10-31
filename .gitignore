@@ -67,9 +67,5 @@ editor_lsp.log
 lsp_log.txt
 jntd_debug.log
 
-# assembly outputs
-.s
-.asm
-.am
-.ss
-.am
+# assembly outputs from `make assem`
+asm/

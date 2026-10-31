@@ -66,8 +66,8 @@ static void *dictionary_fetch_thread(void *arg) {
     snprintf(cache_dir, sizeof(cache_dir), "%s/.a2/dict_cache", home ? home : ".");
     mkdir(cache_dir, 0755);
 
-    char cache_path[512];
-    snprintf(cache_path, sizeof(cache_path), "%s/en_%s.json", cache_dir, data->word);
+    char cache_path[1024];
+    snprintf(cache_path, sizeof(cache_path), "%.400s/en_%.100s.json", cache_dir, data->word);
 
     FILE *f = fopen(cache_path, "r");
     char *json_text = NULL;
@@ -191,7 +191,7 @@ static void cmd_dict(EditorState *state, const char *args) {
     g_api->set_status_msg(state, "Looking up '%s' in Wiktionary...", word);
 
     DictFetchData *tdata = malloc(sizeof(DictFetchData));
-    strncpy(tdata->word, word, sizeof(tdata->word) - 1);
+    snprintf(tdata->word, sizeof(tdata->word), "%s", word);
     tdata->state = state;
 
     pthread_t thread;
@@ -246,7 +246,7 @@ static void cmd_spell(EditorState *state, const char *args) {
 
     g_hunspell_handle = Hunspell_create(aff_path, dic_path);
     if (g_hunspell_handle) {
-        strncpy(g_current_spell_lang, lang, sizeof(g_current_spell_lang) - 1);
+        snprintf(g_current_spell_lang, sizeof(g_current_spell_lang), "%s", lang);
         g_api->set_status_msg(state, "Spell Checker: Loaded dictionary '%s'", lang);
     } else {
         g_api->set_status_msg(state, "Spell Checker: Failed to initialize Hunspell for '%s'", lang);
