@@ -3,7 +3,7 @@
 #include "others.h"
 #include "screen_ui.h"
 #include "undo_redo.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "fileio.h"
 #include <string.h>
 #include <stdlib.h>

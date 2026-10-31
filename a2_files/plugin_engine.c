@@ -1,6 +1,6 @@
 #include "plugin_engine.h"
 #include "screen_ui.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "others.h"
 #include "logger.h"
 #include "fileio.h"

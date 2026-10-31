@@ -3,7 +3,7 @@
 #include "editor_utils.h"
 #include "undo_redo.h"
 #include "diff.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "cache.h"
 #include "settings.h"
 #include <stdio.h>

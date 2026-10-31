@@ -1,5 +1,5 @@
 #define _GNU_SOURCE
-#include "window_managment.h"
+#include "window_management.h"
 #include "explorer.h"
 #include "fileio.h"
 #include "themes.h"

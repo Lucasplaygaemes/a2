@@ -98,6 +98,7 @@ static inline void a2_path_join(char *dst, size_t size, const char *p1, const ch
 
 struct EditorState;
 extern bool g_safe_mode;
+extern bool g_headless_mode;
 
 #ifndef LSPMESSAGE_DEFINED
 #define LSPMESSAGE_DEFINED

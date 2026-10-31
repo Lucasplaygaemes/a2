@@ -6,6 +6,7 @@
 void settings_panel_redraw(EditorWindow *jw);
 void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit);
 void free_settings_panel_state(SettingsPanelState *state);
+void handle_settings_command(EditorState *state, const char *args);
 
 void key_to_string(KeyBinding *kb, char *buf, size_t size);
 void ensure_a2_config_dir(char *path_out, size_t size);

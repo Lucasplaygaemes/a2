@@ -2,7 +2,7 @@
 #include "editor_utils.h"
 #include "others.h"
 #include "screen_ui.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "command_execution.h"
 #include "undo_redo.h"
 #include "lsp_client.h"

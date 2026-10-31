@@ -1,6 +1,6 @@
 #include "project.h"
 #include "defs.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "command_execution.h"
 #include "fileio.h"
 #include "screen_ui.h"
