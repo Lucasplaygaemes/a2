@@ -1,7 +1,7 @@
 #include "diff.h"
 #include "defs.h"
 #include "screen_ui.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "command_execution.h"
 #include "others.h"
 #include <string.h>
@@ -36,7 +36,7 @@ void start_interactive_diff(EditorState *state) {
         return;
     }
     
-    char diff_cmd_str[2048];
+    char diff_cmd_str[PATH_MAX * 2 + 64];
     snprintf(diff_cmd_str, sizeof(diff_cmd_str), "git diff --no-index -- %s %s", file1, file2);
     
     editor_set_status_msg(state, "Running diff...");
@@ -45,7 +45,7 @@ void start_interactive_diff(EditorState *state) {
 }
 
 void show_diff_between_files(const char *file1, const char *file2) {
-    char diff_cmd_str[2048];
+    char diff_cmd_str[PATH_MAX * 2 + 64];
     snprintf(diff_cmd_str, sizeof(diff_cmd_str), "git diff --no-index -- \"%s\" \"%s\"", file1, file2);
     run_and_display_command(diff_cmd_str, "--- LOCAL HISTORY DIFF ---");
 }
