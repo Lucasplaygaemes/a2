@@ -1,6 +1,6 @@
 #define _GNU_SOURCE
 #include "settings.h"
-#include "window_managment.h" // for the close_active_window (close_current_window)
+#include "window_management.h" // for the close_active_window (close_current_window)
 #include "fileio.h"
 #include "themes.h"
 #include "cache.h"
@@ -1039,8 +1039,7 @@ void settings_panel_process_input(EditorWindow *jw, wint_t ch, bool *should_exit
                     char name[128];
                     bool enabled;
                     if (plugin_engine_get_plugin_info(state->current_selection, name, sizeof(name), &enabled)) {
-                        strncpy(state->selected_plugin_name, name, sizeof(state->selected_plugin_name) - 1);
-                        state->selected_plugin_name[sizeof(state->selected_plugin_name) - 1] = '\0';
+                        a2_strlcpy(state->selected_plugin_name, name, sizeof(state->selected_plugin_name));
                         state->current_view = SETTINGS_VIEW_PLUGIN_DETAIL;
                         state->current_selection = 0;
                         state->scroll_top = 0;
@@ -1587,5 +1586,171 @@ void ui_edit_task(int idx) {
     a2_strlcpy(global_bindings[act].desc, t->description, sizeof(global_bindings[act].desc));
     
     save_custom_tasks();
+}
+
+typedef enum {
+    SETTING_BOOL,
+    SETTING_INT,
+    SETTING_STR
+} ConfigFieldType;
+
+typedef struct {
+    const char *name;
+    ConfigFieldType type;
+    void *ptr;
+    int max_len;
+} ConfigEntry;
+
+static const ConfigEntry config_entries[] = {
+    {"word_wrap",              SETTING_BOOL, &global_config.word_wrap, 0},
+    {"auto_indent",            SETTING_BOOL, &global_config.auto_indent, 0},
+    {"paste_mode",             SETTING_BOOL, &global_config.paste_mode, 0},
+    {"tab_size",               SETTING_INT,  &global_config.tab_size, 0},
+    {"expand_tab",             SETTING_BOOL, &global_config.expand_tab, 0},
+    {"status_bar_mode",        SETTING_INT,  &global_config.status_bar_mode, 0},
+    {"show_line_numbers",      SETTING_BOOL, &global_config.show_line_numbers, 0},
+    {"show_scrollbar",         SETTING_BOOL, &global_config.show_scrollbar, 0},
+    {"relative_line_numbers",  SETTING_BOOL, &global_config.relative_line_numbers, 0},
+    {"show_error_count",       SETTING_BOOL, &global_config.show_error_count, 0},
+    {"abbreviate_filename",    SETTING_BOOL, &global_config.abbreviate_filename, 0},
+    {"smart_save_enabled",     SETTING_BOOL, &global_config.smart_save_enabled, 0},
+    {"git_gutter_enabled",     SETTING_BOOL, &global_config.git_gutter_enabled, 0},
+    {"auto_load_project",      SETTING_BOOL, &global_config.auto_load_project, 0},
+    {"lsp_enabled",            SETTING_BOOL, &global_config.lsp_enabled, 0},
+    {"lsp_diagnostics",        SETTING_BOOL, &global_config.lsp_diagnostics, 0},
+    {"lsp_inline_diagnostics", SETTING_BOOL, &global_config.lsp_inline_diagnostics, 0},
+    {"lsp_highlight",          SETTING_BOOL, &global_config.lsp_highlight, 0},
+    {"lsp_completion",         SETTING_BOOL, &global_config.lsp_completion, 0},
+    {"lsp_hover",              SETTING_BOOL, &global_config.lsp_hover, 0},
+    {"spell_checker_enabled",  SETTING_BOOL, &global_config.spell_checker_enabled, 0},
+    {"default_spell_lang",     SETTING_STR,  global_config.default_spell_lang, sizeof(global_config.default_spell_lang)},
+    {"dictionary_lang",        SETTING_STR,  global_config.dictionary_lang, sizeof(global_config.dictionary_lang)},
+    {"image_preview_enabled",  SETTING_BOOL, &global_config.image_preview_enabled, 0},
+    {"debug_enabled",          SETTING_BOOL, &global_config.debug_enabled, 0},
+    {"log_level_filter",       SETTING_INT,  &global_config.log_level_filter, 0},
+    {"icon_mode",              SETTING_INT,  &global_config.icon_mode, 0},
+    {NULL, 0, NULL, 0}
+};
+
+void handle_settings_command(EditorState *state, const char *args) {
+    if (!args) args = "";
+    while (isspace((unsigned char)*args)) args++;
+
+    if (*args == '\0' || strcmp(args, "list") == 0) {
+        printf("=== a2 Settings ===\n");
+        for (int i = 0; config_entries[i].name != NULL; i++) {
+            const ConfigEntry *entry = &config_entries[i];
+            if (entry->type == SETTING_BOOL) {
+                bool val = *(bool*)entry->ptr;
+                printf("  %-24s = %s\n", entry->name, val ? "true (1)" : "false (0)");
+            } else if (entry->type == SETTING_INT) {
+                int val = *(int*)entry->ptr;
+                printf("  %-24s = %d\n", entry->name, val);
+            } else if (entry->type == SETTING_STR) {
+                const char *val = (const char*)entry->ptr;
+                printf("  %-24s = \"%s\"\n", entry->name, val);
+            }
+        }
+        printf("\nUsage: :settings <key> [val]  (or ':settings set <key> <val>')\n");
+        if (state) editor_set_status_msg(state, "Settings listed on terminal output.");
+        return;
+    }
+
+    if (strcmp(args, "save") == 0) {
+        save_global_config();
+        if (state) editor_set_status_msg(state, "Settings saved.");
+        else printf("[a2] Settings saved to configuration file.\n");
+        return;
+    }
+
+    if (strcmp(args, "reload") == 0) {
+        load_global_config();
+        apply_settings_globally();
+        if (state) editor_set_status_msg(state, "Settings reloaded.");
+        else printf("[a2] Settings reloaded from configuration file.\n");
+        return;
+    }
+
+    char key[64] = "", value[128] = "";
+    if (strncmp(args, "get ", 4) == 0) {
+        sscanf(args + 4, "%63s", key);
+    } else if (strncmp(args, "set ", 4) == 0) {
+        sscanf(args + 4, "%63s %127s", key, value);
+    } else {
+        const char *eq = strchr(args, '=');
+        if (eq) {
+            int klen = eq - args;
+            if (klen >= (int)sizeof(key)) klen = sizeof(key) - 1;
+            strncpy(key, args, klen);
+            key[klen] = '\0';
+            strncpy(value, eq + 1, sizeof(value) - 1);
+            value[sizeof(value) - 1] = '\0';
+        } else {
+            int count = sscanf(args, "%63s %127s", key, value);
+            if (count == 1) {
+                value[0] = '\0';
+            }
+        }
+    }
+
+    char *k = trim_whitespace(key);
+    char *v = trim_whitespace(value);
+
+    const ConfigEntry *found = NULL;
+    for (int i = 0; config_entries[i].name != NULL; i++) {
+        if (strcasecmp(config_entries[i].name, k) == 0) {
+            found = &config_entries[i];
+            break;
+        }
+    }
+
+    if (!found) {
+        if (state) editor_set_status_msg(state, "Unknown setting: '%s'. Run ':settings' to list.", k);
+        else printf("[a2] Unknown setting: '%s'. Run ':settings' to list.\n", k);
+        return;
+    }
+
+    if (v[0] == '\0') {
+        if (found->type == SETTING_BOOL) {
+            bool b = *(bool*)found->ptr;
+            if (state) editor_set_status_msg(state, "%s = %s", found->name, b ? "true" : "false");
+            else printf("%s = %s\n", found->name, b ? "true" : "false");
+        } else if (found->type == SETTING_INT) {
+            int iv = *(int*)found->ptr;
+            if (state) editor_set_status_msg(state, "%s = %d", found->name, iv);
+            else printf("%s = %d\n", found->name, iv);
+        } else if (found->type == SETTING_STR) {
+            const char *sv = (const char*)found->ptr;
+            if (state) editor_set_status_msg(state, "%s = \"%s\"", found->name, sv);
+            else printf("%s = \"%s\"\n", found->name, sv);
+        }
+        return;
+    }
+
+    if (found->type == SETTING_BOOL) {
+        bool b = false;
+        if (strcasecmp(v, "1") == 0 || strcasecmp(v, "true") == 0 || strcasecmp(v, "yes") == 0 || strcasecmp(v, "on") == 0) {
+            b = true;
+        } else if (strcasecmp(v, "0") == 0 || strcasecmp(v, "false") == 0 || strcasecmp(v, "no") == 0 || strcasecmp(v, "off") == 0) {
+            b = false;
+        } else {
+            if (state) editor_set_status_msg(state, "Invalid boolean '%s'. Use true/false or 1/0.", v);
+            else printf("[a2] Invalid boolean '%s'. Use true/false or 1/0.\n", v);
+            return;
+        }
+        *(bool*)found->ptr = b;
+    } else if (found->type == SETTING_INT) {
+        int iv = atoi(v);
+        *(int*)found->ptr = iv;
+    } else if (found->type == SETTING_STR) {
+        strncpy((char*)found->ptr, v, found->max_len - 1);
+        ((char*)found->ptr)[found->max_len - 1] = '\0';
+    }
+
+    apply_settings_globally();
+    save_global_config();
+
+    if (state) editor_set_status_msg(state, "Setting '%s' updated and saved.", found->name);
+    else printf("[a2] Setting '%s' updated and saved.\n", found->name);
 }
 
