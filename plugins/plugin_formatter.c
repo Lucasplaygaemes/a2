@@ -90,9 +90,8 @@ static void format_current_buffer(EditorState *state) {
     int result = run_shell_command(cmd);
     if (result == 0) {
         g_api->reload_file(state);
-        char fname_copy[256];
-        strncpy(fname_copy, filename, sizeof(fname_copy) - 1);
-        fname_copy[sizeof(fname_copy) - 1] = '\0';
+        char fname_copy[PATH_MAX];
+        snprintf(fname_copy, sizeof(fname_copy), "%s", filename);
         g_api->set_status_msg(state, "Formatter: Formatted %s using %s", basename(fname_copy), tool_name);
     } else {
         g_api->set_status_msg(state, "Formatter: %s failed on %s", tool_name, filename);
