@@ -54,7 +54,7 @@ static void set_default_theme() {
 }
 
 bool load_theme(const char* theme_name) {
-    char path[PATH_MAX];
+    char path[PATH_MAX * 2];
     FILE *f = NULL;
     char custom_theme_dir[PATH_MAX] = {0};
 
