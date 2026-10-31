@@ -6,7 +6,7 @@
 #include "command_execution.h" // For run_and_display_command
 #include "direct_navigation.h"
 #include "git_utils.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "cache.h"
 #include "settings.h"
 #include "base64.h"
@@ -324,14 +324,12 @@ void load_file_core(EditorState *state, const char *filename) {
     char absolute_path[PATH_MAX];
     if (realpath(expanded_filename, absolute_path) == NULL) {
         // If realpath fails, use the expanded filename
-        strncpy(absolute_path, expanded_filename, PATH_MAX - 1);
-        absolute_path[PATH_MAX - 1] = '\0';
+        a2_strlcpy(absolute_path, expanded_filename, sizeof(absolute_path));
     }
 
     for (int i = 0; i < state->buffer.num_lines; i++) { if(state->buffer.lines[i]) free(state->buffer.lines[i]); state->buffer.lines[i] = NULL; }
     state->buffer.num_lines = 0;
-    strncpy(state->buffer.filename, absolute_path, sizeof(state->buffer.filename) - 1);
-    state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
+    a2_strlcpy(state->buffer.filename, absolute_path, sizeof(state->buffer.filename));
     
     state->buffer.is_image = false;
     char *ext = strrchr(absolute_path, '.');
@@ -826,14 +824,12 @@ void get_pos_path(const char *filename, char *out_path, size_t size) {
     // Get absolute path to ensure uniqueness
     char abs_path[PATH_MAX];
     if (realpath(filename, abs_path) == NULL) {
-        strncpy(abs_path, filename, PATH_MAX - 1);
-        abs_path[PATH_MAX - 1] = '\0';
+        a2_strlcpy(abs_path, filename, sizeof(abs_path));
     }
 
     // Convert path to a safe filename (replace / with _)
     char safe_name[PATH_MAX];
-    strncpy(safe_name, abs_path, sizeof(safe_name) - 1);
-    safe_name[sizeof(safe_name) - 1] = '\0';
+    a2_strlcpy(safe_name, abs_path, sizeof(safe_name));
     
     for (int i = 0; safe_name[i]; i++) {
         if (safe_name[i] == '/') safe_name[i] = '_';
