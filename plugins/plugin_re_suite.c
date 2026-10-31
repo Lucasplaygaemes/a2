@@ -68,7 +68,7 @@ static void cmd_disasm(EditorState *state, const char *args) {
     const char *engine_name = g_use_radare2 ? "Radare2/Cutter" : "Objdump";
     if (g_use_radare2) {
         if (func[0] != '\0') {
-            char cmd_str[256];
+            char cmd_str[512];
             snprintf(cmd_str, sizeof(cmd_str), "-AAA; pdf @ %s", func);
             char *const r2_cmd[] = {"r2", "-c", cmd_str, bin_target, NULL};
             if (g_api->create_terminal_window) {
@@ -92,7 +92,7 @@ static void cmd_disasm(EditorState *state, const char *args) {
         } else {
             snprintf(disasm_cmd, sizeof(disasm_cmd), "objdump -d -M intel --no-show-raw-insn \"%s\"", bin_target);
         }
-        char title[256];
+        char title[1024];
         if (func[0] != '\0') {
             snprintf(title, sizeof(title), "Disassembly [%s] of '%s' in %s", engine_name, func, target);
         } else {
@@ -137,7 +137,7 @@ static void cmd_elf(EditorState *state, const char *args) {
     char readelf_cmd[1024];
     snprintf(readelf_cmd, sizeof(readelf_cmd), "readelf -h -l \"%s\"", target);
     
-    char title[256];
+    char title[1024];
     snprintf(title, sizeof(title), "ELF Header & Program Headers of %s", target);
     run_re_tool_and_display(state, title, readelf_cmd);
 }
@@ -151,7 +151,7 @@ static void cmd_sections(EditorState *state, const char *args) {
     }
     char cmd[1024];
     snprintf(cmd, sizeof(cmd), "readelf -S \"%s\"", target);
-    char title[256];
+    char title[1024];
     snprintf(title, sizeof(title), "ELF Section Headers of %s", target);
     run_re_tool_and_display(state, title, cmd);
 }
@@ -163,9 +163,9 @@ static void cmd_symbols(EditorState *state, const char *args) {
         g_api->set_status_msg(state, "RE Suite: Usage :symbols <file>");
         return;
     }
-    char cmd[1024];
+    char cmd[2048];
     snprintf(cmd, sizeof(cmd), "nm -C --demangle \"%s\" || readelf -s --demangle \"%s\"", target, target);
-    char title[256];
+    char title[1024];
     snprintf(title, sizeof(title), "Symbol Table of %s", target);
     run_re_tool_and_display(state, title, cmd);
 }
@@ -177,9 +177,9 @@ static void cmd_imports(EditorState *state, const char *args) {
         g_api->set_status_msg(state, "RE Suite: Usage :imports <file>");
         return;
     }
-    char cmd[1024];
+    char cmd[2048];
     snprintf(cmd, sizeof(cmd), "ldd \"%s\" 2>/dev/null; echo '\n--- Dynamic Section ---'; readelf -d \"%s\"", target, target);
-    char title[256];
+    char title[1024];
     snprintf(title, sizeof(title), "Shared Libraries & Dependencies of %s", target);
     run_re_tool_and_display(state, title, cmd);
 }
@@ -193,7 +193,7 @@ static void cmd_relocs(EditorState *state, const char *args) {
     }
     char cmd[1024];
     snprintf(cmd, sizeof(cmd), "readelf -r \"%s\"", target);
-    char title[256];
+    char title[1024];
     snprintf(title, sizeof(title), "Relocations (GOT/PLT) of %s", target);
     run_re_tool_and_display(state, title, cmd);
 }
@@ -205,7 +205,7 @@ static void cmd_checksec(EditorState *state, const char *args) {
         g_api->set_status_msg(state, "RE Suite: Usage :checksec <file>");
         return;
     }
-    char cmd[2048];
+    char cmd[4096];
     snprintf(cmd, sizeof(cmd),
         "echo '[+] Analyzing binary security mitigations for %s:' && "
         "echo -n 'RELRO:    ' && (readelf -l \"%s\" | grep -q GNU_RELRO && echo 'Full/Partial RELRO' || echo 'No RELRO') && "
@@ -213,7 +213,7 @@ static void cmd_checksec(EditorState *state, const char *args) {
         "echo -n 'NX Bit:   ' && (readelf -l \"%s\" | grep -A1 GNU_STACK | grep -q RWE && echo 'NX Disabled (Executable Stack!)' || echo 'NX Enabled') && "
         "echo -n 'PIE:      ' && (readelf -h \"%s\" | grep -q 'DYN (Position-Independent Executable file)' && echo 'PIE Enabled' || echo 'No PIE')",
         target, target, target, target, target);
-    char title[256];
+    char title[1024];
     snprintf(title, sizeof(title), "Security Mitigations Check (checksec) of %s", target);
     run_re_tool_and_display(state, title, cmd);
 }
@@ -233,7 +233,7 @@ static void cmd_strings(EditorState *state, const char *args) {
     if (min_len <= 0) min_len = 4;
     char cmd[1024];
     snprintf(cmd, sizeof(cmd), "strings -a -n %d \"%s\"", min_len, target);
-    char title[256];
+    char title[1024];
     snprintf(title, sizeof(title), "Printable Strings (len >= %d) of %s", min_len, target);
     run_re_tool_and_display(state, title, cmd);
 }
@@ -256,7 +256,7 @@ static void cmd_decompile(EditorState *state, const char *args) {
     char bin_target[512];
     strncpy(bin_target, target, sizeof(bin_target) - 1);
     
-    char cmd_str[256];
+    char cmd_str[512];
     const char *dec_cmd = g_dec_use_ghidra ? "pdg" : "pdc";
     if (func[0] != '\0') {
         snprintf(cmd_str, sizeof(cmd_str), "-AAA; s %s; %s", func, dec_cmd);
@@ -264,7 +264,7 @@ static void cmd_decompile(EditorState *state, const char *args) {
         snprintf(cmd_str, sizeof(cmd_str), "-AAA; s main; %s", dec_cmd);
     }
     
-    char full_cmd[1024];
+    char full_cmd[2048];
     snprintf(full_cmd, sizeof(full_cmd), "\"%s\" \"%s\"", cmd_str, bin_target);
     
     char *const decomp_cmd[] = {"r2", "-c", cmd_str, bin_target, NULL};
@@ -316,7 +316,7 @@ static void cmd_hex(EditorState *state, const char *args) {
     }
     char cmd[1024];
     snprintf(cmd, sizeof(cmd), "hexdump -C \"%s\"", target);
-    char title[256];
+    char title[1024];
     snprintf(title, sizeof(title), "Hexadecimal Dump of %s", target);
     run_re_tool_and_display(state, title, cmd);
 }
