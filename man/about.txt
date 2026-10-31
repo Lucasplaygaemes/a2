@@ -36,8 +36,8 @@ Lucas.
 
 ## License
 
-GNU GPL version 2 only. The LICENSE file is the editor's license.
-It does not include the licenses of the libraries above.
+GNU GPL version 2 only. See the LICENSE file for full license terms and
+third-party library acknowledgements.
 
 ---
 *Thank you for using a2.*
