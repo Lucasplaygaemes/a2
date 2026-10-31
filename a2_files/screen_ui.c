@@ -3,7 +3,7 @@
 #include "defs.h"
 #include "others.h"
 #include "lsp_client.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "cache.h"
 #include "spell.h"
 #include "fileio.h"
@@ -362,6 +362,7 @@ static inline bool is_token_match(const char *str, const char *token, int token_
 }
 
 void editor_redraw(WINDOW *win, EditorState *state) {
+    if (g_headless_mode || !win || !state) return;
     wbkgd(win, COLOR_PAIR(PAIR_DEFAULT));
 
     if (state->buffer.modified) {
@@ -1136,13 +1137,12 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             if (global_config.abbreviate_filename) {
                 char *fname_copy = strdup(state->buffer.filename);
                 if (fname_copy) {
-                    strncpy(display_filename, basename(fname_copy), sizeof(display_filename) - 1);
+                    a2_strlcpy(display_filename, basename(fname_copy), sizeof(display_filename));
                     free(fname_copy);
                 }
             } else {
-                strncpy(display_filename, state->buffer.filename, sizeof(display_filename) - 1);
+                a2_strlcpy(display_filename, state->buffer.filename, sizeof(display_filename));
             }
-            display_filename[sizeof(display_filename) - 1] = '\0';
 
             if (global_config.show_error_count && state->lsp.document && state->lsp.document->diagnostics_count > 0) {
                 int errors = 0, warnings = 0;
