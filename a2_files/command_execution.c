@@ -15,12 +15,14 @@
 #include "local_history.h"
 #include "plugin_engine.h"
 #include "process_exec.h"
+#include "io_utils.h"
 
 #include <sys/stat.h>
 #include <ctype.h> // For isspace
 #include <errno.h> // For errno
 #include <unistd.h> // For chdir, getcwd, close
 #include <sys/wait.h> // For WIFEXITED, WEXITSTATUS
+#include <stdint.h>
 
 void load_global_config();
 
@@ -975,18 +977,37 @@ void paste_from_clipboard(EditorState *state) {
         free(temp_filename);
         return; 
     }
-    fseek(f, 0, SEEK_END);
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        remove(temp_filename);
+        free(temp_filename);
+        editor_set_status_msg(state, "Error measuring clipboard data.");
+        return;
+    }
     long size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char *pasted_text = malloc(size + 1);
+    if (size < 0 || (uintmax_t)size >= SIZE_MAX || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        remove(temp_filename);
+        free(temp_filename);
+        editor_set_status_msg(state, "Error measuring clipboard data.");
+        return;
+    }
+    char *pasted_text = malloc((size_t)size + 1);
     if (!pasted_text) {
         fclose(f);
         remove(temp_filename);
         free(temp_filename);
         return;
     }
-    fread(pasted_text, 1, size, f);
+    size_t bytes_read = fread(pasted_text, 1, (size_t)size, f);
     fclose(f);
+    if (bytes_read != (size_t)size) {
+        free(pasted_text);
+        remove(temp_filename);
+        free(temp_filename);
+        editor_set_status_msg(state, "Error reading clipboard data.");
+        return;
+    }
     pasted_text[size] = '\0';
     remove(temp_filename);
     free(temp_filename);
