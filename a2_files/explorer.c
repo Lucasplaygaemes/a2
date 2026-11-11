@@ -17,6 +17,7 @@
 #include <libgen.h>  // For basename in status message
 #include <ncurses.h>
 #include <errno.h>
+#include <limits.h>
 
 // Forward declare for use in explorer
 void run_and_display_command(const char* command, const char* title);
@@ -906,7 +907,14 @@ void explorer_process_input(EditorWindow *jw, wint_t ch, bool *should_exit) {
                         *(last_slash + 1) = '\0';
                     }
                 } else {
-                    realpath(selected_path, state->current_path);
+                    char resolved_path[PATH_MAX];
+                    if (realpath(selected_path, resolved_path)) {
+                        a2_strlcpy(state->current_path, resolved_path, sizeof(state->current_path));
+                    } else {
+                        snprintf(state->status_msg, sizeof(state->status_msg),
+                                 "Cannot resolve directory: %s", strerror(errno));
+                        break;
+                    }
                 }
                 explorer_reload_entries(state);
             } else {
