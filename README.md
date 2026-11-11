@@ -25,6 +25,7 @@ Development is currently focused on stabilization, buffer data structures, and e
 - **Reverse Engineering Suite:** An optional plugin integrates with binary analysis tools (`r2`, `readelf`, `nm`) when installed on `PATH`. Decompilation leverages `r2 -c pdg` (r2ghidra).
 
 Comprehensive command and keybinding reference: [index.md](./index.md).
+Plugin API, lifecycle, build, and memory-check guidance: [plugins/README.md](./plugins/README.md).
 
 ## Hard limits
 
@@ -48,6 +49,8 @@ cd a2
 ```
 
 `install.sh` installs build dependencies (apt, dnf, or pacman), builds libvterm if needed, and runs `make`. The binary, syntaxes, themes, and help texts are installed under `/usr/local` by `make install`, which needs sudo.
+
+`make` and `make plugins` build without sudo. Only `make install` writes the application files under `/usr/local` and therefore invokes sudo. The `install.sh` wrapper separately needs sudo for system packages and libvterm.
 
 To build by hand after dependencies are present:
 
