@@ -17,6 +17,7 @@
 #include "lsp_watchdog.h"
 #include "plugin_engine.h"
 #include "headless.h"
+#include "io_utils.h"
 
 
 #include <locale.h>
@@ -743,26 +744,41 @@ void emergency_crash_handler(int sig) {
 
 static void terminal_forward_key(int pty_fd, wint_t ch) {
     if (pty_fd == -1) return;
+    const void *bytes = NULL;
+    size_t length = 0;
+    char single_byte;
+    char mb_buf[MB_CUR_MAX + 1];
+
     if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
-        char b = 0x7f;
-        write(pty_fd, &b, 1);
+        single_byte = 0x7f;
+        bytes = &single_byte;
+        length = 1;
     } else if (ch == '\n' || ch == KEY_ENTER || ch == 13) {
-        char b = '\r';
-        write(pty_fd, &b, 1);
+        single_byte = '\r';
+        bytes = &single_byte;
+        length = 1;
     } else if (ch == KEY_UP) {
-        write(pty_fd, "\033[A", 3);
+        bytes = "\033[A";
+        length = 3;
     } else if (ch == KEY_DOWN) {
-        write(pty_fd, "\033[B", 3);
+        bytes = "\033[B";
+        length = 3;
     } else if (ch == KEY_RIGHT) {
-        write(pty_fd, "\033[C", 3);
+        bytes = "\033[C";
+        length = 3;
     } else if (ch == KEY_LEFT) {
-        write(pty_fd, "\033[D", 3);
+        bytes = "\033[D";
+        length = 3;
     } else {
-        char mb_buf[MB_CUR_MAX + 1];
         int n = wctomb(mb_buf, ch);
         if (n > 0) {
-            write(pty_fd, mb_buf, n);
+            bytes = mb_buf;
+            length = (size_t)n;
         }
+    }
+
+    if (bytes && !a2_write_all(pty_fd, bytes, length)) {
+        A2_LOG(LOG_WARN, TAG_UI, "Failed to forward key to terminal: %s", strerror(errno));
     }
 }
 
