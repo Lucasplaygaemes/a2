@@ -36,6 +36,7 @@
 *.i*86
 *.x86_64
 *.hex
+a2
 
 # Debug files
 *.dSYM/
@@ -65,7 +66,6 @@ macros.a2
 work_timer.log
 editor_lsp.log
 lsp_log.txt
-jntd_debug.log
 
 # assembly outputs from `make assem`
 asm/
