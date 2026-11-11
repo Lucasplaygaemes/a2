@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #if __has_include(<hunspell/hunspell.h>)
 #include <hunspell/hunspell.h>
@@ -73,13 +74,20 @@ static void *dictionary_fetch_thread(void *arg) {
     char *json_text = NULL;
 
     if (f) {
-        fseek(f, 0, SEEK_END);
-        long fsize = ftell(f);
-        fseek(f, 0, SEEK_SET);
-        json_text = malloc(fsize + 1);
-        if (json_text) {
-            fread(json_text, 1, fsize, f);
-            json_text[fsize] = 0;
+        if (fseek(f, 0, SEEK_END) == 0) {
+            long fsize = ftell(f);
+            if (fsize >= 0 && (uintmax_t)fsize < SIZE_MAX && fseek(f, 0, SEEK_SET) == 0) {
+                json_text = malloc((size_t)fsize + 1);
+                if (json_text) {
+                    size_t bytes_read = fread(json_text, 1, (size_t)fsize, f);
+                    if (bytes_read == (size_t)fsize) {
+                        json_text[bytes_read] = '\0';
+                    } else {
+                        free(json_text);
+                        json_text = NULL;
+                    }
+                }
+            }
         }
         fclose(f);
     } else {
