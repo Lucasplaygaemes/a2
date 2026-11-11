@@ -3,6 +3,7 @@
 #include "undo_redo.h"
 #include "editor_utils.h"
 #include "logger.h"
+#include "io_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -306,11 +307,11 @@ static int repl_readline(const char *prompt, char *buf, int buf_size) {
         }
 
         if (c == '\n' || c == '\r') {
-            write(STDOUT_FILENO, "\n", 1);
+            if (!a2_write_all(STDOUT_FILENO, "\n", 1)) goto output_error;
             break;
         } else if (c == 4) { // Ctrl+D
             if (len == 0) {
-                write(STDOUT_FILENO, "\n", 1);
+                if (!a2_write_all(STDOUT_FILENO, "\n", 1)) goto output_error;
                 tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig);
                 return -1;
             }
@@ -329,20 +330,30 @@ static int repl_readline(const char *prompt, char *buf, int buf_size) {
                 printf(" ");
                 // Reposition cursor
                 int back = len - pos + 1;
-                for (int i = 0; i < back; i++) write(STDOUT_FILENO, "\b", 1);
+                for (int i = 0; i < back; i++) {
+                    if (!a2_write_all(STDOUT_FILENO, "\b", 1)) goto output_error;
+                }
                 fflush(stdout);
             }
         } else if (c == 1) { // Ctrl+A — home
-            while (pos > 0) { write(STDOUT_FILENO, "\b", 1); pos--; }
+            while (pos > 0) {
+                if (!a2_write_all(STDOUT_FILENO, "\b", 1)) goto output_error;
+                pos--;
+            }
         } else if (c == 5) { // Ctrl+E — end
-            while (pos < len) { write(STDOUT_FILENO, buf + pos, 1); pos++; }
+            while (pos < len) {
+                if (!a2_write_all(STDOUT_FILENO, buf + pos, 1)) goto output_error;
+                pos++;
+            }
         } else if (c == 21) { // Ctrl+U — clear to start
             printf("\r%s%*s\r%s%s", prompt, len, "", prompt, buf + pos);
             memmove(buf, buf + pos, (size_t)(len - pos + 1));
             len -= pos;
             pos = 0;
             int back = len;
-            for (int i = 0; i < back; i++) write(STDOUT_FILENO, "\b", 1);
+            for (int i = 0; i < back; i++) {
+                if (!a2_write_all(STDOUT_FILENO, "\b", 1)) goto output_error;
+            }
             fflush(stdout);
         } else if (c == 27) { // Escape sequence
             unsigned char seq[3];
@@ -379,30 +390,38 @@ static int repl_readline(const char *prompt, char *buf, int buf_size) {
                         break;
                     case 'C': // Right arrow
                         if (pos < len) {
-                            write(STDOUT_FILENO, buf + pos, 1);
+                            if (!a2_write_all(STDOUT_FILENO, buf + pos, 1)) goto output_error;
                             pos++;
                         }
                         break;
                     case 'D': // Left arrow
                         if (pos > 0) {
-                            write(STDOUT_FILENO, "\b", 1);
+                            if (!a2_write_all(STDOUT_FILENO, "\b", 1)) goto output_error;
                             pos--;
                         }
                         break;
                     case 'H': // Home
-                        while (pos > 0) { write(STDOUT_FILENO, "\b", 1); pos--; }
+                        while (pos > 0) {
+                            if (!a2_write_all(STDOUT_FILENO, "\b", 1)) goto output_error;
+                            pos--;
+                        }
                         break;
                     case 'F': // End
-                        while (pos < len) { write(STDOUT_FILENO, buf + pos, 1); pos++; }
+                        while (pos < len) {
+                            if (!a2_write_all(STDOUT_FILENO, buf + pos, 1)) goto output_error;
+                            pos++;
+                        }
                         break;
                     case '3': // Delete key (ESC [ 3 ~)
-                        read(STDIN_FILENO, &seq[2], 1); // consume '~'
+                        if (read(STDIN_FILENO, &seq[2], 1) <= 0) continue;
                         if (pos < len) {
                             memmove(buf + pos, buf + pos + 1, (size_t)(len - pos));
                             len--;
                             printf("%s \b", buf + pos);
                             int back = len - pos;
-                            for (int i = 0; i < back; i++) write(STDOUT_FILENO, "\b", 1);
+                            for (int i = 0; i < back; i++) {
+                                if (!a2_write_all(STDOUT_FILENO, "\b", 1)) goto output_error;
+                            }
                             fflush(stdout);
                         }
                         break;
@@ -416,9 +435,11 @@ static int repl_readline(const char *prompt, char *buf, int buf_size) {
                 buf[pos] = (char)c;
                 len++; pos++;
                 // Redraw from cursor
-                write(STDOUT_FILENO, buf + pos - 1, (size_t)(len - pos + 1));
+                if (!a2_write_all(STDOUT_FILENO, buf + pos - 1, (size_t)(len - pos + 1))) goto output_error;
                 int back = len - pos;
-                for (int i = 0; i < back; i++) write(STDOUT_FILENO, "\b", 1);
+                for (int i = 0; i < back; i++) {
+                    if (!a2_write_all(STDOUT_FILENO, "\b", 1)) goto output_error;
+                }
                 fflush(stdout);
             }
         }
@@ -427,6 +448,10 @@ static int repl_readline(const char *prompt, char *buf, int buf_size) {
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig);
     buf[len] = '\0';
     return len;
+
+output_error:
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig);
+    return -1;
 }
 
 void headless_repl(EditorState *state) {
