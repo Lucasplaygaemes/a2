@@ -5,6 +5,7 @@ set -e
 
 # --- Variables ---
 VTERM_REPO_URL="https://github.com/TragicWarrior/libvterm.git"
+VTERM_REPO_REF="369cb5ea415c8c3eade43ed85c17b6ca1b9c7da4"
 
 # --- Helper Functions ---
 info() {
@@ -122,7 +123,7 @@ install_dependencies() {
 # --- Install libvterm from Source ---
 install_libvterm_from_source() {
     info "Checking for libvterm installation..."
-    if [ -f "/usr/local/lib/libvterm.so" ]; then
+    if [ -f "/usr/local/lib/libvterm.so" ] && [ -f "/usr/local/include/vterm.h" ]; then
         info "libvterm already seems to be installed. Skipping."
         return
     fi
@@ -130,11 +131,21 @@ install_libvterm_from_source() {
     info "Cloning and installing libvterm from $VTERM_REPO_URL..."
     TMP_DIR=$(mktemp -d)
     git clone "$VTERM_REPO_URL" "$TMP_DIR"
+    git -C "$TMP_DIR" checkout "$VTERM_REPO_REF"
     cd "$TMP_DIR"
-    sudo ln -s /usr/include /usr/include/ncursesw
+    NCURSESW_INCLUDE_LINK="/usr/include/ncursesw/include"
+    if [ -L "$NCURSESW_INCLUDE_LINK" ] && [ "$(readlink -f "$NCURSESW_INCLUDE_LINK")" = "$(readlink -f /usr/include)" ]; then
+        info "ncursesw include link already points to /usr/include. Skipping."
+    elif [ -e "$NCURSESW_INCLUDE_LINK" ] || [ -L "$NCURSESW_INCLUDE_LINK" ]; then
+        error "$NCURSESW_INCLUDE_LINK already exists but does not point to /usr/include."
+    elif [ -d /usr/include/ncursesw ]; then
+        sudo ln -s /usr/include "$NCURSESW_INCLUDE_LINK"
+    else
+        sudo ln -s /usr/include /usr/include/ncursesw
+    fi
 
     info "Configuring project with CMake..."
-    cmake .
+    cmake -DCMAKE_INSTALL_PREFIX=/usr/local .
     
     info "Compiling libvterm..."
     make
