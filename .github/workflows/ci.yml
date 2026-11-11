@@ -95,6 +95,56 @@ jobs:
       - name: Build a2 and the plugins
         run: make -j"$(nproc)" ${{ matrix.make_args }} 2>&1 | tee build.log
 
+      - name: Headless CLI tests
+        env:
+          ASAN_OPTIONS: detect_leaks=0:exitcode=99
+        run: |
+          set -euo pipefail
+
+          tmp_dir=$(mktemp -d)
+          trap 'rm -rf "$tmp_dir"' EXIT
+          mkdir -p "$tmp_dir/home/.a2"
+
+          run_a2() {
+            HOME="$tmp_dir/home" ./a2 --headless "$@"
+          }
+
+          ./a2 --help | grep -Fq -- '--headless'
+          ./a2 --version | grep -Fq 'a2 text editor'
+
+          input_file="$tmp_dir/input.txt"
+          output_file="$tmp_dir/output.txt"
+          expected_file="$tmp_dir/expected.txt"
+          actual_file="$tmp_dir/actual.txt"
+
+          printf 'alpha\nbeta\n' > "$input_file"
+          run_a2 "$input_file" \
+            --eval 'replace 2 beta-updated' \
+            --eval 'append gamma' \
+            --eval 'd 1' \
+            --eval 'undo' \
+            --eval 'redo' \
+            --eval 'w' \
+            --dump > "$output_file"
+
+          printf 'beta-updated\ngamma\n' > "$expected_file"
+          tail -n 2 "$output_file" > "$actual_file"
+          diff -u "$expected_file" "$actual_file"
+          diff -u "$expected_file" "$input_file"
+          grep -Fq '[a2] input.txt written' "$output_file"
+
+          printf 'alpha\nbeta\n' > "$input_file"
+          run_a2 "$input_file" --eval 'p 1 1' > "$output_file"
+          grep -Fqx '    1 | alpha' "$output_file"
+
+          run_a2 "$input_file" --eval 'd 99' --dump > "$output_file"
+          grep -Fq 'Line 99 out of range' "$output_file"
+          printf 'alpha\nbeta\n' > "$expected_file"
+          diff -u "$expected_file" "$input_file"
+
+          run_a2 --eval 'q' > /dev/null
+          echo "Headless CLI tests passed."
+
       # The project still has warnings. Instead of failing on all of them, fail
       # when the count GROWS. When you fix some, lower the number in
       # .github/warnings-baseline.txt so the gain is locked in.
