@@ -2,6 +2,7 @@
 
 # --- Compiler Configuration ---
 CC = gcc
+VTERM_PREFIX ?= /usr/local
 
 DEBUG ?= 0
 
@@ -14,8 +15,8 @@ else
 endif
 
 # Base CFLAGS e LDFLAGS
-CFLAGS = $(DEBUG_CFLAGS) -Wall -Wextra -I. -I./a2_files $(shell pkg-config --cflags ncursesw 2>/dev/null)
-LDFLAGS = $(DEBUG_LDFLAGS) -lncursesw -ljansson -lpthread -ldl -lssl -lcrypto -lvterm -lm -Wl,-rpath=/usr/local/lib
+CFLAGS = $(DEBUG_CFLAGS) -Wall -Wextra -I. -I./a2_files -I$(VTERM_PREFIX)/include $(shell pkg-config --cflags ncursesw 2>/dev/null)
+LDFLAGS = $(DEBUG_LDFLAGS) -L$(VTERM_PREFIX)/lib -lncursesw -ljansson -lpthread -ldl -lssl -lcrypto -lvterm -lm -Wl,-rpath=$(VTERM_PREFIX)/lib
 
 # Enable ASan if ASAN=1 is passed: make ASAN=1
 ifeq ($(ASAN), 1)
