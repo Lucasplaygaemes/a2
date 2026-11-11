@@ -6,6 +6,7 @@ set -e
 
 # --- Variables ---
 VTERM_REPO_URL="https://github.com/TragicWarrior/libvterm.git"
+VTERM_REPO_REF="369cb5ea415c8c3eade43ed85c17b6ca1b9c7da4"
 
 # --- Helper Functions ---
 info() {
@@ -123,24 +124,25 @@ install_dependencies() {
 # --- Install libvterm from Source ---
 install_libvterm_from_source() {
     info "Checking for libvterm installation..."
-
     local has_header=false
     local has_lib=false
 
-    for h in /usr/include/vterm.h /usr/local/include/vterm.h /usr/include/*/vterm.h; do
-        if [ -f "$h" ]; then
+    for header in /usr/include/vterm.h /usr/local/include/vterm.h /usr/include/*/vterm.h; do
+        if [ -f "$header" ]; then
             has_header=true
             break
         fi
     done
 
-    if [ -f "/usr/local/lib/libvterm.so" ] || \
-       [ -f "/usr/local/lib64/libvterm.so" ] || \
-       [ -f "/usr/lib/libvterm.so" ] || \
-       [ -f "/usr/lib64/libvterm.so" ] || \
-       [ -f "/usr/lib/x86_64-linux-gnu/libvterm.so" ] || \
-       pkg-config --exists vterm 2>/dev/null || \
-       pkg-config --exists libvterm 2>/dev/null; then
+    for lib in /usr/local/lib/libvterm.so /usr/local/lib64/libvterm.so \
+               /usr/lib/libvterm.so /usr/lib64/libvterm.so \
+               /usr/lib/x86_64-linux-gnu/libvterm.so; do
+        if [ -f "$lib" ]; then
+            has_lib=true
+            break
+        fi
+    done
+    if [ "$has_lib" = false ] && { pkg-config --exists vterm 2>/dev/null || pkg-config --exists libvterm 2>/dev/null; }; then
         has_lib=true
     fi
 
@@ -151,14 +153,21 @@ install_libvterm_from_source() {
 
     info "Cloning and building libvterm from $VTERM_REPO_URL..."
     TMP_DIR=$(mktemp -d)
-    git clone --depth 1 "$VTERM_REPO_URL" "$TMP_DIR"
+    git -C "$TMP_DIR" init
+    git -C "$TMP_DIR" remote add origin "$VTERM_REPO_URL"
+    git -C "$TMP_DIR" fetch --depth 1 origin "$VTERM_REPO_REF"
+    git -C "$TMP_DIR" checkout --detach FETCH_HEAD
     cd "$TMP_DIR"
 
-    # Only create ncursesw compatibility symlink if directory doesn't already exist
-    if [ ! -d "/usr/include/ncursesw" ] && [ -d "/usr/include" ]; then
-        if [ -f "/usr/include/curses.h" ] || [ -f "/usr/include/ncurses.h" ]; then
-            sudo ln -sfn /usr/include /usr/include/ncursesw 2>/dev/null || true
-        fi
+    NCURSESW_INCLUDE_LINK="/usr/include/ncursesw/include"
+    if [ -L "$NCURSESW_INCLUDE_LINK" ] && [ "$(readlink -f "$NCURSESW_INCLUDE_LINK")" = "$(readlink -f /usr/include)" ]; then
+        info "ncursesw include link already points to /usr/include. Skipping."
+    elif [ -e "$NCURSESW_INCLUDE_LINK" ] || [ -L "$NCURSESW_INCLUDE_LINK" ]; then
+        error "$NCURSESW_INCLUDE_LINK already exists but does not point to /usr/include."
+    elif [ -d /usr/include/ncursesw ]; then
+        sudo ln -s /usr/include "$NCURSESW_INCLUDE_LINK"
+    elif [ -d /usr/include ] && { [ -f /usr/include/curses.h ] || [ -f /usr/include/ncurses.h ]; }; then
+        sudo ln -s /usr/include /usr/include/ncursesw
     fi
 
     info "Configuring project with CMake..."
