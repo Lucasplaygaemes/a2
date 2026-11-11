@@ -165,6 +165,7 @@ a2 features a dedicated interactive GDB frontend with split terminal integration
 ### Dynamic Plugins (`~/.a2/plugins/*.so`)
 
 Plugins are compiled C shared libraries loaded at startup or managed dynamically via `:settings` > *Plugins*.
+See the [plugin development guide](./plugins/README.md) for the API, lifecycle, build, and memory-check details.
 
 | Command | Description |
 |---|---|
