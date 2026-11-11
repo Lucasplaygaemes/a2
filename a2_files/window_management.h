@@ -21,6 +21,7 @@ void free_editor_window(EditorWindow* jw);
 void free_workspace(Workspace *ws);
 void initialize_workspaces();
 void recalculate_window_layout();
+void update_size_pty(EditorWindow *jw);
 void create_new_window(const char *filename);
 void redraw_all_windows();
 void position_active_cursor();
