@@ -12,6 +12,25 @@ executed on demand with `:! <command>`.
 Buffer bounds: The current buffer engine supports up to 32768 lines per file. Lines longer than
 4095 bytes are partitioned across lines. See the main help page for details.
 
+## Command-Line & Headless Mode
+- *a2 --help* / *a2 --version*: Shows command-line help or build information.
+- *a2 [file] [line]*: Opens a file, optionally starting at a line.
+- *a2 --safe [file]*: Starts without plugins or user configuration. `--safe-mode` is an alias.
+- *a2 --headless [file]*: Without `-c`/`--eval`, opens the file in the terminal REPL, without the ncurses interface.
+- *a2 -c <command>* / *a2 --eval <command>*: Runs a command in headless mode. Repeat the option to run commands in order; this does not start the REPL.
+- *a2 --dump [file]*: Prints the buffer to stdout and exits. It can be combined with `--eval`.
+
+Headless commands include:
+- *:p [start] [end]*: Prints buffer lines. With no range, prints up to the first 50 lines.
+- *:append <text>* / *:insert <text>*: Adds a line after the cursor / before the cursor.
+- *:replace <line> <text>* / *:d [line]*: Replaces / deletes a line. `:d` defaults to the cursor line.
+- *:clear*, *:undo* / *:u*, *:redo*: Clears the buffer, undoes, or redoes an edit.
+- *:s/find/repl/flags*: Substitutes text (`g` for global, `r` for regular expression).
+- *:w [filename]*: Saves the buffer.
+
+In the interactive headless REPL, *:help* shows this command list, *:dump* prints the full buffer,
+*:info* shows file and cursor information, and *:q* / *:q!* exits the REPL.
+
 ## File Operations
 - *:w [name]*: Writes (saves) the current file safely using atomic saving. Can optionally save to a new `name`.
 - *:q*: Quits the active window. Exits `a2` if it's the last window.
@@ -46,7 +65,7 @@ Buffer bounds: The current buffer engine supports up to 32768 lines per file. Li
 - *:gdb-watch [var]* / *:gdb-w*: Sets a watchpoint on `var` or variable under cursor.
 - *:gdb-backtrace* / *:gdb-bt*: Displays the execution stack backtrace.
 - *:gdb-reload*: Recompiles current source with `gcc -g` and reloads it in GDB.
-- *:gdb-eval <cmd>*: Sends raw command to active GDB session.
+- *:gdb-eval <cmd>* / *:gdb-exec <cmd>*: Sends a raw command to the active GDB session.
 
 ## Windows & Workspaces
 - *:term [cmd]*: Opens a command in a new terminal split (e.g., `:term ls -l`).
@@ -110,7 +129,7 @@ There is no Ghidra headless integration. The plugin flag that says "Ghidra" stil
 - *:guia* / *:guide*: Opens the interactive starter tutorial guide.
 - *:help*: Shows the main help screen.
 - *:ksc*: Shows the keyboard shortcuts screen.
-- *:task*: Opens the Custom Tasks menu to create and edit tasks.
+- *:task* / *:tasks*: Opens the Custom Tasks menu to create and edit tasks.
 - *:theme <name>*: Loads and applies a theme.
 - *:gcc [libs]*: Compiles the current C/C++ file.
 - *:diff [f1] [f2]*: Shows file differences. Runs interactively if args omitted. Can be triggered from explorer with 'D'.
@@ -122,7 +141,7 @@ There is no Ghidra headless integration. The plugin flag that says "Ghidra" stil
 - *:toggle_auto_indent*: Toggles auto-indent on new lines.
 - *:savemacros*: Saves current macros to `~/.a2/macros.a2`.
 - *:loadmacros*: Loads macros from the config folder.
-- *:listmacros*: Displays all loaded macros.
+- *:listmacros* / *:macros*: Displays all loaded macros.
 - *:marks*: Lists marks that are set, with line and column.
 - *:llvm*: Compiles the current file and shows LLVM IR (`Alt+l` does the same).
 - *:logs*: Opens the editor log.
