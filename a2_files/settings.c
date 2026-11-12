@@ -397,7 +397,8 @@ void load_global_config() {
         else if (sscanf(line, "auto_indent=%d", &val) == 1) global_config.auto_indent = val;
         else if (sscanf(line, "paste_mode=%d", &val) == 1) global_config.paste_mode = val;
         else if (sscanf(line, "lsp_enabled=%d", &val) == 1) global_config.lsp_enabled = val;
-        else if (sscanf(line, "tab_size=%d", &val) == 1) global_config.tab_size = val;
+        // Accept only tab sizes supported by the editor settings menu.
+        else if (sscanf(line, "tab_size=%d", &val) == 1 && val >= 2 && val <= 8 && val % 2 == 0) global_config.tab_size = val;
         else if (sscanf(line, "expand_tab=%d", &val) == 1) global_config.expand_tab = val;
         else if (sscanf(line, "status_bar_mode=%d", &val) == 1) global_config.status_bar_mode = val;
         else if (sscanf(line, "spell_checker_enabled=%d", &val) == 1) global_config.spell_checker_enabled = val;
@@ -415,7 +416,8 @@ void load_global_config() {
         else if (sscanf(line, "git_gutter_enabled=%d", &val) == 1) global_config.git_gutter_enabled = val;
         else if (sscanf(line, "auto_load_project=%d", &val) == 1) global_config.auto_load_project = val;
         else if (sscanf(line, "debug_enabled=%d", &val) == 1) global_config.debug_enabled = val;
-        else if (sscanf(line, "log_level_filter=%d", &val) == 1) global_config.log_level_filter = val;
+        // Keep persisted log levels within the level_strings table.
+        else if (sscanf(line, "log_level_filter=%d", &val) == 1 && val >= LOG_DEBUG && val <= LOG_FATAL) global_config.log_level_filter = val;
         else if (sscanf(line, "icon_mode=%d", &val) == 1) global_config.icon_mode = val;
         else if (sscanf(line, "image_preview_enabled=%d", &val) == 1) global_config.image_preview_enabled = val;
         else if (sscanf(line, "default_spell_lang=%127[^\n]", str_val) == 1) {
@@ -545,14 +547,15 @@ void draw_plugin_settings(EditorWindow *jw) {
         
         mvwprintw(jw->win, 3 + i, 4, " %-30s ", name);
         
+        // Clear the full ncurses color pair after each status label.
         if (is_enabled) {
             wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
             wprintw(jw->win, "[ ON ]");
-            wattroff(jw->win, PAIR_DIFF_ADD | A_BOLD);
+            wattroff(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
         } else {
             wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
             wprintw(jw->win, "[OFF]");
-            wattroff(jw->win, PAIR_ERROR | A_BOLD);
+            wattroff(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
         }
         if (i == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
@@ -579,6 +582,7 @@ void draw_plugin_detail(EditorWindow *jw) {
     }
     if (state->current_selection == 0) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
     mvwprintw(jw->win, 3, 4, " %-30s ", "Enable Plugin");
+    // Clear the full ncurses color pair after each status label.
     if (is_enabled) {
         wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
         wprintw(jw->win, "[ ON ]");
@@ -603,6 +607,7 @@ void draw_plugin_detail(EditorWindow *jw) {
         int row_idx = i + 1;
         if (row_idx == state->current_selection) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
         mvwprintw(jw->win, 5 + i, 4, " %-30s ", sname);
+        // Clear the full ncurses color pair after each status label.
         if (sval) {
             wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
             wprintw(jw->win, "[ ON ]");
@@ -634,14 +639,15 @@ void draw_editor_settings(EditorWindow *jw) {
         
         mvwprintw(jw->win, 3 + i, 4, " %-20s ", editor_bool_settings[i].name);
         
+        // Clear the full ncurses color pair after each status label.
         if (val) {
             wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
             wprintw(jw->win, "[ ON ]");
-            wattroff(jw->win, PAIR_DIFF_ADD | A_BOLD);
+            wattroff(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
         } else {
             wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
             wprintw(jw->win, "[OFF]");
-            wattroff(jw->win, PAIR_ERROR | A_BOLD);
+            wattroff(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
         }
         if (i == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
@@ -744,14 +750,15 @@ void draw_spell_settings(EditorWindow *jw) {
     
     if (state->current_selection == 0) wattron(jw->win, COLOR_PAIR(PAIR_SELECTION));
     mvwprintw(jw->win, 2, 4, " Spell Checker : ");
+    // Clear the full ncurses color pair after each status label.
     if (global_config.spell_checker_enabled) {
         wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
         wprintw(jw->win, "[ ENABLED ]");
-        wattroff(jw->win, PAIR_DIFF_ADD | A_BOLD);
+        wattroff(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
     } else {
         wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
         wprintw(jw->win, "[ DISABLED ]");
-        wattroff(jw->win, PAIR_ERROR | A_BOLD);
+        wattroff(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
     }
     if (state->current_selection == 0) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     mvwprintw(jw->win, 4, 4, "Default Language:");
@@ -764,16 +771,18 @@ void draw_spell_settings(EditorWindow *jw) {
         
         mvwprintw(jw->win, 6 + i, 6, " %-20s ", spell_languages[i].display_name);
         
+        // Clear the full ncurses color pair after the language marker.
         if (is_default) {
             wattron(jw->win, COLOR_PAIR(PAIR_KEYWORD) | A_BOLD);
             wprintw(jw->win, " [DEFAULT] ");
-            wattroff(jw->win, PAIR_KEYWORD | A_BOLD);
+            wattroff(jw->win, COLOR_PAIR(PAIR_KEYWORD) | A_BOLD);
         }
         
+        // Clear the full ncurses color pair after the local marker.
         if (is_downloaded) {
             wattron(jw->win, COLOR_PAIR(PAIR_COMMENT));
             wprintw(jw->win, " (Local) ");
-            wattroff(jw->win, PAIR_COMMENT);
+            wattroff(jw->win, COLOR_PAIR(PAIR_COMMENT));
         }
         if (display_idx == state->current_selection) wattroff(jw->win, COLOR_PAIR(PAIR_SELECTION));
     }
@@ -811,14 +820,15 @@ void draw_lsp_settings(EditorWindow *jw) {
             mvwprintw(jw->win, 4 + i, 4, "  !!! %s !!! ", lsp_opts[i]);
         } else {
             mvwprintw(jw->win, 4 + i, 4, "  %-20s : ", lsp_opts[i]);
+            // Clear the full ncurses color pair after each status label.
             if (status) {
                 wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
                 wprintw(jw->win, " YES ");
-                wattroff(jw->win, PAIR_DIFF_ADD | A_BOLD);
+                wattroff(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
             } else {
                 wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
                 wprintw(jw->win, " NO ");
-                wattroff(jw->win, PAIR_ERROR | A_BOLD);
+                wattroff(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
             }
         }
          
@@ -844,14 +854,15 @@ void draw_debug_settings(EditorWindow *jw) {
         
         if (i == 0) {
             mvwprintw(jw->win, 4 + i, 4, "  %-20s : ", debug_opts[i]);
+            // Clear the full ncurses color pair after each status label.
             if (global_config.debug_enabled) {
                 wattron(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
                 wprintw(jw->win, " ENABLED ");
-                wattroff(jw->win, PAIR_DIFF_ADD | A_BOLD);
+                wattroff(jw->win, COLOR_PAIR(PAIR_DIFF_ADD) | A_BOLD);
             } else {
                 wattron(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
                 wprintw(jw->win, " DISABLED ");
-                wattroff(jw->win, PAIR_ERROR | A_BOLD);
+                wattroff(jw->win, COLOR_PAIR(PAIR_ERROR) | A_BOLD);
             }
         } else if (i == 1) {
             mvwprintw(jw->win, 4 + i, 4, "  %-20s : %s ", debug_opts[i], level_strings[global_config.log_level_filter]);
