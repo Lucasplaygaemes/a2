@@ -566,38 +566,6 @@ void recalculate_window_layout() {
         }
     }
 }        
-/*        
-        if (jw->win) {
-            delwin(jw->win);
-        }
-        jw->win = newwin(jw->height, jw->width, jw->y, jw->x);
-        keypad(jw->win, TRUE);
-        scrollok(jw->win, FALSE);
-
-        if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
-            jw->state->buffer.is_dirty = true;
-            mark_all_lines_dirty(jw->state);
-        } else if (jw->type == WINDOW_TYPE_EXPLORER && jw->explorer_state) {
-            jw->explorer_state->is_dirty = true;
-        } else if (jw->type == WINDOW_TYPE_HELP && jw->help_state) {
-            jw->help_state->is_dirty = true;
-        } else if (jw->type == WINDOW_TYPE_SETTINGS_PANEL && jw->settings_state) {
-            jw->settings_state->is_dirty = true;
-        }
-        
-        // If it's a terminal, we need to resize it and update its window pointer
-        if (jw->type == WINDOW_TYPE_TERMINAL && jw->term.vterm) {
-            int border_offset = ws->num_windows > 1 ? 1 : 0;
-            int content_h = jw->height - (2 * border_offset);
-            int content_w = jw->width - (2 * border_offset);
-            
-            vterm_wnd_set(jw->term.vterm, jw->win); // Associate new window with vterm
-            vterm_resize(jw->term.vterm, content_h > 0 ? content_h : 1, content_w > 0 ? content_w : 1);
-            update_size_pty(jw); // This function remains important
-        }
-    }
-}
-*/
 
 void free_workspace(Workspace *ws) {
     if (!ws) return;
