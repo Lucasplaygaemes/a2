@@ -22,6 +22,7 @@ It brings together modal editing, LSP capabilities, and terminal integration in 
 - Integrated terminal (`:term`) via libvterm, plus a floating terminal (`Alt+F12`).
 - Git gutter and safe external command execution (`process_exec`).
 - Macros (`q`, `@`), local history (`:history`), and project sessions (`:save-project`).
+- Headless mode for command-line editing and scripting (`--headless`, `--eval`, `--dump`).
 
 ## Architecture & Key Notes
 
