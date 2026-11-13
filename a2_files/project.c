@@ -1,6 +1,6 @@
 #include "project.h"
 #include "defs.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "command_execution.h"
 #include "fileio.h"
 #include "screen_ui.h"
@@ -19,18 +19,20 @@ void project_save_session(const char *project_name) {
     if (project_name == NULL || project_name[0] == '\0') {
         strcpy(final_project_name, "session");
     } else {
-        strncpy(final_project_name, project_name, sizeof(final_project_name) - 1);
+        a2_strlcpy(final_project_name, project_name, sizeof(final_project_name));
     }
 
     char project_path[PATH_MAX];
     if (getcwd(project_path, sizeof(project_path)) == NULL) return;
 
     char a2_dir_path[PATH_MAX];
-    snprintf(a2_dir_path, sizeof(a2_dir_path), "%s/.a2", project_path);
+    a2_path_join(a2_dir_path, sizeof(a2_dir_path), project_path, ".a2");
     mkdir(a2_dir_path, 0755);
 
+    char session_file_name[300];
+    snprintf(session_file_name, sizeof(session_file_name), "%.250s.json", final_project_name);
     char session_file_path[PATH_MAX];
-    snprintf(session_file_path, sizeof(session_file_path), "%s/%s.json", a2_dir_path, final_project_name);
+    a2_path_join(session_file_path, sizeof(session_file_path), a2_dir_path, session_file_name);
 
     json_t *root = json_object();
     json_object_set_new(root, "version", json_integer(1));

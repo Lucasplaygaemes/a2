@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #if __has_include(<hunspell/hunspell.h>)
 #include <hunspell/hunspell.h>
@@ -66,20 +67,27 @@ static void *dictionary_fetch_thread(void *arg) {
     snprintf(cache_dir, sizeof(cache_dir), "%s/.a2/dict_cache", home ? home : ".");
     mkdir(cache_dir, 0755);
 
-    char cache_path[512];
-    snprintf(cache_path, sizeof(cache_path), "%s/en_%s.json", cache_dir, data->word);
+    char cache_path[1024];
+    snprintf(cache_path, sizeof(cache_path), "%.400s/en_%.100s.json", cache_dir, data->word);
 
     FILE *f = fopen(cache_path, "r");
     char *json_text = NULL;
 
     if (f) {
-        fseek(f, 0, SEEK_END);
-        long fsize = ftell(f);
-        fseek(f, 0, SEEK_SET);
-        json_text = malloc(fsize + 1);
-        if (json_text) {
-            fread(json_text, 1, fsize, f);
-            json_text[fsize] = 0;
+        if (fseek(f, 0, SEEK_END) == 0) {
+            long fsize = ftell(f);
+            if (fsize >= 0 && (uintmax_t)fsize < SIZE_MAX && fseek(f, 0, SEEK_SET) == 0) {
+                json_text = malloc((size_t)fsize + 1);
+                if (json_text) {
+                    size_t bytes_read = fread(json_text, 1, (size_t)fsize, f);
+                    if (bytes_read == (size_t)fsize) {
+                        json_text[bytes_read] = '\0';
+                    } else {
+                        free(json_text);
+                        json_text = NULL;
+                    }
+                }
+            }
         }
         fclose(f);
     } else {
@@ -191,7 +199,7 @@ static void cmd_dict(EditorState *state, const char *args) {
     g_api->set_status_msg(state, "Looking up '%s' in Wiktionary...", word);
 
     DictFetchData *tdata = malloc(sizeof(DictFetchData));
-    strncpy(tdata->word, word, sizeof(tdata->word) - 1);
+    snprintf(tdata->word, sizeof(tdata->word), "%s", word);
     tdata->state = state;
 
     pthread_t thread;
@@ -246,7 +254,7 @@ static void cmd_spell(EditorState *state, const char *args) {
 
     g_hunspell_handle = Hunspell_create(aff_path, dic_path);
     if (g_hunspell_handle) {
-        strncpy(g_current_spell_lang, lang, sizeof(g_current_spell_lang) - 1);
+        snprintf(g_current_spell_lang, sizeof(g_current_spell_lang), "%s", lang);
         g_api->set_status_msg(state, "Spell Checker: Loaded dictionary '%s'", lang);
     } else {
         g_api->set_status_msg(state, "Spell Checker: Failed to initialize Hunspell for '%s'", lang);

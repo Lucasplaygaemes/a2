@@ -32,8 +32,7 @@ static void get_log_file_path(char* buffer, size_t buffer_size) {
                 buffer[0] = '\0';
                 return;
             }
-            int len = snprintf(buffer, buffer_size, "%s/%s", tmp_dir, LOG_FILE);
-            if (len < 0 || (size_t)len >= buffer_size) buffer[0] = '\0';
+            a2_path_join(buffer, buffer_size, tmp_dir, LOG_FILE);
             return;
         }
         snprintf(data_dir_path, sizeof(data_dir_path), "%s/.local/share/a2", home_dir);
@@ -42,7 +41,7 @@ static void get_log_file_path(char* buffer, size_t buffer_size) {
     // Create the data directory if it doesn't exist
     mkdir(data_dir_path, 0755);
 
-    snprintf(buffer, buffer_size, "%s/%s", data_dir_path, LOG_FILE);
+    a2_path_join(buffer, buffer_size, data_dir_path, LOG_FILE);
 }
 
 // Helper function to format total seconds into HH:MM:SS

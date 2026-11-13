@@ -1,7 +1,9 @@
 #ifndef DEFS_H
 #define DEFS_H
 
+#ifndef _XOPEN_SOURCE
 #define _XOPEN_SOURCE 700 // Activate the POSIX functionalitys, including the wcwidth
+#endif
 #include <locale.h>       // Essential for the funcionality of the large characteres
 #include <stddef.h>       // Define types like wchar_t
 #include <wchar.h>        // Define functions like wcwidth
@@ -37,6 +39,35 @@ typedef struct {
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
+static inline void a2_strlcpy(char *dst, const char *src, size_t size) {
+    if (!dst || size == 0) return;
+    if (!src) { dst[0] = '\0'; return; }
+    size_t len = strlen(src);
+    if (len >= size) len = size - 1;
+    memcpy(dst, src, len);
+    dst[len] = '\0';
+}
+
+static inline void a2_path_join(char *dst, size_t size, const char *p1, const char *p2) {
+    if (!dst || size == 0) return;
+    dst[0] = '\0';
+    size_t l1 = p1 ? strlen(p1) : 0;
+    size_t l2 = p2 ? strlen(p2) : 0;
+    if (l1 >= size) l1 = size - 1;
+    if (p1 && l1 > 0) memcpy(dst, p1, l1);
+    dst[l1] = '\0';
+    if (l1 > 0 && dst[l1 - 1] != '/' && l1 + 1 < size) {
+        dst[l1++] = '/';
+        dst[l1] = '\0';
+    }
+    size_t rem = size - 1 - l1;
+    if (l2 > rem) l2 = rem;
+    if (p2 && l2 > 0) {
+        memcpy(dst + l1, p2, l2);
+        dst[l1 + l2] = '\0';
+    }
+}
+
 #define KEY_CTRL_P 16
 #define KEY_CTRL_DEL 520
 #define KEY_CTRL_K 11
@@ -67,6 +98,7 @@ typedef struct {
 
 struct EditorState;
 extern bool g_safe_mode;
+extern bool g_headless_mode;
 
 #ifndef LSPMESSAGE_DEFINED
 #define LSPMESSAGE_DEFINED
@@ -409,6 +441,9 @@ typedef struct {
     time_t last_auto_save_time;
     SyntaxRule *syntax_rules;
     int num_syntax_rules;
+    char comment_line[8];         // line comment token, e.g. "//" "#" ";"
+    char comment_block_start[8];  // block comment open, e.g. "/*" or ""
+    char comment_block_end[8];    // block comment close, e.g. "*/" or ""
     BracketInfo *unmatched_brackets;
     int num_unmatched_brackets;
     AssemblyMapping *mapping;
@@ -554,15 +589,6 @@ typedef struct EditorState {
     EditorLsp lsp;
     EditorSpell spell;
     EditorImageHover image_hover;
-    
-    struct {
-        bool is_visible;
-        bool is_loading;
-        char current_word[100];
-        char content_text[4096];
-        int popup_y;
-        int popup_x;
-    } dictionary;
     
     DirectoryInfo **recent_dirs;
     int num_recent_dirs;

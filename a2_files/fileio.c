@@ -6,13 +6,14 @@
 #include "command_execution.h" // For run_and_display_command
 #include "direct_navigation.h"
 #include "git_utils.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "cache.h"
 #include "settings.h"
 #include "base64.h"
 #include "logger.h"
 #include "local_history.h"
 #include "plugin_engine.h"
+#include "process_exec.h"
 
 
 #include <limits.h> // For PATH_MAX
@@ -67,18 +68,11 @@ bool perform_smart_merge(EditorState *state) {
     f = fopen(tmp_base, "w"); 
     if (f) { fputs(state->buffer.shadow_copy ? state->buffer.shadow_copy : "", f); fclose(f); }
 
-    char cmd[PATH_MAX * 3 + 100];
-    snprintf(cmd, sizeof(cmd), "git merge-file -p \"%s\" \"%s\" \"%s\" > \"%s\"", tmp_current, tmp_base, state->buffer.filename, tmp_disk);
-    
-    int exit_status = system(cmd);
-
-    if (WIFEXITED(exit_status)) {
-        int code = WEXITSTATUS(exit_status);
-        if (code >= 0) {
+    int code = run_cmd_to_file(tmp_disk, "git", "merge-file", "-p", tmp_current, tmp_base, state->buffer.filename, NULL);
+    if (code >= 0) {
             // Save original filename to restore it after loading merged content
-            char original_filename[PATH_MAX];
-            strncpy(original_filename, state->buffer.filename, PATH_MAX - 1);
-            original_filename[PATH_MAX - 1] = '\0';
+            char original_filename[256];
+            snprintf(original_filename, sizeof(original_filename), "%s", state->buffer.filename);
 
             if (code > 0) {
                 ui_show_message("CONFLICT DETECTED", "Entering War Room mode!\nLeft: BASE | Center: RESULT | Right: DISK\nUse '[' and ']' to navigate, 'm' (mine) or 't' (theirs) to resolve.");
@@ -89,7 +83,7 @@ bool perform_smart_merge(EditorState *state) {
                 // 1. Result (Center) - Load merged content into the ACTIVE buffer
                 load_file_core(state, tmp_disk);
                 // Restore the original filename so we don't save to the temp file!
-                strncpy(state->buffer.filename, original_filename, sizeof(state->buffer.filename) - 1);
+                snprintf(state->buffer.filename, sizeof(state->buffer.filename), "%s", original_filename);
                 
                 // 2. Mine/Base (Left) - Create a TEMPORARY window for context
                 create_new_window(NULL); 
@@ -110,7 +104,7 @@ bool perform_smart_merge(EditorState *state) {
                 ui_show_message("MERGE SUCCESSFUL", "Your changes and external changes were merged successfully.");
                 load_file_core(state, tmp_disk);
                 // Restore the original filename so we don't save to the temp file!
-                strncpy(state->buffer.filename, original_filename, sizeof(state->buffer.filename) - 1);
+                snprintf(state->buffer.filename, sizeof(state->buffer.filename), "%s", original_filename);
             }            
             state->buffer.modified = true;
             // IMPORTANT: Update shadow_copy to the new common ancestor (what was just on disk)
@@ -118,7 +112,6 @@ bool perform_smart_merge(EditorState *state) {
             if(state->buffer.shadow_copy) free(state->buffer.shadow_copy);
             state->buffer.shadow_copy = editor_buffer_to_string(state);
         }
-    }
 
     remove(tmp_current); remove(tmp_base); remove(tmp_disk);
     free(tmp_current); free(tmp_base); free(tmp_disk);
@@ -130,25 +123,33 @@ bool perform_smart_merge(EditorState *state) {
 bool file_content_matches_shadow_copy(const char *filename, const char *shadow_copy) {
     if (!shadow_copy) return false;
     FILE *f = fopen(filename, "r");
-    if (!f) return true; // If file doesn't exist, it can't differ from a baseline (shouldn't happen here)
+    // Treat unreadable or missing files as mismatches so smart save cannot skip its warning.
+    if (!f) return false;
     
-    fseek(f, 0, SEEK_END);
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return false;
+    }
     long size = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    if (size < 0 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return false;
+    }
     
     if (size != (long)strlen(shadow_copy)) {
         fclose(f);
         return false;
     }
     
-    char *buf = malloc(size + 1);
-    if (!buf) { fclose(f); return true; } // Safety fallback
+    char *buf = malloc((size_t)size + 1);
+    if (!buf) { fclose(f); return false; }
     
     size_t read_bytes = fread(buf, 1, size, f);
     buf[read_bytes] = '\0';
+    bool read_ok = read_bytes == (size_t)size && !ferror(f);
     fclose(f);
     
-    bool matches = (strcmp(buf, shadow_copy) == 0);
+    bool matches = read_ok && strcmp(buf, shadow_copy) == 0;
     free(buf);
     return matches;
 }
@@ -163,6 +164,12 @@ bool editor_has_conflicts(EditorState *state) {
 
 // Navigates to the next or previous conflict marker
 void editor_jump_to_conflict(EditorState *state, bool next) {
+    // Avoid modulo by zero when a resolution removes every buffer line.
+    if (state->buffer.num_lines <= 0) {
+        state->cursor.line = 0;
+        editor_set_status_msg(state, "No more conflicts found.");
+        return;
+    }
     int start = state->cursor.line + (next ? 1 : -1);
     for (int i = 0; i < state->buffer.num_lines; i++) {
         int idx = (start + (next ? i : -i) + state->buffer.num_lines) % state->buffer.num_lines;
@@ -209,6 +216,15 @@ void editor_resolve_conflict_interactive(EditorState *state, char choice) {
         editor_delete_specific_line(state, end - (mid - start + 1));
     }
 
+    // Keep the editor's one-line minimum after removing a complete conflict block.
+    if (state->buffer.num_lines == 0) {
+        state->buffer.lines[0] = calloc(1, 1);
+        if (!state->buffer.lines[0]) {
+            editor_set_status_msg(state, "Could not preserve an empty buffer after conflict resolution.");
+            return;
+        }
+        state->buffer.num_lines = 1;
+    }
     state->buffer.modified = true;
     mark_all_lines_dirty(state);
     
@@ -284,18 +300,37 @@ void asm_convert_file(EditorState *state, const char *filename) {
         return;
     }
     char output_filename[PATH_MAX];
-    strncpy(output_filename, filename, sizeof(output_filename) -1);
-    output_filename[sizeof(output_filename) -1] = '\0';
+    // Reject paths that cannot fit before deriving the assembly output name.
+    if (strlen(filename) >= sizeof(output_filename)) {
+        editor_set_status_msg(state, "Output path is too long for assembly conversion.");
+        return;
+    }
+    a2_strlcpy(output_filename, filename, sizeof(output_filename));
     
     char *dot = strrchr(output_filename, '.');
     if (dot && dot != output_filename) {
         *dot = '\0';
     }
-    strcat(output_filename, ".s");
+    size_t output_len = strlen(output_filename);
+    if (output_len + sizeof(".s") > sizeof(output_filename)) {
+        editor_set_status_msg(state, "Output path is too long for assembly conversion.");
+        return;
+    }
+    memcpy(output_filename + output_len, ".s", sizeof(".s"));
     
-    char *const cmd[] = {"gcc", "-S", (char*)filename, "-o", "-O0", output_filename, NULL};
+    // Pass optimization before the input and bind -o to the generated file.
+    char *const cmd[] = {"gcc", "-S", "-O0", (char*)filename, "-o", output_filename, NULL};
     create_generic_terminal_window(cmd);
     
+}
+
+static void expand_home_path(const char *filename, char *expanded, size_t size) {
+    const char *home = getenv("HOME");
+    if (filename[0] == '~' && (filename[1] == '/' || filename[1] == '\0') && home) {
+        snprintf(expanded, size, "%s%s", home, filename + 1);
+    } else {
+        a2_strlcpy(expanded, filename, size);
+    }
 }
 
 void load_file_core(EditorState *state, const char *filename) {
@@ -315,30 +350,17 @@ void load_file_core(EditorState *state, const char *filename) {
     state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
 
     char expanded_filename[PATH_MAX];
-    if (filename[0] == '~') {
-        const char *home = getenv("HOME");
-        if (home) {
-            snprintf(expanded_filename, PATH_MAX, "%s%s", home, filename + 1);
-        } else {
-            strncpy(expanded_filename, filename, PATH_MAX - 1);
-            expanded_filename[PATH_MAX - 1] = '\0';
-        }
-    } else {
-        strncpy(expanded_filename, filename, PATH_MAX - 1);
-        expanded_filename[PATH_MAX - 1] = '\0';
-    }
+    expand_home_path(filename, expanded_filename, sizeof(expanded_filename));
 
     char absolute_path[PATH_MAX];
     if (realpath(expanded_filename, absolute_path) == NULL) {
         // If realpath fails, use the expanded filename
-        strncpy(absolute_path, expanded_filename, PATH_MAX - 1);
-        absolute_path[PATH_MAX - 1] = '\0';
+        a2_strlcpy(absolute_path, expanded_filename, sizeof(absolute_path));
     }
 
     for (int i = 0; i < state->buffer.num_lines; i++) { if(state->buffer.lines[i]) free(state->buffer.lines[i]); state->buffer.lines[i] = NULL; }
     state->buffer.num_lines = 0;
-    strncpy(state->buffer.filename, absolute_path, sizeof(state->buffer.filename) - 1);
-    state->buffer.filename[sizeof(state->buffer.filename) - 1] = '\0';
+    a2_strlcpy(state->buffer.filename, absolute_path, sizeof(state->buffer.filename));
     
     state->buffer.is_image = false;
     char *ext = strrchr(absolute_path, '.');
@@ -346,14 +368,27 @@ void load_file_core(EditorState *state, const char *filename) {
         state->buffer.is_image = true;
         state->buffer.image_transmitted = false;
         state->buffer.kitty_image_id = (uint32_t)(rand() % 1000000 + 1);
+        // Reset text-only metadata when switching a modified buffer to an image.
+        state->buffer.modified = false;
+        state->buffer.last_mod_time = get_file_mod_time(absolute_path);
+        free(state->buffer.shadow_copy);
+        state->buffer.shadow_copy = NULL;
+        state->buffer.image_is_visible = false;
+        state->buffer.is_dirty = true;
         state->buffer.lines[0] = strdup(" "); // Dummy line
+        if (!state->buffer.lines[0]) {
+            state->buffer.is_image = false;
+            state->buffer.num_lines = 0;
+            return;
+        }
         state->buffer.num_lines = 1;
         editor_set_status_msg(state, "Image loaded: %s", absolute_path);
         
         return;
     }
 
-    FILE *file = fopen(filename, "r");
+    // Open the expanded path so filenames beginning with '~' resolve correctly.
+    FILE *file = fopen(absolute_path, "r");
     if (file) {
         char line[MAX_LINE_LEN];
         while (fgets(line, sizeof(line), file) && state->buffer.num_lines < MAX_LINES) {
@@ -379,7 +414,7 @@ void load_file_core(EditorState *state, const char *filename) {
         state->buffer.lines[0] = calloc(1, 1);
         state->buffer.num_lines = 1;
     }
-    state->cursor.line = load_last_line(filename);
+    state->cursor.line = load_last_line(absolute_path);
     if (state->cursor.line >= state->buffer.num_lines) {
         state->cursor.line = state->buffer.num_lines > 0 ? state->buffer.num_lines - 1 : 0;
     }
@@ -401,10 +436,15 @@ void load_file_core(EditorState *state, const char *filename) {
 }
 
 void load_file(EditorState *state, const char *filename) {
+    char expanded_filename[PATH_MAX];
+    // Expand home paths before checking for recovery files and recording history.
+    expand_home_path(filename, expanded_filename, sizeof(expanded_filename));
+    filename = expanded_filename;
+
     editor_update_git_branch(state);
     // Save the previous filename before loading a new one
     if (strcmp(state->buffer.filename, filename) != 0) {
-        strncpy(state->buffer.previous_filename, state->buffer.filename, sizeof(state->buffer.previous_filename) - 1);
+        snprintf(state->buffer.previous_filename, sizeof(state->buffer.previous_filename), "%s", state->buffer.filename);
     }
     add_to_file_history(state, filename);
 
@@ -426,7 +466,8 @@ void load_file(EditorState *state, const char *filename) {
     }
 
 	if (strstr(filename, AUTO_SAVE_EXTENSION) == NULL) {
-		char sv_filename[256];
+		// Leave room for the recovery suffix on a full-length path.
+		char sv_filename[PATH_MAX + 10];
 		snprintf(sv_filename, sizeof(sv_filename), "%s%s", filename, AUTO_SAVE_EXTENSION);
 		struct stat st;
 		if (stat(sv_filename, &st) == 0) {
@@ -477,7 +518,11 @@ void save_file(EditorState *state) {
     if (global_config.smart_save_enabled && state->buffer.shadow_copy != NULL) {
         // DO NOT check for discrepancies in temporary pseudo-windows
         if (strncmp(state->buffer.filename, "[", 1) != 0) {
-            if (!file_content_matches_shadow_copy(state->buffer.filename, state->buffer.shadow_copy)) {
+            bool is_new_target = state->buffer.last_mod_time == 0 &&
+                                 access(state->buffer.filename, F_OK) != 0 && errno == ENOENT;
+            // A still-missing new file is not an external modification.
+            if (!file_content_matches_shadow_copy(state->buffer.filename, state->buffer.shadow_copy) &&
+                !is_new_target) {
             
             // Build conflict resolution UI
             WINDOW *win = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->win;
@@ -542,14 +587,33 @@ void save_file(EditorState *state) {
     snprintf(temp_filename, sizeof(temp_filename), "%s.tmp", state->buffer.filename);
     FILE *file = fopen(temp_filename, "w");
     if (file) {
+        struct stat original_stat;
+        bool have_original_mode = stat(state->buffer.filename, &original_stat) == 0;
+
+        errno = 0;
+        bool write_ok = true;
         for (int i = 0; i < state->buffer.num_lines; i++) {
-            if (state->buffer.lines[i]) fprintf(file, "%s\n", state->buffer.lines[i]);
+            if (state->buffer.lines[i] && fprintf(file, "%s\n", state->buffer.lines[i]) < 0) {
+                write_ok = false;
+                break;
+            }
+        }
+
+        // Preserve the original mode after writing, which can clear set-ID bits.
+        if (write_ok && have_original_mode &&
+            fchmod(fileno(file), original_stat.st_mode & 07777) != 0) {
+            write_ok = false;
         }
         
-        // Ensure all data is written to disk before renaming
-        fflush(file);
-        fsync(fileno(file));
-        fclose(file); 
+        // Do not replace the original unless every write and sync succeeds.
+        if (fflush(file) != 0 || fsync(fileno(file)) != 0) write_ok = false;
+        if (fclose(file) != 0) write_ok = false;
+        if (!write_ok) {
+            int saved_errno = errno ? errno : EIO;
+            remove(temp_filename);
+            editor_set_status_msg(state, "Error writing file: %s", strerror(saved_errno));
+            return;
+        }
         
         // Atomically replace the original file
         if (rename(temp_filename, state->buffer.filename) != 0) {
@@ -605,12 +669,12 @@ void save_file(EditorState *state) {
                snprintf(command, sizeof(command), "cat \"%s\" | sudo tee \"%s\" > /dev/null", temp_sudo_filename, state->buffer.filename);
                
                def_prog_mode(); endwin();
-               int ret = system(command);
+               int ret = run_shell_command(command);
                reset_prog_mode(); refresh(); redraw_all_windows();
                
                remove(temp_sudo_filename); free(temp_sudo_filename);
                
-               if (WIFEXITED(ret) && WEXITSTATUS(ret) == 0) {
+               if (ret == 0) {
                    state->buffer.modified = false;
                    state->buffer.last_mod_time = get_file_mod_time(state->buffer.filename);
                    
@@ -646,12 +710,22 @@ void auto_save(EditorState *state) {
 
     FILE *file = fopen(auto_save_filename, "w");
     if (file) {
+        // Report autosave write failures instead of silently keeping a partial recovery file.
+        errno = 0;
+        bool write_ok = true;
         for (int i = 0; i < state->buffer.num_lines; i++) {
             if (state->buffer.lines[i]) {
-                fprintf(file, "%s\n", state->buffer.lines[i]);
+                if (fprintf(file, "%s\n", state->buffer.lines[i]) < 0) {
+                    write_ok = false;
+                    break;
+                }
             }
         }
-        fclose(file);
+        if (fflush(file) != 0) write_ok = false;
+        if (fclose(file) != 0) write_ok = false;
+        if (!write_ok) {
+            A2_LOG(LOG_ERROR, TAG_FS, "Auto-save write failed for %s: %s", auto_save_filename, strerror(errno ? errno : EIO));
+        }
     } else {
         A2_LOG(LOG_ERROR, TAG_FS, "Auto-save failed to open %s: %s", auto_save_filename, strerror(errno));
     }
@@ -725,6 +799,9 @@ void load_syntax_file(EditorState *state, const char *filename) {
         state->buffer.syntax_rules = NULL;
         state->buffer.num_syntax_rules = 0;
     }
+    memset(state->buffer.comment_line, 0, sizeof(state->buffer.comment_line));
+    memset(state->buffer.comment_block_start, 0, sizeof(state->buffer.comment_block_start));
+    memset(state->buffer.comment_block_end, 0, sizeof(state->buffer.comment_block_end));
 
     if (!filename) {
         return; // No syntax file to load, just clear old rules.
@@ -733,23 +810,35 @@ void load_syntax_file(EditorState *state, const char *filename) {
     char path[PATH_MAX];
     FILE *file = NULL;
 
-    // 1. Try system-wide install path first (/usr/local/share/a2/syntaxes/<file>)
-    snprintf(path, sizeof(path), "/usr/local/share/a2/syntaxes/%s", filename);
-    file = fopen(path, "r");
-
-    // 2. If not found, try path relative to executable (for development)
-    if (!file && executable_dir[0] != '\0') {
-        snprintf(path, sizeof(path), "%s/syntaxes/%s", executable_dir, filename);
-        file = fopen(path, "r");
+    // 1. Try path relative to executable (for development/portable builds)
+    if (executable_dir[0] != '\0') {
+        int sn = snprintf(path, sizeof(path), "%s/syntaxes/%s", executable_dir, filename);
+        if (sn > 0 && sn < (int)sizeof(path))
+            file = fopen(path, "r");
     }
 
-    // 3. If still not found, try relative to current working directory
+    // 2. If not found, try relative to current working directory
     if (!file) {
         snprintf(path, sizeof(path), "syntaxes/%s", filename);
         file = fopen(path, "r");
     }
+
+    // 3. Try user local folder (~/.a2/syntaxes/<file>)
+    if (!file) {
+        const char *home = getenv("HOME");
+        if (home) {
+            snprintf(path, sizeof(path), "%s/.a2/syntaxes/%s", home, filename);
+            file = fopen(path, "r");
+        }
+    }
+
+    // 4. Try system-wide install path (/usr/local/share/a2/syntaxes/<file>)
+    if (!file) {
+        snprintf(path, sizeof(path), "/usr/local/share/a2/syntaxes/%s", filename);
+        file = fopen(path, "r");
+    }
     
-    // 4. Final fallback to just the filename in the CWD
+    // 5. Final fallback to just the filename in the CWD
     if (!file) {
         file = fopen(filename, "r");
     }
@@ -774,6 +863,17 @@ void load_syntax_file(EditorState *state, const char *filename) {
         char *word_str = trim_whitespace(colon + 1);
 
         if (strlen(type_str) == 0 || strlen(word_str) == 0) continue;
+
+        if (strcmp(type_str, "COMMENT_LINE") == 0) {
+            strncpy(state->buffer.comment_line, word_str, sizeof(state->buffer.comment_line) - 1);
+            continue;
+        } else if (strcmp(type_str, "COMMENT_BLOCK_START") == 0) {
+            strncpy(state->buffer.comment_block_start, word_str, sizeof(state->buffer.comment_block_start) - 1);
+            continue;
+        } else if (strcmp(type_str, "COMMENT_BLOCK_END") == 0) {
+            strncpy(state->buffer.comment_block_end, word_str, sizeof(state->buffer.comment_block_end) - 1);
+            continue;
+        }
 
         state->buffer.num_syntax_rules++;
         state->buffer.syntax_rules = realloc(state->buffer.syntax_rules, sizeof(SyntaxRule) * state->buffer.num_syntax_rules);
@@ -800,20 +900,19 @@ void get_pos_path(const char *filename, char *out_path, size_t size) {
     ensure_a2_config_dir(config_dir, sizeof(config_dir));
     
     char pos_dir[PATH_MAX];
-    snprintf(pos_dir, sizeof(pos_dir), "%s/pos", config_dir);
+    int sn = snprintf(pos_dir, sizeof(pos_dir), "%s/pos", config_dir);
+    if (sn <= 0 || sn >= (int)sizeof(pos_dir)) return;
     mkdir(pos_dir, 0755);
 
     // Get absolute path to ensure uniqueness
     char abs_path[PATH_MAX];
     if (realpath(filename, abs_path) == NULL) {
-        strncpy(abs_path, filename, PATH_MAX - 1);
-        abs_path[PATH_MAX - 1] = '\0';
+        a2_strlcpy(abs_path, filename, sizeof(abs_path));
     }
 
     // Convert path to a safe filename (replace / with _)
     char safe_name[PATH_MAX];
-    strncpy(safe_name, abs_path, sizeof(safe_name) - 1);
-    safe_name[sizeof(safe_name) - 1] = '\0';
+    a2_strlcpy(safe_name, abs_path, sizeof(safe_name));
     
     for (int i = 0; safe_name[i]; i++) {
         if (safe_name[i] == '/') safe_name[i] = '_';
@@ -923,8 +1022,12 @@ void handle_file_recovery(EditorState *state, const char *original_filename, con
             }
             case RECOVER_FROM_SV:
                 load_file_core(state, sv_filename);
-                strncpy(state->buffer.filename, original_filename, sizeof(state->buffer.filename) - 1);
+                a2_strlcpy(state->buffer.filename, original_filename, sizeof(state->buffer.filename));
                 state->buffer.modified = true;
+                // Rebuild the save baseline from the original path, not the recovery file.
+                free(state->buffer.shadow_copy);
+                state->buffer.shadow_copy = NULL;
+                state->buffer.last_mod_time = get_file_mod_time(original_filename);
                 remove(sv_filename);
                 editor_set_status_msg(state, "Recovered from %s. Save to confirm.", sv_filename);
                 return;
@@ -941,10 +1044,8 @@ void handle_file_recovery(EditorState *state, const char *original_filename, con
                 return;
 
             case RECOVER_ABORT:
-                editor_set_status_msg(state, "");
-                state->buffer.num_lines = 1;
-                state->buffer.lines[0] = calloc(1, 1);
-                strcpy(state->buffer.filename, "[No Name]");
+                // Leave the current editor buffer untouched when opening is cancelled.
+                editor_set_status_msg(state, "File opening cancelled.");
                 return;
         }
     }
@@ -954,7 +1055,8 @@ void handle_file_recovery(EditorState *state, const char *original_filename, con
 void get_macros_filename(char *buffer, size_t size) {
     char dir[PATH_MAX];
     ensure_a2_config_dir(dir, sizeof(dir));
-    snprintf(buffer, size, "%s/macros.a2", dir);
+    int sn = snprintf(buffer, size, "%s/macros.a2", dir);
+    if (sn >= (int)size && size > 0) buffer[size - 1] = '\0';
 }
 
 void save_macros(EditorState *state) {

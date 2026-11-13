@@ -1,5 +1,5 @@
-#ifndef WINDOW_MANAGMENT_H
-#define WINDOW_MANAGMENT_H
+#ifndef WINDOW_MANAGEMENT_H
+#define WINDOW_MANAGEMENT_H
 
 #include "defs.h" // For EditorState, etc.
 
@@ -15,12 +15,13 @@ bool fuzzy_match(const char *str, const char *pattern);
 void find_all_project_files_recursive(const char *base_path, FileResult **results, int *count, int *capacity);
 
 
-// Function prototypes for window_managment.c
+// Function prototypes for window_management.c
 void free_editor_state(EditorState* state);
 void free_editor_window(EditorWindow* jw);
 void free_workspace(Workspace *ws);
 void initialize_workspaces();
 void recalculate_window_layout();
+void update_size_pty(EditorWindow *jw);
 void create_new_window(const char *filename);
 void redraw_all_windows();
 void position_active_cursor();

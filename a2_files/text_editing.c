@@ -507,7 +507,7 @@ void editor_join_line(EditorState *state) {
 
 void editor_toggle_comment(EditorState *state) {
     state->buffer.modified = true;
-    const char *comment_str = "//";
+    const char *comment_str = state->buffer.comment_line[0] ? state->buffer.comment_line : "//";
     int comment_len = strlen(comment_str);
     int start_line, end_line;
     if (state->input.mode == VISUAL && state->cursor.visual_selection_mode != VISUAL_MODE_NONE) {

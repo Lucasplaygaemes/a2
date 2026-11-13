@@ -1,6 +1,6 @@
 #include "plugin_engine.h"
 #include "screen_ui.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "others.h"
 #include "logger.h"
 #include "fileio.h"
@@ -91,8 +91,8 @@ static void plugin_crash_signal_handler(int sig) {
 
 static void record_disabled_plugin(const char *filename, const char *reason) {
     if (g_num_disabled_plugins < MAX_PLUGINS) {
-        strncpy(g_disabled_plugins[g_num_disabled_plugins].filename, filename, sizeof(g_disabled_plugins[g_num_disabled_plugins].filename) - 1);
-        strncpy(g_disabled_plugins[g_num_disabled_plugins].reason, reason, sizeof(g_disabled_plugins[g_num_disabled_plugins].reason) - 1);
+        a2_strlcpy(g_disabled_plugins[g_num_disabled_plugins].filename, filename, sizeof(g_disabled_plugins[g_num_disabled_plugins].filename));
+        a2_strlcpy(g_disabled_plugins[g_num_disabled_plugins].reason, reason, sizeof(g_disabled_plugins[g_num_disabled_plugins].reason));
         g_num_disabled_plugins++;
     }
 }
@@ -103,7 +103,7 @@ static void api_register_command(const char *name, void (*cb)(EditorState *state
         A2_LOG(LOG_WARN, TAG_CORE, "Plugin API: Max commands reached (%d)", MAX_COMMANDS);
         return;
     }
-    strncpy(g_commands[g_num_commands].name, name, sizeof(g_commands[g_num_commands].name) - 1);
+    a2_strlcpy(g_commands[g_num_commands].name, name, sizeof(g_commands[g_num_commands].name));
     g_commands[g_num_commands].cb = cb;
     g_commands[g_num_commands].plugin_idx = g_current_initializing_plugin_idx;
     g_num_commands++;
@@ -220,7 +220,7 @@ static void save_disabled_plugins_list(void) {
     snprintf(path, sizeof(path), "%s/.a2/disabled_plugins.txt", home);
     FILE *f = fopen(path, "w");
     if (!f) return;
-    for (int i = 0; i < g_num_plugins; i++) {
+    for (volatile int i = 0; i < g_num_plugins; i++) {
         if (!g_loaded_plugins[i].handle) {
             fprintf(f, "%s\n", g_loaded_plugins[i].filename);
         }
@@ -240,7 +240,7 @@ static void load_disabled_plugins_list(void) {
     while (fgets(line, sizeof(line), f)) {
         line[strcspn(line, "\n")] = '\0';
         if (!line[0]) continue;
-        for (int i = 0; i < g_num_plugins; i++) {
+        for (volatile int i = 0; i < g_num_plugins; i++) {
             if (strcmp(g_loaded_plugins[i].filename, line) == 0 && g_loaded_plugins[i].handle) {
                 // Disable without calling cleanup (was disabled by user choice)
                 dlclose(g_loaded_plugins[i].handle);
@@ -310,7 +310,7 @@ void plugin_engine_init(EditorState *state) {
             char *ext = strrchr(entry->d_name, '.');
             if (ext && strcmp(ext, ".so") == 0) {
                 char fullpath[PATH_MAX];
-                snprintf(fullpath, sizeof(fullpath), "%s/%s", plugin_dir, entry->d_name);
+                a2_path_join(fullpath, sizeof(fullpath), plugin_dir, entry->d_name);
 
                 void *handle = dlopen(fullpath, RTLD_NOW | RTLD_GLOBAL);
                 if (!handle) {
@@ -392,11 +392,11 @@ void plugin_engine_init(EditorState *state) {
 
                     if (g_num_plugins < MAX_PLUGINS) {
                         LoadedPlugin *p = &g_loaded_plugins[g_num_plugins];
-                        strncpy(p->filename, entry->d_name, sizeof(p->filename) - 1);
-                        strncpy(p->name, info && info->name ? info->name : entry->d_name, sizeof(p->name) - 1);
-                        strncpy(p->author, info && info->author ? info->author : "Unknown", sizeof(p->author) - 1);
-                        strncpy(p->version, info && info->version ? info->version : "1.0.0", sizeof(p->version) - 1);
-                        strncpy(p->description, info && info->description ? info->description : "", sizeof(p->description) - 1);
+                        a2_strlcpy(p->filename, entry->d_name, sizeof(p->filename));
+                        a2_strlcpy(p->name, info && info->name ? info->name : entry->d_name, sizeof(p->name));
+                        a2_strlcpy(p->author, info && info->author ? info->author : "Unknown", sizeof(p->author));
+                        a2_strlcpy(p->version, info && info->version ? info->version : "1.0.0", sizeof(p->version));
+                        a2_strlcpy(p->description, info && info->description ? info->description : "", sizeof(p->description));
                         p->target_api_ver = info ? info->target_api_ver : A2_PLUGIN_API_VERSION;
                         p->handle = handle;
                         g_num_plugins++;
@@ -428,7 +428,7 @@ void plugin_engine_init(EditorState *state) {
 }
 
 void plugin_engine_cleanup(void) {
-    for (int i = 0; i < g_num_plugins; i++) {
+    for (volatile int i = 0; i < g_num_plugins; i++) {
         if (g_loaded_plugins[i].handle) {
             void (*cleanup_fn)(void) = (void (*)(void))dlsym(g_loaded_plugins[i].handle, "a2_plugin_cleanup");
             if (cleanup_fn) {
@@ -464,7 +464,7 @@ void plugin_engine_cleanup(void) {
 
 bool plugin_engine_dispatch_command(EditorState *state, const char *cmd, const char *args) {
     if (!cmd) return false;
-    for (int i = 0; i < g_num_commands; i++) {
+    for (volatile int i = 0; i < g_num_commands; i++) {
         if (strcmp(g_commands[i].name, cmd) == 0) {
             if (g_commands[i].cb) {
                 struct sigaction sa, old_sa_segv, old_sa_ill, old_sa_fpe, old_sa_abrt;
@@ -555,7 +555,7 @@ void plugin_engine_list_plugins(EditorState *state) {
     if (g_num_plugins == 0) {
         fprintf(f, "  (No active plugins loaded from ~/.a2/plugins/)\n\n");
     } else {
-        for (int i = 0; i < g_num_plugins; i++) {
+        for (volatile int i = 0; i < g_num_plugins; i++) {
             LoadedPlugin *p = &g_loaded_plugins[i];
             fprintf(f, "  [%d] %s v%s\n", i + 1, p->name, p->version);
             fprintf(f, "      • Author:      %s\n", p->author);
@@ -583,7 +583,7 @@ void plugin_engine_list_plugins(EditorState *state) {
         fprintf(f, "  (No dynamic commands registered)\n\n");
     } else {
         int col = 0;
-        for (int i = 0; i < g_num_commands; i++) {
+        for (volatile int i = 0; i < g_num_commands; i++) {
             fprintf(f, "  :%-20s", g_commands[i].name);
             col++;
             if (col % 3 == 0) {
@@ -630,7 +630,7 @@ bool plugin_engine_get_plugin_info(int idx, char *name_out, size_t name_size, bo
 static void plugin_engine_unregister_callbacks(int plugin_idx) {
     // Commands: compact the array, removing entries owned by this plugin
     int write = 0;
-    for (int i = 0; i < g_num_commands; i++) {
+    for (volatile int i = 0; i < g_num_commands; i++) {
         if (g_commands[i].plugin_idx != plugin_idx) {
             if (write != i) g_commands[write] = g_commands[i];
             write++;

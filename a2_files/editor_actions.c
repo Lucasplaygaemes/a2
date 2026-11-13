@@ -2,7 +2,7 @@
 #include "editor_utils.h"
 #include "others.h"
 #include "screen_ui.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "command_execution.h"
 #include "undo_redo.h"
 #include "lsp_client.h"
@@ -13,7 +13,7 @@
 #include "timer.h"
 #include "cache.h"
 #include "themes.h"
-#include "dictionary.h"
+#include "plugin_engine.h"
 #include "fileio.h"
 #include "diff.h"
 #include "direct_navigation.h"
@@ -251,20 +251,22 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
                     char *last_slash = strrchr(dir_path, '/');
                     if (last_slash) {
                         *last_slash = '\0';
-                        snprintf(final_path, PATH_MAX, "%s/%s", dir_path, parsed_path);
+                        int n = snprintf(final_path, PATH_MAX, "%s/%s", dir_path, parsed_path);
+                        if (n >= PATH_MAX) final_path[PATH_MAX - 1] = '\0';
                     } else {
-                        strncpy(final_path, parsed_path, PATH_MAX-1);
+                        snprintf(final_path, PATH_MAX, "%s", parsed_path);
                     }
                 } else {
-                    strncpy(final_path, parsed_path, PATH_MAX-1);
+                    snprintf(final_path, PATH_MAX, "%s", parsed_path);
                 }
-                
+
                 if (final_path[0] == '~') {
                     char expanded[PATH_MAX];
                     const char *home = getenv("HOME");
                     if (home) {
-                        snprintf(expanded, PATH_MAX, "%s%s", home, final_path + 1);
-                        strncpy(final_path, expanded, PATH_MAX-1);
+                        int n = snprintf(expanded, PATH_MAX, "%s%s", home, final_path + 1);
+                        if (n >= PATH_MAX) expanded[PATH_MAX - 1] = '\0';
+                        snprintf(final_path, PATH_MAX, "%s", expanded);
                     }
                 }
                 create_new_window(final_path);
@@ -337,11 +339,11 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_EXPAND_SNIPPET: editor_expand_snippet(state); break;
         case ACT_GDB_DEBUG: {
             bool exit_flag = false;
-            char orig_buf[256];
-            strncpy(orig_buf, state->input.command_buffer, sizeof(orig_buf) - 1);
-            strncpy(state->input.command_buffer, "gdb", sizeof(state->input.command_buffer) - 1);
+            char orig_buf[100];
+            snprintf(orig_buf, sizeof(orig_buf), "%s", state->input.command_buffer);
+            snprintf(state->input.command_buffer, sizeof(state->input.command_buffer), "%s", "gdb");
             process_command(state, &exit_flag);
-            strncpy(state->input.command_buffer, orig_buf, sizeof(state->input.command_buffer) - 1);
+            snprintf(state->input.command_buffer, sizeof(state->input.command_buffer), "%s", orig_buf);
             break;
         }
         case ACT_GDB_BREAK: {
@@ -419,11 +421,11 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         }
         case ACT_GDB_TUI: {
             bool exit_flag = false;
-            char orig_buf[256];
-            strncpy(orig_buf, state->input.command_buffer, sizeof(orig_buf) - 1);
-            strncpy(state->input.command_buffer, "gdb-tui", sizeof(state->input.command_buffer) - 1);
+            char orig_buf[100];
+            snprintf(orig_buf, sizeof(orig_buf), "%s", state->input.command_buffer);
+            snprintf(state->input.command_buffer, sizeof(state->input.command_buffer), "%s", "gdb-tui");
             process_command(state, &exit_flag);
-            strncpy(state->input.command_buffer, orig_buf, sizeof(state->input.command_buffer) - 1);
+            snprintf(state->input.command_buffer, sizeof(state->input.command_buffer), "%s", orig_buf);
             break;
         }
         case ACT_GDB_QUIT: {
@@ -594,7 +596,16 @@ void execute_action(EditorAction action, EditorState *state, bool *should_exit) 
         case ACT_SETTINGS: create_settings_panel_window(); break;
         case ACT_HELP: display_help_viewer("a2_help.txt"); break;
         case ACT_KSC: display_dynamic_ksc(); break;
-        case ACT_DICTIONARY_HOVER: dictionary_trigger_hover(state); break;
+        case ACT_DICTIONARY_HOVER: {
+            char word[100];
+            get_word_at_cursor(state, word, sizeof(word));
+            if (word[0] != '\0') {
+                if (!plugin_engine_dispatch_command(state, "dict", word)) {
+                    editor_set_status_msg(state, "Dictionary plugin not loaded (needs plugin_spell_dict.so)");
+                }
+            }
+            break;
+        }
         default: break;
     }
 }

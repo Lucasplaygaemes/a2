@@ -1,7 +1,7 @@
 #include "direct_navigation.h" // Include its own header
 #include "defs.h" // For EditorState, etc.
 #include "screen_ui.h" // For redrawing all windows
-#include "window_managment.h" // For redrawing all windows
+#include "window_management.h" // For redrawing all windows
 #include "others.h" // For editor_set_status_msg
 #include "cache.h"
 #include "git_utils.h"

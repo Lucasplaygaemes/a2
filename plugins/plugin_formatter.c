@@ -1,4 +1,5 @@
 #include "a2_plugin_api.h"
+#include "process_exec.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,9 +17,7 @@ A2_PLUGIN_DEFINE_INFO(
 );
 
 static bool is_tool_installed(const char *tool_name) {
-    char check_cmd[256];
-    snprintf(check_cmd, sizeof(check_cmd), "which %s >/dev/null 2>&1", tool_name);
-    return (system(check_cmd) == 0);
+    return run_check_tool(tool_name);
 }
 
 static void format_current_buffer(EditorState *state) {
@@ -88,12 +87,11 @@ static void format_current_buffer(EditorState *state) {
         return;
     }
 
-    int result = system(cmd);
+    int result = run_shell_command(cmd);
     if (result == 0) {
         g_api->reload_file(state);
-        char fname_copy[256];
-        strncpy(fname_copy, filename, sizeof(fname_copy) - 1);
-        fname_copy[sizeof(fname_copy) - 1] = '\0';
+        char fname_copy[PATH_MAX];
+        snprintf(fname_copy, sizeof(fname_copy), "%s", filename);
         g_api->set_status_msg(state, "Formatter: Formatted %s using %s", basename(fname_copy), tool_name);
     } else {
         g_api->set_status_msg(state, "Formatter: %s failed on %s", tool_name, filename);

@@ -3,7 +3,7 @@
 #include "defs.h"
 #include "others.h"
 #include "lsp_client.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "cache.h"
 #include "spell.h"
 #include "fileio.h"
@@ -147,9 +147,11 @@ WINDOW *draw_pop_up(const char *message, int y, int x) {
    
    int term_rows, term_cols;
    getmaxyx(stdscr, term_rows, term_cols);
+   // Reject terminals too small to hold a bordered popup safely.
+   if (term_rows < 3 || term_cols < 6) return NULL;
    
    if (win_width > term_cols) win_width = term_cols;
-   if (win_height > term_cols) win_height = term_cols;
+   if (win_height > term_rows) win_height = term_rows;
    if (win_width > term_cols - 2) win_width = term_cols - 2;
    
    if (y == -1) {
@@ -168,11 +170,14 @@ WINDOW *draw_pop_up(const char *message, int y, int x) {
    if (y < 0) y = 0;
    
    WINDOW *popup_win = newwin(win_height, win_width, y, x);
+   if (!popup_win) return NULL;
    wbkgd(popup_win, COLOR_PAIR(8));
    box(popup_win, 0, 0);
    
    ptr = message;
-   for (int i = 0; i < num_lines; i++) {
+   // Draw only rows that fit between the popup borders.
+   int visible_lines = min(num_lines, win_height - 2);
+   for (int i = 0; i < visible_lines; i++) {
        const char *line_start = ptr;
        const char *line_end = strchr(ptr, '\n');
        int line_len;
@@ -227,6 +232,8 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
 
     int term_rows, term_cols;
     getmaxyx(stdscr, term_rows, term_cols);
+    // Keep diagnostic popups within a usable terminal area.
+    if (term_rows < 3 || term_cols < 6) return;
     if (win_width > term_cols) win_width = term_cols;
     if (win_height > term_rows) win_height = term_rows;
     if (win_width > term_cols - 2) win_width = term_cols - 2;
@@ -264,12 +271,17 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
         state->lsp.popup_y = win_y;
         state->lsp.popup_x = win_x;
     }
+    // Clamp pinned or movable popups after terminal resizes.
+    state->lsp.popup_y = max(0, min(state->lsp.popup_y, term_rows - win_height));
+    state->lsp.popup_x = max(0, min(state->lsp.popup_x, term_cols - win_width));
 
     if (state->lsp.diagnostic_popup) {
         delwin(state->lsp.diagnostic_popup);
+        state->lsp.diagnostic_popup = NULL;
     }
 
     state->lsp.diagnostic_popup = newwin(win_height, win_width, state->lsp.popup_y, state->lsp.popup_x);
+    if (!state->lsp.diagnostic_popup) return;
     state->lsp.is_popup_visible = true;
     state->lsp.popup_width = win_width;
     state->lsp.popup_height = win_height;
@@ -285,7 +297,9 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
     }
 
     ptr = message;
-    for (int i = 0; i < num_lines; i++) {
+    // Draw only rows that fit between the popup borders.
+    int visible_lines = min(num_lines, win_height - 2);
+    for (int i = 0; i < visible_lines; i++) {
         const char *line_start = ptr;
         const char *line_end = strchr(ptr, '\n');
         int line_len;
@@ -317,6 +331,7 @@ void draw_code_action_popup(WINDOW *win, EditorState *state) {
 
     int scr_h = getmaxy(win);
     int scr_w = getmaxx(win);
+    if (scr_h < 5 || scr_w < 6) return;
 
     /* Limit height so it fits on screen */
     int popup_h = state->lsp.code_actions_count + 2; /* +2 for border lines */
@@ -356,7 +371,13 @@ void draw_code_action_popup(WINDOW *win, EditorState *state) {
     delwin(popup);
 }
 
+static inline bool is_token_match(const char *str, const char *token, int token_len) {
+    if (!token || token_len <= 0) return false;
+    return strncmp(str, token, token_len) == 0;
+}
+
 void editor_redraw(WINDOW *win, EditorState *state) {
+    if (g_headless_mode || !win || !state) return;
     wbkgd(win, COLOR_PAIR(PAIR_DEFAULT));
 
     if (state->buffer.modified) {
@@ -398,6 +419,15 @@ void editor_redraw(WINDOW *win, EditorState *state) {
         }
     }
 
+    const char *c_line = state->buffer.comment_line[0] ? state->buffer.comment_line : "//";
+    const char *c_blk_start = state->buffer.comment_block_start[0] ? state->buffer.comment_block_start : "/*";
+    const char *c_blk_end = state->buffer.comment_block_end[0] ? state->buffer.comment_block_end : "*/";
+    int c_line_len = strlen(c_line);
+    int c_blk_start_len = strlen(c_blk_start);
+    int c_blk_end_len = strlen(c_blk_end);
+    bool has_blk = (c_blk_start[0] != '\0' && c_blk_end[0] != '\0');
+    bool has_c_directives = (strcmp(c_line, "//") == 0);
+
     const char *delimiters = " \t\n\r,;()[]{}<>=+-*/%&|!^.";
     int content_height = rows - (border_offset + 1); 
     int screen_y = 0;
@@ -437,12 +467,19 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             first_visible_file_line = state->view.top_line;
         }
 
-        for (int i = 0; i < first_visible_file_line && i < state->buffer.num_lines; i++) {
-            char *l = state->buffer.lines[i];
-            if (!l) continue;
-            for (int p = 0; l[p]; p++) {
-                if (!in_multiline_comment && l[p] == '/' && l[p+1] == '*') { in_multiline_comment = true; p++; }
-                else if (in_multiline_comment && l[p] == '*' && l[p+1] == '/') { in_multiline_comment = false; p++; }
+        if (has_blk) {
+            for (int i = 0; i < first_visible_file_line && i < state->buffer.num_lines; i++) {
+                char *l = state->buffer.lines[i];
+                if (!l) continue;
+                for (int p = 0; l[p]; p++) {
+                    if (!in_multiline_comment && is_token_match(&l[p], c_blk_start, c_blk_start_len)) {
+                        in_multiline_comment = true;
+                        p += c_blk_start_len - 1;
+                    } else if (in_multiline_comment && is_token_match(&l[p], c_blk_end, c_blk_end_len)) {
+                        in_multiline_comment = false;
+                        p += c_blk_end_len - 1;
+                    }
+                }
             }
         }
         break; // Exit the outer helper loop
@@ -461,7 +498,11 @@ void editor_redraw(WINDOW *win, EditorState *state) {
 
             int first_non_space = 0;
             while (line[first_non_space] && isspace(line[first_non_space])) first_non_space++;
-            if (line[first_non_space] == '#') is_directive = true;
+            if (has_c_directives && line[first_non_space] == '#') {
+                is_directive = true;
+            } else if (is_token_match(&line[first_non_space], c_line, c_line_len)) {
+                is_line_comment = true;
+            }
 
             // --- CONFLICT HIGHLIGHTING (WORD WRAP) ---
             if (strncmp(line, "<<<<<<<", 7) == 0) current_conflict_block = 1;
@@ -549,9 +590,12 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                         if (getcurx(win) >= cols - 1 - border_offset) break;
 
                         // 1. Handle Comments (Single and Multi)
-                        if (is_line_comment || in_multiline_comment || is_directive || (line[token_start_in_line] == '/' && (line[token_start_in_line+1] == '/' || line[token_start_in_line+1] == '*'))) {
+                        bool starts_line_c = is_token_match(&line[token_start_in_line], c_line, c_line_len);
+                        bool starts_blk_c = has_blk && is_token_match(&line[token_start_in_line], c_blk_start, c_blk_start_len);
+
+                        if (is_line_comment || in_multiline_comment || is_directive || starts_line_c || starts_blk_c) {
                             if (!is_line_comment && !in_multiline_comment && !is_directive) {
-                                if (line[token_start_in_line+1] == '/') is_line_comment = true;
+                                if (starts_line_c) is_line_comment = true;
                                 else in_multiline_comment = true;
                             }
                             
@@ -559,10 +603,10 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                             int segment_remaining = break_pos - current_pos_in_segment;
                             int visual_remaining = (cols - 1 - border_offset) - getcurx(win);
 
-                            if (in_multiline_comment) {
-                                char *end_ptr = strstr(&line[token_start_in_line], "*/");
+                            if (in_multiline_comment && has_blk) {
+                                char *end_ptr = strstr(&line[token_start_in_line], c_blk_end);
                                 if (end_ptr && (end_ptr - &line[token_start_in_line]) < segment_remaining) {
-                                    int bytes_to_end = (end_ptr - &line[token_start_in_line]) + 2;
+                                    int bytes_to_end = (end_ptr - &line[token_start_in_line]) + c_blk_end_len;
                                     int bytes_to_print = bytes_to_end > visual_remaining ? visual_remaining : bytes_to_end;
                                     waddnstr(win, &line[token_start_in_line], bytes_to_print);
                                     in_multiline_comment = false;
@@ -585,7 +629,9 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                             current_pos_in_segment++;
                         } else {
                             while(current_pos_in_segment < break_pos && !strchr(delimiters, line[line_offset + current_pos_in_segment])) {
-                                if (line[line_offset + current_pos_in_segment] == '/' && (line[line_offset + current_pos_in_segment + 1] == '/' || line[line_offset + current_pos_in_segment + 1] == '*')) break;
+                                const char *cur_ptr = &line[line_offset + current_pos_in_segment];
+                                if (is_token_match(cur_ptr, c_line, c_line_len)) break;
+                                if (has_blk && is_token_match(cur_ptr, c_blk_start, c_blk_start_len)) break;
                                 current_pos_in_segment++;
                             }
                         }
@@ -596,7 +642,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                             int color_pair = 0;
                             if (is_selected(state, file_line_idx, token_start_in_line)) color_pair = PAIR_SELECTION;
                             else if (token_len == 1 && is_unmatched_bracket(state, file_line_idx, token_start_in_line)) color_pair = 11;
-                            else if (line[token_start_in_line] == '#') { 
+                            else if (has_c_directives && line[token_start_in_line] == '#') { 
                                 color_pair = PAIR_COMMENT; 
                                 // Directive highlight should ideally not skip the whole segment to allow wrap awareness
                             }
@@ -730,9 +776,16 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     screen_y++;
                 } else {
                     // Even if not visible, we must maintain multiline comment state
-                    for (int p = 0; p < break_pos; p++) {
-                        if (!in_multiline_comment && line[line_offset + p] == '/' && line[line_offset + p + 1] == '*') { in_multiline_comment = true; p++; }
-                        else if (in_multiline_comment && line[line_offset + p] == '*' && line[line_offset + p + 1] == '/') { in_multiline_comment = false; p++; }
+                    if (has_blk) {
+                        for (int p = 0; p < break_pos; p++) {
+                            if (!in_multiline_comment && is_token_match(&line[line_offset + p], c_blk_start, c_blk_start_len)) {
+                                in_multiline_comment = true;
+                                p += c_blk_start_len - 1;
+                            } else if (in_multiline_comment && is_token_match(&line[line_offset + p], c_blk_end, c_blk_end_len)) {
+                                in_multiline_comment = false;
+                                p += c_blk_end_len - 1;
+                            }
+                        }
                     }
                 }
                 visual_line_idx++;
@@ -788,7 +841,11 @@ void editor_redraw(WINDOW *win, EditorState *state) {
 
                 int first_non_space = 0;
                 while (line[first_non_space] && isspace(line[first_non_space])) first_non_space++;
-                if (line[first_non_space] == '#') is_directive = true;
+                if (has_c_directives && line[first_non_space] == '#') {
+                    is_directive = true;
+                } else if (is_token_match(&line[first_non_space], c_line, c_line_len)) {
+                    is_line_comment = true;
+                }
 
                 // Per-file-line search regex compilation
                 bool is_searching = (state->input.command_buffer[0] == '/');
@@ -804,27 +861,37 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                 while(current_col_val < line_len) {
                     if (current_col_val < state->view.left_col) {
                         // Maintenance of multiline comment state even when skipped by horizontal scroll
-                        if (!is_line_comment && !in_multiline_comment && line[current_col_val] == '/' && line[current_col_val+1] == '/') is_line_comment = true;
-                        if (!is_line_comment && !in_multiline_comment && line[current_col_val] == '/' && line[current_col_val+1] == '*') { in_multiline_comment = true; current_col_val++; }
-                        else if (in_multiline_comment && line[current_col_val] == '*' && line[current_col_val+1] == '/') { in_multiline_comment = false; current_col_val++; }
+                        if (is_token_match(&line[current_col_val], c_line, c_line_len)) is_line_comment = true;
+                        if (has_blk) {
+                            if (!is_line_comment && !in_multiline_comment && is_token_match(&line[current_col_val], c_blk_start, c_blk_start_len)) {
+                                in_multiline_comment = true;
+                                current_col_val += c_blk_start_len - 1;
+                            } else if (in_multiline_comment && is_token_match(&line[current_col_val], c_blk_end, c_blk_end_len)) {
+                                in_multiline_comment = false;
+                                current_col_val += c_blk_end_len - 1;
+                            }
+                        }
                         current_col_val++; 
                         continue; 
                     }
                     if (getcurx(win) >= cols - 1 - border_offset) break;
                     
                     // Comment Logic (Non-word-wrap)
-                    if (!in_multiline_comment && line[current_col_val] == '/' && line[current_col_val+1] == '/') is_line_comment = true;
-                    if (!is_line_comment && !in_multiline_comment && line[current_col_val] == '/' && line[current_col_val+1] == '*') in_multiline_comment = true;
+                    bool starts_line_c = is_token_match(&line[current_col_val], c_line, c_line_len);
+                    bool starts_blk_c = has_blk && is_token_match(&line[current_col_val], c_blk_start, c_blk_start_len);
+
+                    if (!in_multiline_comment && starts_line_c) is_line_comment = true;
+                    if (!is_line_comment && !in_multiline_comment && starts_blk_c) in_multiline_comment = true;
 
                     if (is_line_comment || in_multiline_comment || is_directive) {
                         wattron(win, COLOR_PAIR(PAIR_COMMENT));
                         int line_remaining = line_len - current_col_val;
                         int visual_remaining = (cols - 1 - border_offset) - getcurx(win);
 
-                        if (in_multiline_comment) {
-                            char *end_ptr = strstr(&line[current_col_val], "*/");
+                        if (in_multiline_comment && has_blk) {
+                            char *end_ptr = strstr(&line[current_col_val], c_blk_end);
                             if (end_ptr) {
-                                int bytes_to_end = (end_ptr - &line[current_col_val]) + 2;
+                                int bytes_to_end = (end_ptr - &line[current_col_val]) + c_blk_end_len;
                                 int bytes_to_print = bytes_to_end > visual_remaining ? visual_remaining : bytes_to_end;
                                 waddnstr(win, &line[current_col_val], bytes_to_print);
                                 in_multiline_comment = false;
@@ -846,14 +913,19 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                     if (strchr(delimiters, current_char)) token_len = 1;
                     else { 
                         int end = token_start; 
-                        while(end < line_len && !strchr(delimiters, line[end]) && !(line[end] == '/' && (line[end+1] == '/' || line[end+1] == '*'))) end++; 
+                        while(end < line_len && !strchr(delimiters, line[end])) {
+                            const char *chk = &line[end];
+                            if (is_token_match(chk, c_line, c_line_len)) break;
+                            if (has_blk && is_token_match(chk, c_blk_start, c_blk_start_len)) break;
+                            end++;
+                        }
                         token_len = end - token_start; 
                     }
                     
                     int color_pair = 0;
                     if (is_selected(state, line_idx, token_start)) color_pair = PAIR_SELECTION;
                     else if (token_len == 1 && is_unmatched_bracket(state, line_idx, token_start)) color_pair = 11;
-                    else if (current_char == '#') { 
+                    else if (has_c_directives && current_char == '#') { 
                         color_pair = PAIR_COMMENT; 
                     }
                     else {
@@ -994,10 +1066,15 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             } else {
                 // If line not dirty, we still need to maintain in_multiline_comment state
                 char *l = state->buffer.lines[line_idx];
-                if (l) {
+                if (l && has_blk) {
                     for (int p = 0; l[p]; p++) {
-                        if (!in_multiline_comment && l[p] == '/' && l[p+1] == '*') { in_multiline_comment = true; p++; }
-                        else if (in_multiline_comment && l[p] == '*' && l[p+1] == '/') { in_multiline_comment = false; p++; }
+                        if (!in_multiline_comment && is_token_match(&l[p], c_blk_start, c_blk_start_len)) {
+                            in_multiline_comment = true;
+                            p += c_blk_start_len - 1;
+                        } else if (in_multiline_comment && is_token_match(&l[p], c_blk_end, c_blk_end_len)) {
+                            in_multiline_comment = false;
+                            p += c_blk_end_len - 1;
+                        }
                     }
                 }
             }
@@ -1075,13 +1152,12 @@ void editor_redraw(WINDOW *win, EditorState *state) {
             if (global_config.abbreviate_filename) {
                 char *fname_copy = strdup(state->buffer.filename);
                 if (fname_copy) {
-                    strncpy(display_filename, basename(fname_copy), sizeof(display_filename) - 1);
+                    a2_strlcpy(display_filename, basename(fname_copy), sizeof(display_filename));
                     free(fname_copy);
                 }
             } else {
-                strncpy(display_filename, state->buffer.filename, sizeof(display_filename) - 1);
+                a2_strlcpy(display_filename, state->buffer.filename, sizeof(display_filename));
             }
-            display_filename[sizeof(display_filename) - 1] = '\0';
 
             if (global_config.show_error_count && state->lsp.document && state->lsp.document->diagnostics_count > 0) {
                 int errors = 0, warnings = 0;
@@ -1110,7 +1186,7 @@ void editor_redraw(WINDOW *win, EditorState *state) {
                 mvwprintw(win, rows - 1, left_len + 2, "| %.*s", available - 2, state->view.status_msg);
             }
         } else {
-            char left_bar[256], right_bar[64], error_count_str[32] = "";
+            char left_bar[384], right_bar[64], error_count_str[32] = "";
             int diag_count = state->lsp.document ? state->lsp.document->diagnostics_count : 0;
             if (diag_count > 0) snprintf(error_count_str, sizeof(error_count_str), " [!%d]", diag_count);
 
@@ -1552,8 +1628,9 @@ static void help_viewer_load_file(HelpViewerState *state, const char *filename) 
     FILE *f = NULL;
     
     if (executable_dir[0] != '\0') {
-        snprintf(path, sizeof(path), "%s/man/%s", executable_dir, filename);
-        f = fopen(path, "r");
+        int sn = snprintf(path, sizeof(path), "%s/man/%s", executable_dir, filename);
+        if (sn > 0 && sn < (int)sizeof(path))
+            f = fopen(path, "r");
     }
     
     if (!f) {
@@ -1640,8 +1717,6 @@ void help_viewer_redraw(EditorWindow *jw) {
         char *line = state->lines[i];
         int wrap_width = cols - 4;
         if (wrap_width <= 0) wrap_width = 1;
-        
-        int line_len = strlen(line);
         
         // Calculate total screen lines this file line will occupy to highlight the whole block
         if (i == state->current_line) {

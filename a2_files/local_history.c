@@ -3,7 +3,7 @@
 #include "editor_utils.h"
 #include "undo_redo.h"
 #include "diff.h"
-#include "window_managment.h"
+#include "window_management.h"
 #include "cache.h"
 #include "settings.h"
 #include <stdio.h>
@@ -30,7 +30,7 @@ static unsigned long hash_string(const char *str) {
 static void get_history_base_dir(char *buf, size_t size) {
     char config_dir[PATH_MAX];
     ensure_a2_config_dir(config_dir, sizeof(config_dir));
-    snprintf(buf, size, "%s/history", config_dir);
+    a2_path_join(buf, size, config_dir, "history");
     mkdir(buf, 0755);
 }
 
@@ -39,11 +39,13 @@ static void get_file_history_dir(const char *filepath, char *dir_out, size_t siz
     get_history_base_dir(base, sizeof(base));
     
     char store_dir[PATH_MAX];
-    snprintf(store_dir, sizeof(store_dir), "%s/store", base);
+    a2_path_join(store_dir, sizeof(store_dir), base, "store");
     mkdir(store_dir, 0755);
 
     unsigned long h = hash_string(filepath);
-    snprintf(dir_out, size, "%s/%lu", store_dir, h);
+    char h_str[32];
+    snprintf(h_str, sizeof(h_str), "%lu", h);
+    a2_path_join(dir_out, size, store_dir, h_str);
     mkdir(dir_out, 0755);
 }
 
@@ -84,7 +86,7 @@ void local_history_take_snapshot(EditorState *state, const char *reason) {
 
     // Save info.txt with the original file path
     char info_path[PATH_MAX];
-    snprintf(info_path, sizeof(info_path), "%s/info.txt", history_dir);
+    a2_path_join(info_path, sizeof(info_path), history_dir, "info.txt");
     if (access(info_path, F_OK) != 0) {
         FILE *fi = fopen(info_path, "w");
         if (fi) {
@@ -101,7 +103,7 @@ void local_history_take_snapshot(EditorState *state, const char *reason) {
 
     // Read index to check deduplication against last snapshot
     char index_path[PATH_MAX];
-    snprintf(index_path, sizeof(index_path), "%s/index.txt", history_dir);
+    a2_path_join(index_path, sizeof(index_path), history_dir, "index.txt");
 
     char last_snap_file[PATH_MAX] = {0};
     FILE *fidx = fopen(index_path, "r");
@@ -112,7 +114,7 @@ void local_history_take_snapshot(EditorState *state, const char *reason) {
             if (last_field) {
                 char *newline = strchr(last_field, '\n');
                 if (newline) *newline = '\0';
-                snprintf(last_snap_file, sizeof(last_snap_file), "%s/%s", history_dir, last_field + 1);
+                a2_path_join(last_snap_file, sizeof(last_snap_file), history_dir, last_field + 1);
             }
         }
         fclose(fidx);
@@ -152,7 +154,7 @@ void local_history_take_snapshot(EditorState *state, const char *reason) {
     snprintf(snap_filename, sizeof(snap_filename), "snap_%ld.txt", (long)now);
 
     char snap_filepath[PATH_MAX];
-    snprintf(snap_filepath, sizeof(snap_filepath), "%s/%s", history_dir, snap_filename);
+    a2_path_join(snap_filepath, sizeof(snap_filepath), history_dir, snap_filename);
 
     FILE *fsnap = fopen(snap_filepath, "w");
     if (fsnap) {
@@ -198,7 +200,7 @@ void display_local_history(EditorState *state) {
     get_file_history_dir(state->buffer.filename, history_dir, sizeof(history_dir));
 
     char index_path[PATH_MAX];
-    snprintf(index_path, sizeof(index_path), "%s/index.txt", history_dir);
+    a2_path_join(index_path, sizeof(index_path), history_dir, "index.txt");
 
     FILE *fidx = fopen(index_path, "r");
     if (!fidx) {
@@ -231,7 +233,7 @@ void display_local_history(EditorState *state) {
     while (fgets(line, sizeof(line), fidx) && total_entries < 100) {
         char *nl = strchr(line, '\n');
         if (nl) *nl = '\0';
-        strncpy(entries[total_entries], line, sizeof(entries[total_entries]) - 1);
+        a2_strlcpy(entries[total_entries], line, sizeof(entries[total_entries]));
         total_entries++;
     }
     fclose(fidx);
@@ -249,7 +251,7 @@ void display_local_history(EditorState *state) {
 
             if (sscanf(entries[i], "%ld|%63[^|]|%127[^|]|%127s", &timestamp, time_str, reason, snap_file) >= 3) {
                 char snap_path[PATH_MAX];
-                snprintf(snap_path, sizeof(snap_path), "%s/%s", history_dir, snap_file);
+                a2_path_join(snap_path, sizeof(snap_path), history_dir, snap_file);
                 long size = 0;
                 struct stat st;
                 if (stat(snap_path, &st) == 0) size = st.st_size;
@@ -275,7 +277,7 @@ void restore_local_history_entry(EditorState *state, int entry_idx) {
     get_file_history_dir(state->buffer.filename, history_dir, sizeof(history_dir));
 
     char index_path[PATH_MAX];
-    snprintf(index_path, sizeof(index_path), "%s/index.txt", history_dir);
+    a2_path_join(index_path, sizeof(index_path), history_dir, "index.txt");
 
     FILE *fidx = fopen(index_path, "r");
     if (!fidx) {
@@ -290,7 +292,7 @@ void restore_local_history_entry(EditorState *state, int entry_idx) {
     while (fgets(line, sizeof(line), fidx) && total_entries < 100) {
         char *nl = strchr(line, '\n');
         if (nl) *nl = '\0';
-        strncpy(entries[total_entries], line, sizeof(entries[total_entries]) - 1);
+        a2_strlcpy(entries[total_entries], line, sizeof(entries[total_entries]));
         total_entries++;
     }
     fclose(fidx);
@@ -312,7 +314,7 @@ void restore_local_history_entry(EditorState *state, int entry_idx) {
     }
 
     char snap_path[PATH_MAX];
-    snprintf(snap_path, sizeof(snap_path), "%s/%s", history_dir, snap_file);
+    a2_path_join(snap_path, sizeof(snap_path), history_dir, snap_file);
 
     if (access(snap_path, F_OK) != 0) {
         editor_set_status_msg(state, "Snapshot file missing.");
@@ -365,7 +367,7 @@ void diff_local_history_entry(EditorState *state, int entry_idx) {
     get_file_history_dir(state->buffer.filename, history_dir, sizeof(history_dir));
 
     char index_path[PATH_MAX];
-    snprintf(index_path, sizeof(index_path), "%s/index.txt", history_dir);
+    a2_path_join(index_path, sizeof(index_path), history_dir, "index.txt");
 
     FILE *fidx = fopen(index_path, "r");
     if (!fidx) {
@@ -380,7 +382,7 @@ void diff_local_history_entry(EditorState *state, int entry_idx) {
     while (fgets(line, sizeof(line), fidx) && total_entries < 100) {
         char *nl = strchr(line, '\n');
         if (nl) *nl = '\0';
-        strncpy(entries[total_entries], line, sizeof(entries[total_entries]) - 1);
+        a2_strlcpy(entries[total_entries], line, sizeof(entries[total_entries]));
         total_entries++;
     }
     fclose(fidx);
@@ -402,7 +404,7 @@ void diff_local_history_entry(EditorState *state, int entry_idx) {
     }
 
     char snap_path[PATH_MAX];
-    snprintf(snap_path, sizeof(snap_path), "%s/%s", history_dir, snap_file);
+    a2_path_join(snap_path, sizeof(snap_path), history_dir, snap_file);
 
     if (access(snap_path, F_OK) != 0) {
         editor_set_status_msg(state, "Snapshot file missing.");

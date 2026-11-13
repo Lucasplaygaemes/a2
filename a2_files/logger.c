@@ -45,7 +45,7 @@ void a2_log_close(void) {
 }
 
 void a2_log_msg(LogLevel level, LogTag tag, const char *file, int line, const char *format, ...) {
-    if (!log_file || !global_config.debug_enabled || level < global_config.log_level_filter) return;
+    if (!log_file || !global_config.debug_enabled || (int)level < global_config.log_level_filter) return;
     
     pthread_mutex_lock(&log_mutex);
     

@@ -1,11 +1,12 @@
                        a2 EDITOR - STARTER & USER GUIDE
 
-Welcome to `a2`! This text editor was built in C to deliver a lightweight, fast, 
-and reliable experience directly in your terminal.
+Welcome to `a2`. This is a modal editor for the Linux terminal, written in C
+as a way to learn the language. It is not finished, and it is not Vim with
+different colors. The keys below are the ones the code actually handles.
 
-Inspired by Vim and Emacs, a2 combines modal editing efficiency with IDE-like 
-capabilities (LSP, GDB debugger, Multi-cursor, Terminal splits, and 
-Assembly View).
+Inspired by Vim and Emacs. Some of the same ideas are implemented: modes, an LSP
+client, a GDB split, extra cursors, terminal splits, and an assembly view.
+They are not equally solid. The shortcuts page is the one to trust for keys.
 
 This guide is designed to explain the editor's core logic clearly, showing what 
 a2 has to offer and how it can be used, but not forgetting that you can use it 
@@ -20,8 +21,8 @@ operates through MODES (like Vim!):
    - Used for navigation, deleting, copying, pasting, and executing shortcuts.
    - Keys execute navigation commands or operators instead of writing text.
 
-2. INSERT Mode (Enter with 'i' or 'a'):
-   - Standard writing mode. Everything you type will be inserted into the file.
+2. INSERT Mode (Enter with 'i' only):
+   - 'a', 'A', 'I', and 'o' do not enter insert. 'o' moves up one line.
 
 3. VISUAL Mode (Enter with 'v', 'V' for Lines, or 'Ctrl+V' for Blocks):
    - Used to highlight text selections and perform actions on them.
@@ -35,20 +36,23 @@ Press [ ESC ]. It ALWAYS returns you to Normal Mode, clears pending counts,
 and closes active popups!
 
 2. GETTING STARTED: BASIC NAVIGATION & EDITING
-• Moving in Normal Mode:
-  - Arrow keys or h (left), j (down), k (up), l (right).
-  - w : Jump forward to the start of the next word.
-  - b : Jump backward to the start of the previous word.
-  - e : Jump to the end of the current/next word.
-  - { / } : Jump across paragraphs (blank lines).
-  - g : Jump to the VERY FIRST line of the file.
-  - G : Jump to the VERY LAST line of the file.
+• Moving in Normal Mode (this is not hjkl):
+  - Arrow keys always work.
+  - k : left.    ç : right.
+  - o : up.      l : down.
+  - O : ten lines up.    L : ten lines down.
+  - K or Home : start of the line.    Ç or End : end of the line.
+  - w / b / e : next word, previous word, end of the word.
+  - { / } : previous / next paragraph.
+  - g / G : first line / last line.
+  h and j do nothing in a text window. In the file explorer, j is down and k is up.
 
 • Saving & Exiting:
   - :w          -> Writes (saves) the current file (uses safe atomic save).
   - :w!         -> Forces write to a read-only buffer.
-  - Alt+W       -> Quick shortcut to save the file.
-  - :q          -> Closes active window or exits editor (or press 'q' in read-only/scratch output windows).
+  - Alt+W       -> Save the file.
+  - :q          -> Closes the active window, or exits if it is the last one.
+  - q           -> Closes a read-only or scratch window (help, command output). On a normal buffer, q records a macro.
   - :q!         -> Forces quit without saving changes.
   - :wq         -> Saves and quits.
   - :set noro   -> Disables read-only protection on the current buffer to allow editing.
@@ -96,7 +100,7 @@ You never need to leave a2 to interact with the Linux shell!
   output without losing your editor context. Perfect for quick checks!
 
 • Interactive Terminal Splits (:term and :termside):
-  Syntax: :term [command]  or  :termside [command]  (or shortcut Alt+Space)
+  Syntax: :term [command]  or  :termside [command]  (or Alt+Space)
   Examples:
     - :term             -> Opens a fully functional interactive terminal split.
     - :term htop        -> Opens the htop system monitor in a split.
@@ -109,9 +113,10 @@ You never need to leave a2 to interact with the Linux shell!
 Edit multiple lines or locations simultaneously using multi-cursor mode!
 
 • Creating extra cursors:
-  - Alt+Shift+Up   : Adds a cursor on the line above.
-  - Alt+Shift+Down : Adds a cursor on the line below.
-  - MIDDLE Mouse Click : Adds a cursor wherever you click.
+  - Ctrl+Alt+Up    : Adds a cursor on the line above.
+  - Ctrl+Alt+Down  : Adds a cursor on the line below.
+  - Middle click   : Adds a cursor where you click.
+  There is no Alt+Shift+Up binding. The default flags are Alt and Ctrl together.
 
 • How it works:
   When multiple cursors are active, any character typed or Normal mode command 
@@ -154,11 +159,13 @@ compiler optimizations, and inspecting machine instructions.
 8. LSP & INTELLIGENT FEATURES
 • LSP (Language Server Protocol):
   - Trigger completion or suggestions: [ Tab ] key.
-  - Go to Symbol Definition: :lsp-definition or Alt+d, f.
+  - Go to Symbol Definition: :lsp-definition or Alt+d, then f.
   - List Symbol References: :lsp-references.
-  - Code Actions / Quick-Fixes: :lsp-code-action or Alt+d, a.
-  - Movable Floating Diagnostics: Use Ctrl+Shift+M to drag warning/error popups 
-    across the screen using arrow keys. Press Enter to pin, or ESC to close.
+  - Code Actions / Quick-Fixes: :lsp-code-action or Alt+d, then a.
+  - Move a hover popup: Alt+h. Arrows or the mouse move it, Enter pins it, Esc closes it.
+    Ctrl+Shift+M is not a binding.
+  - Settings: :settings. Alt+Shift+S does not open settings. That chord is also
+    bound to Show Symbols, and Show Symbols is the one that runs.
 
 • Real-Time Wiktionary Lookup in Normal Mode:
   - Hover over any word in Normal Mode and press 'D'.
@@ -180,10 +187,11 @@ compiler optimizations, and inspecting machine instructions.
   - Shortcut: Alt+p, r
 
 • Global Search & Project Navigation:
-  - Alt+F : Fuzzy Finder (Find project files by name).
-  - Alt+B : List of recent files.
-  - Alt+S : Project-wide search (Grep in background).
-  - Alt+T : Unified Command Palette (search commands and symbols).
+  - Alt+F : Fuzzy Finder.
+  - Alt+B : Recent files.
+  - Alt+s : Project-wide search (lowercase s).
+  - Alt+t : Command palette.
+  - Alt+m / Alt+n : next / previous workspace. Not the other way around.
 
 • Project & Session Management:
   - :save-project <name> : Saves current layout, open files, and buffers.

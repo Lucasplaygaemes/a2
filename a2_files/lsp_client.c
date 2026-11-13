@@ -6,6 +6,7 @@
 #include "project.h"
 #include "logger.h"
 #include "lsp_watchdog.h"
+#include "io_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,9 +47,7 @@ int get_character_col_from_byte(const char *line, int byte_col) {
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
-// ===================================================================
-// Robust implementation of the LSP Client with full JSON parsing
-// ===================================================================
+// implementation of the LSP Client with full JSON parsing
 
 // Creates an LSP message
 LspMessage* lsp_create_message() {
@@ -76,6 +75,7 @@ void lsp_free_message(LspMessage *msg) {
     free(msg);
 }
 
+// Parse the LSP message from a JSON string and return an LspMessage struct
 LspMessage* lsp_parse_message(const char *json_str) {
     json_error_t error;
     json_t *root = json_loads(json_str, 0, &error);
@@ -385,7 +385,9 @@ void lsp_did_save(EditorState *state) {
     char save_buf[1024];
     snprintf(save_buf, sizeof(save_buf), save_msg, uri);
     
-    write(state->lsp.client->stdin_fd, save_buf, strlen(save_buf));
+    if (!a2_write_all(state->lsp.client->stdin_fd, save_buf, strlen(save_buf))) {
+        A2_LOG(LOG_WARN, TAG_LSP, "Failed to send didSave notification: %s", strerror(errno));
+    }
     
     free(uri); // Free the memory allocated for the URI
 }
@@ -404,9 +406,13 @@ void lsp_shutdown(EditorState *state) {
 
     if (state->lsp.client->stdin_fd != -1) {
         char *shutdown_msg = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"shutdown\",\"params\":{}}";
-        write(state->lsp.client->stdin_fd, shutdown_msg, strlen(shutdown_msg));
+        if (!a2_write_all(state->lsp.client->stdin_fd, shutdown_msg, strlen(shutdown_msg))) {
+            A2_LOG(LOG_WARN, TAG_LSP, "Failed to send LSP shutdown notification: %s", strerror(errno));
+        }
         char *exit_msg = "{\"jsonrpc\":\"2.0\",\"method\":\"exit\",\"params\":{}}";
-        write(state->lsp.client->stdin_fd, exit_msg, strlen(exit_msg));
+        if (!a2_write_all(state->lsp.client->stdin_fd, exit_msg, strlen(exit_msg))) {
+            A2_LOG(LOG_WARN, TAG_LSP, "Failed to send LSP exit notification: %s", strerror(errno));
+        }
     }
 
     if (state->lsp.client->stdin_fd != -1) {
@@ -1191,11 +1197,11 @@ void lsp_send_initialize(EditorState *state) {
     snprintf(header, sizeof(header), "Content-Length: %zu\r\n\r\n", content_length);
     
     // Send header followed by JSON content
-    write(state->lsp.client->stdin_fd, header, strlen(header));
-    ssize_t bytes_written = write(state->lsp.client->stdin_fd, json_str, content_length);
-    
-    A2_LOG(LOG_DEBUG, TAG_LSP, "Bytes written: %zd (header: %zu, content: %zu)", 
-            bytes_written, strlen(header), content_length);
+    if (!a2_write_all(state->lsp.client->stdin_fd, header, strlen(header))) {
+        A2_LOG(LOG_ERROR, TAG_LSP, "Failed to send LSP initialize header: %s", strerror(errno));
+    } else if (!a2_write_all(state->lsp.client->stdin_fd, json_str, content_length)) {
+        A2_LOG(LOG_ERROR, TAG_LSP, "Failed to send LSP initialize body: %s", strerror(errno));
+    }
 
     if (project_root) {
         free(project_root);
@@ -1217,8 +1223,13 @@ void lsp_send_message(EditorState *state, const char *json_message) {
     lsp_log("Sending header: %s", header);
     lsp_log("Sending message: %s\n", json_message);
     
-    write(state->lsp.client->stdin_fd, header, strlen(header));
-    write(state->lsp.client->stdin_fd, json_message, content_length);
+    if (!a2_write_all(state->lsp.client->stdin_fd, header, strlen(header))) {
+        A2_LOG(LOG_ERROR, TAG_LSP, "Failed to send LSP message header: %s", strerror(errno));
+        return;
+    }
+    if (!a2_write_all(state->lsp.client->stdin_fd, json_message, content_length)) {
+        A2_LOG(LOG_ERROR, TAG_LSP, "Failed to send LSP message body: %s", strerror(errno));
+    }
 }
 
 void lsp_send_did_change(EditorState *state) {
