@@ -2,9 +2,12 @@
 #include <pty.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
+#include <sys/wait.h>
 
 #include "window_management.h"
 #include "io_utils.h"
+#include "logger.h"
 
 #define ACTIVE_WS (workspace_manager.workspaces[workspace_manager.active_workspace_idx])
 
@@ -33,12 +36,14 @@ void create_generic_terminal_window(char *const argv[]) {
     if (!argv || !argv[0]) return;
 
     Workspace *ws = ACTIVE_WS;
+    int old_active_idx = ws->active_window_idx;
+    EditorWindow **grown_windows = realloc(ws->windows, sizeof(EditorWindow*) * (ws->num_windows + 1));
+    if (!grown_windows) { perror("realloc failed"); return; }
+    ws->windows = grown_windows;
     ws->num_windows++;
-    ws->windows = realloc(ws->windows, sizeof(EditorWindow*) * ws->num_windows);
-    if (!ws->windows) { perror("realloc failed"); ws->num_windows--; exit(1); }
 
     EditorWindow *jw = calloc(1, sizeof(EditorWindow));
-    if (!jw) { perror("calloc failed"); ws->num_windows--; exit(1); }
+    if (!jw) { perror("calloc failed"); ws->num_windows--; return; }
     ws->windows[ws->num_windows - 1] = jw;
     ws->active_window_idx = ws->num_windows - 1;
 
@@ -47,7 +52,11 @@ void create_generic_terminal_window(char *const argv[]) {
 
     if (pid < 0) {
         perror("forkpty failed");
-        ws->num_windows--; free(jw); return;
+        // Restore the previous active window when terminal creation fails.
+        ws->windows[--ws->num_windows] = NULL;
+        ws->active_window_idx = old_active_idx;
+        free(jw);
+        return;
     }
     if (pid == 0) {
         setenv("TERM", "xterm-256color", 1);
@@ -56,6 +65,17 @@ void create_generic_terminal_window(char *const argv[]) {
     }
 
     recalculate_window_layout();
+    if (!jw->win || !jw->content_win) {
+        // Stop the child and roll back if the current layout cannot fit a terminal.
+        close(master_fd);
+        kill(pid, SIGTERM);
+        waitpid(pid, NULL, 0);
+        ws->windows[--ws->num_windows] = NULL;
+        ws->active_window_idx = old_active_idx;
+        free(jw);
+        recalculate_window_layout();
+        return;
+    }
 
     jw->type = WINDOW_TYPE_TERMINAL;
     jw->term.pid = pid;
@@ -70,6 +90,15 @@ void create_generic_terminal_window(char *const argv[]) {
     if (!jw->content_win) jw->content_win = jw->win;
 
     jw->term.vterm = vterm_create(cols - 2 * border_offset, rows - 2 * border_offset, VTERM_FLAG_XTERM_256);
+    if (!jw->term.vterm) {
+        // Release the child and window if the terminal emulator cannot initialize.
+        A2_LOG(LOG_ERROR, TAG_UI, "Could not initialize embedded terminal");
+        ws->windows[--ws->num_windows] = NULL;
+        ws->active_window_idx = old_active_idx;
+        free_editor_window(jw);
+        recalculate_window_layout();
+        return;
+    }
     vterm_wnd_set(jw->term.vterm, jw->content_win);
     vterm_set_userptr(jw->term.vterm, jw);
 
@@ -92,13 +121,17 @@ void toggle_floating_terminal() {
     if (ws->floating_term == NULL) {
         // Criar o terminal se não existir
         ws->floating_term = calloc(1, sizeof(EditorWindow));
+        if (!ws->floating_term) return;
         ws->floating_term->type = WINDOW_TYPE_TERMINAL;
 
         // Define posição flutuante (centralizado, 80% da tela)
-        ws->floating_term->height = rows * 0.8;
-        ws->floating_term->width = cols * 0.8;
-        if (ws->floating_term->height < 5) ws->floating_term->height = 5;
-        if (ws->floating_term->width < 20) ws->floating_term->width = 20;
+        if (rows < 3 || cols < 3) {
+            free(ws->floating_term);
+            ws->floating_term = NULL;
+            return;
+        }
+        ws->floating_term->height = min(rows, max(5, (int)(rows * 0.8)));
+        ws->floating_term->width = min(cols, max(20, (int)(cols * 0.8)));
         ws->floating_term->y = (rows - ws->floating_term->height) / 2;
         ws->floating_term->x = (cols - ws->floating_term->width) / 2;
 
@@ -122,11 +155,31 @@ void toggle_floating_terminal() {
 
         ws->floating_term->win = newwin(ws->floating_term->height, ws->floating_term->width,
                                         ws->floating_term->y, ws->floating_term->x);
-        ws->floating_term->content_win = derwin(ws->floating_term->win, ws->floating_term->height - 2, ws->floating_term->width - 2, 1, 1);
+        if (ws->floating_term->win) {
+            ws->floating_term->content_win = derwin(ws->floating_term->win, ws->floating_term->height - 2, ws->floating_term->width - 2, 1, 1);
+        }
+        if (!ws->floating_term->win || !ws->floating_term->content_win) {
+            // Release the child and partial curses windows if allocation fails.
+            if (ws->floating_term->content_win) delwin(ws->floating_term->content_win);
+            if (ws->floating_term->win) delwin(ws->floating_term->win);
+            close(master_fd);
+            kill(pid, SIGTERM);
+            waitpid(pid, NULL, 0);
+            free(ws->floating_term);
+            ws->floating_term = NULL;
+            return;
+        }
         keypad(ws->floating_term->win, TRUE);
         keypad(ws->floating_term->content_win, TRUE);
 
         ws->floating_term->term.vterm = vterm_create(ws->floating_term->width - 2, ws->floating_term->height - 2, VTERM_FLAG_XTERM_256);
+        if (!ws->floating_term->term.vterm) {
+            // Release terminal resources if libvterm cannot allocate its state.
+            A2_LOG(LOG_ERROR, TAG_UI, "Could not initialize floating terminal");
+            free_editor_window(ws->floating_term);
+            ws->floating_term = NULL;
+            return;
+        }
         vterm_wnd_set(ws->floating_term->term.vterm, ws->floating_term->content_win);
         vterm_set_userptr(ws->floating_term->term.vterm, ws->floating_term);
 
