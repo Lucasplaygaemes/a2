@@ -147,9 +147,11 @@ WINDOW *draw_pop_up(const char *message, int y, int x) {
    
    int term_rows, term_cols;
    getmaxyx(stdscr, term_rows, term_cols);
+   // Reject terminals too small to hold a bordered popup safely.
+   if (term_rows < 3 || term_cols < 6) return NULL;
    
    if (win_width > term_cols) win_width = term_cols;
-   if (win_height > term_cols) win_height = term_cols;
+   if (win_height > term_rows) win_height = term_rows;
    if (win_width > term_cols - 2) win_width = term_cols - 2;
    
    if (y == -1) {
@@ -168,11 +170,14 @@ WINDOW *draw_pop_up(const char *message, int y, int x) {
    if (y < 0) y = 0;
    
    WINDOW *popup_win = newwin(win_height, win_width, y, x);
+   if (!popup_win) return NULL;
    wbkgd(popup_win, COLOR_PAIR(8));
    box(popup_win, 0, 0);
    
    ptr = message;
-   for (int i = 0; i < num_lines; i++) {
+   // Draw only rows that fit between the popup borders.
+   int visible_lines = min(num_lines, win_height - 2);
+   for (int i = 0; i < visible_lines; i++) {
        const char *line_start = ptr;
        const char *line_end = strchr(ptr, '\n');
        int line_len;
@@ -227,6 +232,8 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
 
     int term_rows, term_cols;
     getmaxyx(stdscr, term_rows, term_cols);
+    // Keep diagnostic popups within a usable terminal area.
+    if (term_rows < 3 || term_cols < 6) return;
     if (win_width > term_cols) win_width = term_cols;
     if (win_height > term_rows) win_height = term_rows;
     if (win_width > term_cols - 2) win_width = term_cols - 2;
@@ -264,12 +271,17 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
         state->lsp.popup_y = win_y;
         state->lsp.popup_x = win_x;
     }
+    // Clamp pinned or movable popups after terminal resizes.
+    state->lsp.popup_y = max(0, min(state->lsp.popup_y, term_rows - win_height));
+    state->lsp.popup_x = max(0, min(state->lsp.popup_x, term_cols - win_width));
 
     if (state->lsp.diagnostic_popup) {
         delwin(state->lsp.diagnostic_popup);
+        state->lsp.diagnostic_popup = NULL;
     }
 
     state->lsp.diagnostic_popup = newwin(win_height, win_width, state->lsp.popup_y, state->lsp.popup_x);
+    if (!state->lsp.diagnostic_popup) return;
     state->lsp.is_popup_visible = true;
     state->lsp.popup_width = win_width;
     state->lsp.popup_height = win_height;
@@ -285,7 +297,9 @@ void draw_diagnostic_popup(WINDOW *main_win, EditorState *state, const char *mes
     }
 
     ptr = message;
-    for (int i = 0; i < num_lines; i++) {
+    // Draw only rows that fit between the popup borders.
+    int visible_lines = min(num_lines, win_height - 2);
+    for (int i = 0; i < visible_lines; i++) {
         const char *line_start = ptr;
         const char *line_end = strchr(ptr, '\n');
         int line_len;
@@ -317,6 +331,7 @@ void draw_code_action_popup(WINDOW *win, EditorState *state) {
 
     int scr_h = getmaxy(win);
     int scr_w = getmaxx(win);
+    if (scr_h < 5 || scr_w < 6) return;
 
     /* Limit height so it fits on screen */
     int popup_h = state->lsp.code_actions_count + 2; /* +2 for border lines */
