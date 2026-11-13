@@ -294,11 +294,24 @@ void create_new_window(const char *filename) {
     push_undo(state);
 }
 
+static EditorState *find_unsaved_editor(Workspace *ws) {
+    if (!ws) return NULL;
+    for (int i = 0; i < ws->num_windows; i++) {
+        EditorWindow *window = ws->windows[i];
+        if (window && window->type == WINDOW_TYPE_EDITOR && window->state &&
+            window->state->buffer.modified && !window->state->buffer.is_scratch) {
+            return window->state;
+        }
+    }
+    return NULL;
+}
+
 void close_active_window(bool *should_exit) {
     Workspace *ws = ACTIVE_WS;
     if (ws->num_windows == 0) return;
 
     int idx = ws->active_window_idx;
+    if (idx < 0 || idx >= ws->num_windows) return;
     
     // Check for unsaved changes only if it's an editor window and not a scratch buffer
     if (ws->windows[idx]->type == WINDOW_TYPE_EDITOR && ws->windows[idx]->state && 
@@ -346,12 +359,14 @@ void close_active_window(bool *should_exit) {
 void close_active_workspace(bool *should_exit) {
     if (workspace_manager.num_workspaces == 0) return;
 
+    // Refuse to discard unsaved editor buffers anywhere in the workspace.
+    EditorState *unsaved_state = find_unsaved_editor(ACTIVE_WS);
+    if (unsaved_state) {
+        editor_set_status_msg(unsaved_state, "Warning: Unsaved changes! Use :q! to force quit.");
+        return;
+    }
+
     if (workspace_manager.num_workspaces == 1) {
-        EditorState *last_state = ACTIVE_WS->windows[0]->state;
-        if (last_state && last_state->buffer.modified) {
-            editor_set_status_msg(last_state, "Warning: Unsaved changes! Use :q! to force quit.");
-            return;
-        }
         free_workspace(workspace_manager.workspaces[0]);
         workspace_manager.workspaces[0] = NULL;
         workspace_manager.num_workspaces = 0;
@@ -360,6 +375,7 @@ void close_active_workspace(bool *should_exit) {
     }
 
     int idx_to_close = workspace_manager.active_workspace_idx;
+    if (idx_to_close < 0 || idx_to_close >= workspace_manager.num_workspaces) return;
     Workspace *ws_to_free = workspace_manager.workspaces[idx_to_close];
 
     // Shift the array to remove the pointer
@@ -414,9 +430,8 @@ void recalculate_window_layout() {
     int screen_rows, screen_cols;
     getmaxyx(stdscr, screen_rows, screen_cols);
 
-    if (ws->num_windows == 0) return;
+    if (ws->num_windows == 0 || screen_rows < 3 || screen_cols < 3) return;
 
-    // ... (rest of layout logic remains same) ...
     if ((ws->num_windows != 2 && ws->current_layout == LAYOUT_HORIZONTAL_SPLIT) ||
         (ws->num_windows != 3 && ws->current_layout == LAYOUT_MAIN_AND_STACK) ||
         (ws->num_windows != 4 && ws->current_layout == LAYOUT_GRID)) {
@@ -484,37 +499,40 @@ void recalculate_window_layout() {
 
     for (int i = 0; i < ws->num_windows; i++) {
         EditorWindow *jw = ws->windows[i];
+        if (!jw) continue;
         
-        // 1. safe clean
-        if (jw->content_win && jw->content_win != jw->win) {
-            delwin(jw->content_win);
-            jw->content_win = NULL;
-        }
-        
-        if (jw->win) delwin(jw->win);
-        
-        // 2. creation of the main window (container)
-        jw->win = newwin(jw->height, jw->width, jw->y, jw->x);
-        keypad(jw->win, TRUE);
-        scrollok(jw->win, FALSE);
-        
-        // 3. creation of the sub-window of the content (safe area)
         int border_offset = ws->num_windows > 1 ? 1 : 0;
-        
+        if (jw->height < 1 || jw->width < 1 ||
+            (border_offset && (jw->height < 3 || jw->width < 3))) continue;
+
+        // Keep the existing curses windows if a resized layout cannot be allocated.
+        WINDOW *new_win = newwin(jw->height, jw->width, jw->y, jw->x);
+        if (!new_win) continue;
+        WINDOW *new_content_win;
         if (border_offset) {
-            // create a windows derivate that, start in 1,1 and its smaller in then the main
-            jw->content_win = derwin(jw->win, jw->height - 2, jw->width - 2, 1, 1);
+            new_content_win = derwin(new_win, jw->height - 2, jw->width - 2, 1, 1);
+            if (!new_content_win) {
+                delwin(new_win);
+                continue;
+            }
         } else {
-            // if dont't have border, the content occupies all
-            jw->content_win = jw->win;
+            new_content_win = new_win;
         }
-        
-        // configure the sub-window too 
-        if (jw->content_win != jw->win) {
-            keypad(jw->content_win, TRUE);
-            scrollok(jw->content_win, FALSE);
-            touchwin(jw->win); // makes the border to be draw
+
+        keypad(new_win, TRUE);
+        scrollok(new_win, FALSE);
+        if (new_content_win != new_win) {
+            keypad(new_content_win, TRUE);
+            scrollok(new_content_win, FALSE);
+            touchwin(new_win);
         }
+
+        WINDOW *old_win = jw->win;
+        WINDOW *old_content_win = jw->content_win;
+        jw->win = new_win;
+        jw->content_win = new_content_win;
+        if (old_content_win && old_content_win != old_win) delwin(old_content_win);
+        if (old_win) delwin(old_win);
         
         if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
             jw->state->buffer.is_dirty = true;
@@ -540,26 +558,36 @@ void recalculate_window_layout() {
     }
 
     // Update floating terminal if it exists
-    if (ws->floating_term) {
+    if (ws->floating_term && screen_rows >= 3 && screen_cols >= 3) {
         ws->floating_term->height = screen_rows * 0.8;
         ws->floating_term->width = screen_cols * 0.8;
-        if (ws->floating_term->height < 5) ws->floating_term->height = 5;
-        if (ws->floating_term->width < 20) ws->floating_term->width = 20;
+        if (ws->floating_term->height < 5) ws->floating_term->height = min(5, screen_rows);
+        if (ws->floating_term->width < 20) ws->floating_term->width = min(20, screen_cols);
+        if (ws->floating_term->height < 3 || ws->floating_term->width < 3) return;
         ws->floating_term->y = (screen_rows - ws->floating_term->height) / 2;
         ws->floating_term->x = (screen_cols - ws->floating_term->width) / 2;
 
-        if (ws->floating_term->content_win && ws->floating_term->content_win != ws->floating_term->win) {
-            delwin(ws->floating_term->content_win);
+        // Keep the previous floating terminal windows if the new size cannot be allocated.
+        WINDOW *new_win = newwin(ws->floating_term->height, ws->floating_term->width,
+                                 ws->floating_term->y, ws->floating_term->x);
+        WINDOW *new_content_win = new_win ?
+            derwin(new_win, ws->floating_term->height - 2, ws->floating_term->width - 2, 1, 1) : NULL;
+        bool resized = false;
+        if (new_win && new_content_win) {
+            WINDOW *old_win = ws->floating_term->win;
+            WINDOW *old_content_win = ws->floating_term->content_win;
+            ws->floating_term->win = new_win;
+            ws->floating_term->content_win = new_content_win;
+            if (old_content_win && old_content_win != old_win) delwin(old_content_win);
+            if (old_win) delwin(old_win);
+            keypad(new_win, TRUE);
+            keypad(new_content_win, TRUE);
+            resized = true;
+        } else if (new_win) {
+            delwin(new_win);
         }
-        if (ws->floating_term->win) delwin(ws->floating_term->win);
 
-        ws->floating_term->win = newwin(ws->floating_term->height, ws->floating_term->width, 
-                                        ws->floating_term->y, ws->floating_term->x);
-        ws->floating_term->content_win = derwin(ws->floating_term->win, ws->floating_term->height - 2, ws->floating_term->width - 2, 1, 1);
-        keypad(ws->floating_term->win, TRUE);
-        keypad(ws->floating_term->content_win, TRUE);
-
-        if (ws->floating_term->term.vterm) {
+        if (resized && ws->floating_term->term.vterm && ws->floating_term->content_win) {
             vterm_wnd_set(ws->floating_term->term.vterm, ws->floating_term->content_win);
             vterm_resize(ws->floating_term->term.vterm, ws->floating_term->width - 2, ws->floating_term->height - 2);
             update_size_pty(ws->floating_term);
@@ -627,7 +655,7 @@ void redraw_all_windows() {
     // 1. Draw all main windows first
     for (int i = 0; i < ws->num_windows; i++) {
         EditorWindow *jw = ws->windows[i];
-        if (jw) {
+        if (jw && jw->win) {
             // Prepare the window content to be drawn
             if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
                 editor_redraw(jw->win, jw->state);
@@ -663,9 +691,9 @@ void redraw_all_windows() {
         }
     }
 
-    if (ws->num_windows > 0) {
+    if (ws->num_windows > 0 && ws->active_window_idx >= 0 && ws->active_window_idx < ws->num_windows) {
         EditorWindow *active_jw = ws->windows[ws->active_window_idx];
-        if (active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
+        if (active_jw && active_jw->win && active_jw->type == WINDOW_TYPE_EDITOR && active_jw->state) {
             EditorState *state = active_jw->state;
             // Draw spell-checker hover popup
             if (state->spell.hover_message) {
@@ -684,7 +712,7 @@ void redraw_all_windows() {
             if (state->lsp.code_action_popup_visible) {
                 draw_code_action_popup(active_jw->win, state);
             }
-        } else if (active_jw->type == WINDOW_TYPE_SETTINGS_PANEL && active_jw->settings_state) {
+        } else if (active_jw && active_jw->win && active_jw->type == WINDOW_TYPE_SETTINGS_PANEL && active_jw->settings_state) {
             if (active_jw->settings_state->is_assigning_key) {
                 const char *msg = (active_jw->settings_state->assigning_stage == 0) ? 
                                   " PRESS THE NEW KEY COMBINATION " : 
@@ -699,7 +727,8 @@ void redraw_all_windows() {
     }
 
     // 2. Draw floating terminal last so it overlays everything
-    if (ws->floating_term && ws->floating_terminal_visible) {
+    if (ws->floating_term && ws->floating_term->win && ws->floating_term->content_win &&
+        ws->floating_term->term.vterm && ws->floating_terminal_visible) {
         // Draw border and shadow
         wattron(ws->floating_term->win, COLOR_PAIR(PAIR_BORDER_ACTIVE) | A_BOLD);
         box(ws->floating_term->win, 0, 0);
@@ -732,7 +761,7 @@ void redraw_all_windows() {
         if (is_valid) {
             for (int j = 0; j < last_drawn_ws->num_windows; j++) {
                 EditorWindow *jw = last_drawn_ws->windows[j];
-                if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                if (jw && jw->type == WINDOW_TYPE_EDITOR && jw->state) {
                     if (jw->state->buffer.is_image) {
                         hide_kitty_image(&jw->state->buffer);
                     }
@@ -747,8 +776,8 @@ void redraw_all_windows() {
     if (!ws->floating_terminal_visible) {
         for (int j = 0; j < ws->num_windows; j++) {
             EditorWindow *jw = ws->windows[j];
-            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
-                if (jw->state->buffer.is_image && global_config.image_preview_enabled) {
+            if (jw && jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+                if (jw->content_win && jw->state->buffer.is_image && global_config.image_preview_enabled) {
                     int win_y, win_x;
                     getbegyx(jw->content_win, win_y, win_x);
                     int rows, cols;
@@ -760,7 +789,7 @@ void redraw_all_windows() {
                     }
                 }
                 
-                if (jw->state->image_hover.image_path[0] != '\0' && global_config.image_preview_enabled) {
+                if (jw->content_win && jw->state->image_hover.image_path[0] != '\0' && global_config.image_preview_enabled) {
                     int win_y, win_x;
                     getbegyx(jw->content_win, win_y, win_x);
                     int rows, cols;
@@ -784,7 +813,7 @@ void redraw_all_windows() {
         // Hide all images while floating terminal is visible
         for (int j = 0; j < ws->num_windows; j++) {
             EditorWindow *jw = ws->windows[j];
-            if (jw->type == WINDOW_TYPE_EDITOR && jw->state) {
+            if (jw && jw->type == WINDOW_TYPE_EDITOR && jw->state) {
                 if (jw->state->buffer.is_image) hide_kitty_image(&jw->state->buffer);
                 hide_kitty_hover(&jw->state->image_hover);
             }
@@ -795,7 +824,8 @@ void redraw_all_windows() {
 }
 
 void position_active_cursor() {
-    if (workspace_manager.num_workspaces == 0 || ACTIVE_WS->num_windows == 0) {
+    if (workspace_manager.num_workspaces == 0 || ACTIVE_WS->num_windows == 0 ||
+        ACTIVE_WS->active_window_idx < 0 || ACTIVE_WS->active_window_idx >= ACTIVE_WS->num_windows) {
         curs_set(0);
         return;
     }
@@ -804,14 +834,19 @@ void position_active_cursor() {
 
     // Handle floating terminal cursor
     if (ws->floating_term && ws->floating_terminal_visible) {
-        curs_set(1);
-        vterm_wnd_update(ws->floating_term->term.vterm, -1, 0, VTERM_WND_RENDER_ALL);
+        if (ws->floating_term->win && ws->floating_term->term.vterm) {
+            curs_set(1);
+            vterm_wnd_update(ws->floating_term->term.vterm, -1, 0, VTERM_WND_RENDER_ALL);
+        } else {
+            curs_set(0);
+        }
         return;
     }
 
     if (ws->num_windows == 0) { curs_set(0); return; };
 
     EditorWindow* active_jw = ws->windows[ACTIVE_WS->active_window_idx];
+    if (!active_jw || !active_jw->win) { curs_set(0); return; }
     
     // If the window is a terminal, libvterm handles the cursor. We do nothing.
     if (active_jw->type == WINDOW_TYPE_TERMINAL) {
@@ -1087,20 +1122,53 @@ typedef struct {
     bool is_recent;
 } SearchResult;
 
+// Grow search results safely so large directories cannot overrun a fixed buffer.
+static bool append_search_result(SearchResult **results, int *count, size_t *capacity,
+                                 const char *path, bool is_recent) {
+    if ((size_t)*count == *capacity) {
+        size_t new_capacity = *capacity ? *capacity * 2 : 16;
+        if (new_capacity > (size_t)INT_MAX / sizeof(**results)) {
+            A2_LOG(LOG_ERROR, TAG_UI, "Recent-file search result limit reached");
+            return false;
+        }
+        SearchResult *grown = realloc(*results, new_capacity * sizeof(**results));
+        if (!grown) {
+            A2_LOG(LOG_ERROR, TAG_UI, "Could not grow recent-file search results");
+            return false;
+        }
+        *results = grown;
+        *capacity = new_capacity;
+    }
+
+    char *path_copy = strdup(path);
+    if (!path_copy) {
+        A2_LOG(LOG_ERROR, TAG_UI, "Could not copy recent-file search path");
+        return false;
+    }
+    (*results)[*count] = (SearchResult){.path = path_copy, .is_recent = is_recent};
+    (*count)++;
+    return true;
+}
+
 void display_recent_files() {
-    EditorState *active_state = ACTIVE_WS->windows[ACTIVE_WS->active_window_idx]->state;
+    Workspace *ws = ACTIVE_WS;
+    if (!ws || ws->active_window_idx < 0 || ws->active_window_idx >= ws->num_windows) return;
+    EditorWindow *active_window = ws->windows[ws->active_window_idx];
+    if (!active_window || active_window->type != WINDOW_TYPE_EDITOR || !active_window->state) return;
+    EditorState *active_state = active_window->state;
     
     WINDOW *switcher_win;
     int rows, cols;
     getmaxyx(stdscr, rows, cols);
 
-    int win_h = min(20, rows - 4);
-    int win_w = cols / 2;
-    if (win_w < 60) win_w = 60;
+    if (rows < 5 || cols < 8) return;
+    int win_h = min(20, rows - 2);
+    int win_w = min(cols - 2, max(cols / 2, 60));
     int win_y = (rows - win_h) / 2;
     int win_x = (cols - win_w) / 2;
 
     switcher_win = newwin(win_h, win_w, win_y, win_x);
+    if (!switcher_win) return;
     keypad(switcher_win, TRUE);
     wbkgd(switcher_win, COLOR_PAIR(8));
 
@@ -1112,23 +1180,22 @@ void display_recent_files() {
 
     SearchResult *results = NULL;
     int num_results = 0;
+    size_t results_capacity = 0;
 
     while (1) {
         for(int i = 0; i < num_results; i++) free(results[i].path);
         free(results);
         results = NULL;
         num_results = 0;
+        results_capacity = 0;
 
         if (search_term[0] != '\0') {
-            results = malloc(sizeof(SearchResult) * (active_state->num_recent_files + 1024));
-            
-            if (results) {
-                for (int i = 0; i < active_state->num_recent_files; i++) {
-                    if (strstr(active_state->recent_files[i]->path, search_term)) {
-                        results[num_results].path = strdup(active_state->recent_files[i]->path);
-                        results[num_results].is_recent = true;
-                        num_results++;
-                    }
+            for (int i = 0; active_state->recent_files && i < active_state->num_recent_files; i++) {
+                FileInfo *recent = active_state->recent_files[i];
+                if (recent && recent->path && strstr(recent->path, search_term) &&
+                    !append_search_result(&results, &num_results, &results_capacity, recent->path, true)) {
+                    editor_set_status_msg(active_state, "Could not allocate recent-file search results.");
+                    break;
                 }
             }
 
@@ -1138,7 +1205,7 @@ void display_recent_files() {
             if (d) {
                 while ((dir = readdir(d)) != NULL) {
                     struct stat st;
-                        if (stat(dir->d_name, &st) == 0 && S_ISREG(st.st_mode) && strstr(dir->d_name, search_term)) {
+                    if (stat(dir->d_name, &st) == 0 && S_ISREG(st.st_mode) && strstr(dir->d_name, search_term)) {
                         char full_path[PATH_MAX];
                         if (!realpath(dir->d_name, full_path)) continue;
 
@@ -1151,12 +1218,15 @@ void display_recent_files() {
                         }
 
                         if (!already_in_list) {
-                            results[num_results].path = strdup(full_path);
-                            results[num_results].is_recent = false;
-                            num_results++;
+                            if (!append_search_result(&results, &num_results, &results_capacity, full_path, false)) {
+                                editor_set_status_msg(active_state, "Could not allocate recent-file search results.");
+                                break;
+                            }
                         }
                     }
                 }
+            }
+            if (d) {
                 closedir(d);
             }
         }
@@ -1225,9 +1295,9 @@ void display_recent_files() {
                 break;
             case KEY_RESIZE:
                 getmaxyx(stdscr, rows, cols);
-                win_h = min(20, rows - 4);
-                win_w = cols / 2;
-                if (win_w < 60) win_w = 60;
+                if (rows < 5 || cols < 8) goto end_switcher;
+                win_h = min(20, rows - 2);
+                win_w = min(cols - 2, max(cols / 2, 60));
                 win_y = (rows - win_h) / 2;
                 win_x = (cols - win_w) / 2;
 
